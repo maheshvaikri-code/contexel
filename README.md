@@ -124,6 +124,12 @@ Stages reason in tokens, not rows. The default tokenizer needs no native
 dependency (a ~4-chars/token estimate); call `contexel.tokens.use_tiktoken()`
 for exact counts, or `contexel.tokens.set_tokenizer(fn)` to plug in your own.
 
+Budgets are also *encoding*-relative: a record's cost is the token count of
+its serialized text, which defaults to canonical JSON. If your boundary emits
+a different encoding (e.g. an [ISON](https://ison.dev) table), plug it in with
+`contexel.tokens.set_serializer(fn)` so budgets are priced in the encoding
+that actually enters context.
+
 ## Design
 
 - A *record* is a plain `dict`; a collection is a `list[dict]` — the shape almost
@@ -141,10 +147,40 @@ Runnable patterns in [`examples/`](examples/):
 - `tool_boundary_wrapper.py` — the `@shaped` wrapper pattern
 - `mcp_server.py` — shape responses inside an MCP server
 - `framework_adapter.py` — a `records ⇄ Document` adapter for LangChain / LlamaIndex
+- `ison_boundary.py` — shape-then-encode: price budgets in ISON instead of JSON
 
 And a full, runnable agent in [`reference_agent/`](reference_agent/) — a
 code-execution agent that uses contexel as the deterministic context-economy
 layer at the tool → context boundary (`python -m reference_agent`).
+
+## Alternatives, and what pairs with it
+
+The tool → context shaping *pattern* is industry consensus; what varies is the
+mechanism. The nearest neighbours, so you can pick deliberately:
+
+- **LangChain** `trim_messages` token-trims *chat turns*, not tool records;
+  `EmbeddingsRedundantFilter` dedupes semantically — it needs an embedding
+  model, and results shift with model versions. **Haystack** `DocumentJoiner`
+  and **LlamaIndex** node postprocessors cover similar operations, coupled to
+  their frameworks' `Document`/node types. **`context-engineering-toolkit`**
+  is the closest standalone library (budget + truncation + priority), without
+  field projection, keyed dedupe, or schema `merge`.
+- **Semantic compressors** (LLMLingua, ColBERT, cross-encoder rerankers) beat
+  contexel on semantic quality, at the price of model inference and
+  reproducibility. contexel is deterministic and non-semantic by design —
+  complementary, not superior.
+- **The pattern itself** (Anthropic's "code execution with MCP", Cloudflare
+  Code Mode) ships as a description, with the shaping left to code the model
+  improvises each run — exactly the drift contexel removes.
+
+**Serialization formats are the complementary layer, not competitors**:
+contexel decides *what survives*; the encoding decides *what the survivors
+cost*. It pairs naturally with [ISON](https://ison.dev) — `select` projects
+records onto a uniform field set, which is exactly the shape ISON's table
+syntax compresses best, and `tokens.set_serializer()` keeps budgets priced in
+the encoding that actually enters context (see
+[`examples/ison_boundary.py`](examples/ison_boundary.py) and benchmark
+suite 6). TOON is the same idea, serialization only.
 
 ## License
 

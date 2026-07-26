@@ -1,8 +1,20 @@
 # Changelog
 
 All notable changes to this project are documented in this file. The format is
-based on [Keep a Changelog](https://keepachangelog.com/), and this project
-adheres to [Semantic Versioning](https://semver.org/).
+based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
+`z.y.x` — Mega. Major. minor/patch — and every commit bumps the version.
+
+## [0.1.1] — 2026-07-26
+
+### Added
+- Pluggable serialization for token counting: `tokens.set_serializer(fn)` and
+  `tokens.serialize(value)`. Budgets are encoding-relative — plug in the
+  encoding your boundary actually emits (e.g. an ISON table) so
+  `trim_to_budget` prices records in that encoding. Default remains
+  canonical JSON; strings always bypass the serializer.
+- `examples/ison_boundary.py` — the shape-then-encode pattern with ISON.
+- Benchmark suites (`python -m benchmarks`): determinism, budget tightness,
+  speed, tokenizer accuracy, reduction characterization, encoding pairing.
 
 ## [0.1.0] — 2026-06-07
 

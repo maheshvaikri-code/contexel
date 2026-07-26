@@ -55,29 +55,29 @@ field, measured with the tokenizer that shaped it (docstring claims
 
 | Records | Stage | ms (best of 5) | Records/sec |
 |---|---|---|---|
-| 1,000 | select | 0.22 | 4,504,505.64 |
-| 1,000 | hand-written select | 0.22 | 4,545,456.01 |
-| 1,000 | dedupe (key) | 1.54 | 648,382.29 |
-| 1,000 | rank | 0.15 | 6,640,107.01 |
-| 1,000 | truncate_field | 2.69 | 372,231.53 |
-| 1,000 | trim_to_budget | 3.84 | 260,281.10 |
-| 1,000 | full contract | 4.74 | 210,868.14 |
-| 10,000 | select | 2.42 | 4,127,967.09 |
-| 10,000 | hand-written select | 2.25 | 4,453,549.51 |
-| 10,000 | dedupe (key) | 16.78 | 595,944.01 |
-| 10,000 | rank | 1.94 | 5,152,779.94 |
-| 10,000 | truncate_field | 28.63 | 349,264.45 |
-| 10,000 | trim_to_budget | 38.90 | 257,062.14 |
-| 10,000 | full contract | 51.71 | 193,404.52 |
-| 100,000 | select | 34.40 | 2,906,951.39 |
-| 100,000 | hand-written select | 36.21 | 2,761,363.01 |
-| 100,000 | dedupe (key) | 182.47 | 548,045.51 |
-| 100,000 | rank | 34.78 | 2,874,951.12 |
-| 100,000 | truncate_field | 300.48 | 332,805.28 |
-| 100,000 | trim_to_budget | 386.19 | 258,938.56 |
-| 100,000 | full contract | 517.85 | 193,104.81 |
+| 1,000 | select | 0.21 | 4,655,493.36 |
+| 1,000 | hand-written select | 0.21 | 4,672,897.20 |
+| 1,000 | dedupe (key) | 1.58 | 634,517.76 |
+| 1,000 | rank | 0.15 | 6,816,634.77 |
+| 1,000 | truncate_field | 2.67 | 374,953.14 |
+| 1,000 | trim_to_budget | 3.64 | 274,876.31 |
+| 1,000 | full contract | 4.59 | 217,651.54 |
+| 10,000 | select | 2.28 | 4,380,393.29 |
+| 10,000 | hand-written select | 2.22 | 4,510,193.03 |
+| 10,000 | dedupe (key) | 16.16 | 618,727.65 |
+| 10,000 | rank | 1.88 | 5,333,333.12 |
+| 10,000 | truncate_field | 27.32 | 366,004.08 |
+| 10,000 | trim_to_budget | 37.93 | 263,672.06 |
+| 10,000 | full contract | 48.64 | 205,573.09 |
+| 100,000 | select | 32.95 | 3,034,532.98 |
+| 100,000 | hand-written select | 32.73 | 3,055,440.98 |
+| 100,000 | dedupe (key) | 175.46 | 569,922.02 |
+| 100,000 | rank | 30.10 | 3,322,744.85 |
+| 100,000 | truncate_field | 299.91 | 333,437.37 |
+| 100,000 | trim_to_budget | 389.89 | 256,485.62 |
+| 100,000 | full contract | 523.65 | 190,967.87 |
 
-Trace overhead on the full contract over 10,000 records: 52.3 ms inactive vs 172.1 ms active (3.29x). Inactive tracing is the "zero cost" claim; active tracing token-counts every stage boundary and is priced accordingly.
+Trace overhead on the full contract over 10,000 records: 52.2 ms inactive vs 173.9 ms active (3.33x). Inactive tracing is the "zero cost" claim; active tracing token-counts every stage boundary and is priced accordingly.
 
 ## 4. Default tokenizer accuracy (heuristic vs tiktoken cl100k_base)
 
@@ -85,7 +85,7 @@ Positive error = the heuristic over-estimates (conservative for budgets).
 
 | Sample | Actual | Heuristic | Error % |
 |---|---|---|---|
-| prose (README.md) | 1,674 | 1,636 | -2.27 |
+| prose (README.md) | 2,177 | 2,169 | -0.37 |
 | prose (the-context-contract.md) | 2,365 | 2,779 | 17.51 |
 | code (contexel/stages.py) | 1,328 | 1,390 | 4.67 |
 | code (reference_agent/tools.py) | 1,709 | 1,781 | 4.21 |
@@ -105,3 +105,21 @@ Standard contract over 2,000 records with 60-word snippets. Lossless =
 | 0.25 | 4,000 | 2000 -> 80 | 332,056 -> 3,817 | 41.08 | 57.77 | 98.85 |
 | 0.50 | 1,000 | 2000 -> 20 | 332,155 -> 957 | 60.45 | 39.26 | 99.71 |
 | 0.50 | 4,000 | 2000 -> 80 | 332,155 -> 3,819 | 60.45 | 38.40 | 98.85 |
+
+## 6. Encoding pairing (shape-then-encode)
+
+Budgets are encoding-relative: `trim_to_budget` prices each record by its
+serialized text. The same contract and budget, with the boundary priced and
+serialized as JSON (contexel's default) vs a minimal ISON table
+([ison.dev](https://ison.dev)) via `tokens.set_serializer`. `select` first
+projects records onto a uniform field set — exactly the rows ISON's table
+syntax encodes without repeating keys. Actual cost measured with tiktoken.
+
+| Encoding | Budget | Records kept | Actual tokens | Tokens/record |
+|---|---|---|---|---|
+| json | 500 | 10 | 500 | 50.00 |
+| ison | 500 | 13 | 442 | 34.00 |
+| json | 1,000 | 20 | 1,001 | 50.05 |
+| ison | 1,000 | 27 | 908 | 33.63 |
+| json | 2,000 | 40 | 2,010 | 50.25 |
+| ison | 2,000 | 54 | 1,800 | 33.33 |

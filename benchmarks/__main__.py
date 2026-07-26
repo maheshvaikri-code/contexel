@@ -43,6 +43,8 @@ def main() -> None:
     acc = suites.tokenizer_accuracy()
     print("running reduction-characterization suite ...")
     red = suites.reduction()
+    print("running encoding-pairing suite ...")
+    enc = suites.encoding_pairing()
 
     check = lambda ok: "PASS" if ok else "FAIL"
     det_rows = [
@@ -136,6 +138,21 @@ Standard contract over 2,000 records with 60-word snippets. Lossless =
     ("dup_rate", "Dup rate"), ("budget", "Budget"), ("records", "Records"),
     ("tokens", "Tokens"), ("lossless_pct", "Lossless %"),
     ("by_choice_pct", "By-choice %"), ("total_pct", "Total %"),
+])}
+
+## 6. Encoding pairing (shape-then-encode)
+
+Budgets are encoding-relative: `trim_to_budget` prices each record by its
+serialized text. The same contract and budget, with the boundary priced and
+serialized as JSON (contexel's default) vs a minimal ISON table
+([ison.dev](https://ison.dev)) via `tokens.set_serializer`. `select` first
+projects records onto a uniform field set — exactly the rows ISON's table
+syntax encodes without repeating keys. Actual cost measured with tiktoken.
+
+{_table(enc, [
+    ("encoding", "Encoding"), ("budget", "Budget"),
+    ("records_kept", "Records kept"), ("actual_tokens", "Actual tokens"),
+    ("tokens_per_record", "Tokens/record"),
 ])}
 """
 

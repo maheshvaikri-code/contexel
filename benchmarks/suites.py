@@ -15,6 +15,10 @@
 5. reduction          — README "How much does it cut?": reduction is a
                          property of the data and the budget, reported as
                          lossless (select+dedupe) vs by-choice (truncate+trim).
+6. encoding_pairing   — budgets are encoding-relative: the same contract and
+                         budget with the boundary priced and serialized as
+                         JSON (the default) vs an ISON table (ison.dev), via
+                         tokens.set_serializer. Actual cost via tiktoken.
 """
 from __future__ import annotations
 
@@ -254,4 +258,60 @@ def reduction() -> List[Dict[str, Any]]:
                 "by_choice_pct": by_choice / total_in * 100,
                 "total_pct": t.reduction * 100,
             })
+    return rows
+
+
+# --------------------------------------------------------------------------- #
+# 6. Encoding pairing (shape-then-encode)
+# --------------------------------------------------------------------------- #
+def _ison_cell(value: Any) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    text = str(value)
+    if any(ch.isspace() for ch in text) or '"' in text:
+        return '"' + text.replace('"', '\\"') + '"'
+    return text
+
+
+def ison_table(records: List[dict], name: str = "records") -> str:
+    """Minimal ISON table rendering (subset of the ison.dev spec)."""
+    if not records:
+        return f"table.{name}"
+    fields = list(records[0])
+    rows = ["  ".join(_ison_cell(r.get(f, "")) for f in fields) for r in records]
+    return "\n".join([f"table.{name}", "  ".join(fields), *rows])
+
+
+def _ison_serializer(value: Any) -> str:
+    if isinstance(value, list) and all(isinstance(x, dict) for x in value):
+        return ison_table(value)
+    if isinstance(value, dict):
+        return "  ".join(_ison_cell(v) for v in value.values())
+    return json.dumps(value, ensure_ascii=False, default=str, sort_keys=True)
+
+
+def encoding_pairing() -> List[Dict[str, Any]]:
+    exact = _exact_tokenizer()
+    data = search_hits(5000, dup_rate=0.2, snippet_words=60)
+    rows = []
+    try:
+        for budget in (500, 1000, 2000):
+            for encoding, serializer, render in (
+                ("json", None,
+                 lambda out: json.dumps(out, ensure_ascii=False)),
+                ("ison", _ison_serializer, ison_table),
+            ):
+                tokens.set_serializer(serializer)
+                out = contract(budget)(data)
+                payload = render(out)
+                actual = exact(payload)
+                rows.append({
+                    "encoding": encoding,
+                    "budget": budget,
+                    "records_kept": len(out),
+                    "actual_tokens": actual,
+                    "tokens_per_record": actual / len(out) if out else 0.0,
+                })
+    finally:
+        tokens.set_serializer(None)
     return rows
