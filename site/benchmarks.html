@@ -128,6 +128,12 @@ data's property, not the policy's.</p>
 scores zero against a document saying <em>parse</em>; synonyms and
 paraphrase belong to semantic rerankers (LLMLingua, ColBERT,
 cross-encoders), which contexel deliberately does not compete with.</p>
+<p><strong>And shaping is not an injection defense:</strong> rescore ranks
+textual relevance — a hostile record that matches the query well ranks
+well, including one that says "ignore all previous instructions". Content
+authentication (source allowlists, trust tiers, sanitization) belongs
+upstream of the contract; treat every shaped record as data, never as
+instructions.</p>
 </div>
 
 </main>

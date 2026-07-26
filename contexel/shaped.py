@@ -8,6 +8,7 @@ call — the same lens on the repo, run after run.
 from __future__ import annotations
 
 import functools
+import inspect
 from typing import Any, Callable, Dict, List, Sequence, Union
 
 from .pipeline import pipeline
@@ -21,6 +22,10 @@ def shaped(pipe: Union[StageFn, Sequence[StageFn]]) -> Callable[[Callable[..., R
 
     ``pipe`` may be a single ``records -> records`` callable (e.g. the result of
     :func:`contexel.pipeline`) or a list of stages, which is composed for you.
+
+    Async tools work too: a coroutine function is awaited and its returned
+    records shaped (detected via ``inspect.iscoroutinefunction`` — a sync
+    function that merely *returns* an awaitable is not detected).
 
     Example::
 
@@ -38,7 +43,14 @@ def shaped(pipe: Union[StageFn, Sequence[StageFn]]) -> Callable[[Callable[..., R
     """
     runner: StageFn = pipe if callable(pipe) else pipeline(list(pipe))
 
-    def decorator(fn: Callable[..., Records]) -> Callable[..., Records]:
+    def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
+        if inspect.iscoroutinefunction(fn):
+            @functools.wraps(fn)
+            async def awrapper(*args: Any, **kwargs: Any) -> Records:
+                return runner(await fn(*args, **kwargs))
+
+            return awrapper
+
         @functools.wraps(fn)
         def wrapper(*args: Any, **kwargs: Any) -> Records:
             return runner(fn(*args, **kwargs))

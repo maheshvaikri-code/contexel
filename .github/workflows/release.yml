@@ -1,8 +1,13 @@
 # PyPI release — runs only when a human creates a version tag (v*) or
 # clicks Run workflow. The pipeline executes the release; it never decides
-# it (.Doctrine/skills/cicd.md). Requires the PYPI_TOKEN **secret**
-# (Settings -> Secrets and variables -> Actions -> Secrets); a plaintext
-# Actions *variable* is not acceptable for a credential and is not read.
+# it (.Doctrine/skills/cicd.md).
+#
+# Publishing uses PyPI TRUSTED PUBLISHING (OIDC) with provenance
+# attestations — no long-lived token. ONE-TIME SETUP required before the
+# next tag: PyPI -> Your projects -> contexel -> Manage -> Publishing ->
+# add a new GitHub publisher (owner: maheshvaikri-code, repo: contexel,
+# workflow: release.yml, environment: pypi). The old PYPI_TOKEN secret can
+# then be deleted from GitHub.
 name: release
 on:
   push:
@@ -14,6 +19,10 @@ jobs:
   test-build-publish:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write  # OIDC for Trusted Publishing
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
@@ -37,13 +46,18 @@ jobs:
         run: python -m build
       - name: Metadata check
         run: python -m twine check dist/*
-      - name: Publish to PyPI
+      - name: Publish to PyPI (Trusted Publishing + attestations)
+        # only a tag PUSH publishes; workflow_dispatch (even on a tag ref)
+        # is always a dry-run
+        if: github.event_name == 'push' && github.ref_type == 'tag'
         uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # v1.14.1
         with:
-          password: ${{ secrets.PYPI_TOKEN }}
+          attestations: true
 
   post-publish-smoke:
     needs: test-build-publish
+    # runs only when the publish step actually ran (tag push, not dispatch)
+    if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

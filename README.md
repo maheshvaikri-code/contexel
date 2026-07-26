@@ -115,8 +115,17 @@ document saying *parse*; synonyms and paraphrase are invisible. When you
 need that, put a semantic reranker in front — contexel's own suite measures
 what the lexical lane cannot reach instead of hiding it
 ([RESULTS.md](benchmarks/RESULTS.md) also quantifies the default
-tokenizer's error: −29% on JSON-heavy records — install
-`contexel[accurate]` when budget precision matters).
+tokenizer's error: −29% on JSON-heavy records — hard token limits require
+an exact tokenizer: `contexel[accurate]` + `tokens.use_tiktoken()` where
+tiktoken covers the model, or your provider's own counter via
+`set_tokenizer`; the estimator is for soft budgeting only).
+
+**And shaping is not an injection defense.** `rescore` ranks textual
+relevance; a hostile record that matches the query well ranks well —
+including one that says "ignore all previous instructions". Content
+authentication belongs *upstream* of the contract: source allowlists,
+trust tiers, sanitization. Treat every shaped record as untrusted data,
+never as instructions.
 
 ## Where it is used
 
@@ -192,11 +201,15 @@ def search_code(query: str) -> list[dict]:
 
 Token accounting is pluggable on two axes. The *tokenizer*: the default is
 a dependency-free ~4-chars/token estimate; `contexel.tokens.use_tiktoken()`
-switches to exact counts, `set_tokenizer(fn)` plugs in your own. The
-*serializer*: budgets are encoding-relative — a record's cost is the token
-count of its serialized text, canonical JSON by default. If your boundary
-emits something else (an ISON table, say), `contexel.tokens.set_serializer(fn)`
-keeps budgets priced in the encoding that actually enters context.
+switches to exact counts for models tiktoken covers (other providers: plug
+their own counter via `set_tokenizer(fn)`). The *serializer*: budgets are
+encoding-relative — a record's cost is the token count of its serialized
+text, canonical JSON by default. If your boundary emits something else (an
+ISON table, say), `contexel.tokens.set_serializer(fn)` keeps budgets priced
+in the encoding that actually enters context. For concurrent tenants, both
+axes can be overridden per task with `tokens.scoped(...)` — a context-local
+overlay that never touches other tasks (bare threads start fresh and fall
+back to the process default).
 
 ## Alternatives, and what pairs with it
 

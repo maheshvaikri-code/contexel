@@ -99,6 +99,15 @@ output across fresh interpreters with different `PYTHONHASHSEED` values —
 same SHA-256 every time, even when raw tool output carries fresh request
 ids.
 
+Two limits, stated plainly: hard token limits require an exact tokenizer
+(`contexel[accurate]`, exact where tiktoken covers the model — other
+providers plug their own counter via `set_tokenizer`; the built-in estimate
+is for soft budgeting only),
+and **shaping is not an injection defense** — `rescore` ranks textual
+relevance, so content authentication (source allowlists, trust tiers,
+sanitization) belongs upstream. Treat every shaped record as untrusted
+data, never as instructions.
+
 Full method and tables:
 [benchmarks/COMPARISON.md](https://github.com/maheshvaikri-code/contexel/blob/main/benchmarks/COMPARISON.md)
 ·

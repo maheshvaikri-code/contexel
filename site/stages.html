@@ -122,15 +122,25 @@ transform — the one stage that is not auto-traced.</p>
   <li><code>stage(fn, **params)</code> — binds keyword args so a stage slots
   into a pipeline.</li>
   <li><code>@shaped(pipe)</code> — runs a tool's record-list return value
-  through a pipeline before it returns; the model never sees raw output.</li>
-  <li><code>trace()</code> — context manager; every stage records
-  records-in/out and tokens-before/after. Inactive overhead is a single
-  ContextVar lookup per stage — within run noise (46.3 vs 43.6&nbsp;ms over
-  10k records in RESULTS.md); active tracing token-counts every stage
-  boundary and is priced accordingly.</li>
-  <li><code>tokens</code> — <code>count</code>, <code>use_tiktoken()</code>,
+  through a pipeline before it returns; the model never sees raw output.
+  Async tools work too: a coroutine function is awaited, then shaped.</li>
+  <li><code>pipeline([...])</code> exposes <code>.fingerprint</code> — a
+  stable policy hash of stage names and bound parameters, recorded into any
+  active trace so an audit can say which policy version shaped a context.</li>
+  <li><code>trace(id_field=...)</code> — context manager; every stage
+  records records-in/out and tokens-before/after, and with
+  <code>id_field</code> also <em>which</em> records each stage dropped
+  (records lacking the field are untracked). <code>t.audit()</code> emits
+  the JSON-able governance record. Inactive overhead is a single ContextVar
+  lookup per stage — within run noise (46.3 vs 43.6&nbsp;ms over 10k records
+  in RESULTS.md); active tracing token-counts every stage boundary and is
+  priced accordingly.</li>
+  <li><code>tokens</code> — <code>count</code>, <code>use_tiktoken()</code>
+  (exact where tiktoken covers the model), <code>tiktoken_tokenizer()</code>,
   <code>set_tokenizer(fn)</code>, <code>set_serializer(fn)</code>,
-  <code>serialize(value)</code>. Strings always bypass the serializer.</li>
+  <code>serialize(value)</code>, and <code>scoped(...)</code> — a
+  context-local overlay that isolates concurrent tenants. Strings always
+  bypass the serializer.</li>
 </ul>
 
 </main>

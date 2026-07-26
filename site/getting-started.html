@@ -108,13 +108,16 @@ def search_code(query: str) -> list[dict]:
 </div>
 
 <h2>Token accounting</h2>
-<p>Two pluggable axes, both process-wide:</p>
+<p>Two pluggable axes — process-wide setters, plus a context-local overlay
+for concurrent tenants:</p>
 <pre><code>from contexel import tokens
 
-tokens.use_tiktoken()          # exact counts (needs the accurate extra)
-tokens.set_tokenizer(fn)       # or your own text → count
+tokens.use_tiktoken()          # exact where tiktoken covers the model
+tokens.set_tokenizer(fn)       # or your provider's own counter
 tokens.set_serializer(fn)      # price records in your boundary's encoding
-tokens.set_serializer(None)    # back to canonical JSON</code></pre>
+
+with tokens.scoped(tokenizer=tokens.tiktoken_tokenizer()):
+    shaped = contract(records)  # this task/tenant only; others untouched</code></pre>
 <p>Budgets are encoding-relative: a record's cost is the token count of its
 <em>serialized</em> text. If your boundary emits something other than JSON,
 plug that in so <code>trim_to_budget</code> prices what actually ships.</p>

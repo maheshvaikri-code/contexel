@@ -4,6 +4,36 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
 `z.y.x` — Mega. Major. minor/patch — and every commit bumps the version.
 
+## [Unreleased]
+
+### Added — toward a governed "context shaping plane" (readiness audit, gaps 2/3/4/5)
+- `@shaped` now wraps **async** tools: a coroutine function is awaited and
+  its records shaped, instead of `TypeError: 'coroutine' object is not
+  iterable`.
+- `tokens.scoped(tokenizer=..., serializer=...)` — context-local token
+  accounting for concurrent tenants: isolates async tasks and
+  context-copying threads (bare threads fall back to the process default);
+  resolution: explicit arg → scoped → process default → built-in.
+- `tokens.tiktoken_tokenizer(encoding=..., model=...)` and
+  `use_tiktoken(model=...)` — model-specific encodings, exact where
+  tiktoken covers the model (other providers plug their own counter); docs
+  now state hard token limits require an exact tokenizer (the estimator is
+  for soft budgeting only).
+- `pipeline(...).fingerprint` — a stable policy hash of stage names and
+  bound parameters, recorded into any active trace.
+- `trace(id_field=...)` + `Trace.audit()` — the governance record: policy
+  fingerprints, per-stage dropped record IDs (stage = removal reason),
+  token movement.
+
+### Changed
+- Release workflow publishes via **PyPI Trusted Publishing (OIDC) with
+  provenance attestations** — no long-lived token (gap 7). One-time PyPI
+  publisher registration required before the next tag; see the workflow
+  header.
+- Threat model stated in README / PyPI readme (gap 6): shaping is not an
+  injection defense — content authentication belongs upstream; records are
+  data, never instructions.
+
 ## [0.1.14] — 2026-07-26
 
 ### Fixed
