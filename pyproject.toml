@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "contexel"
-version = "0.1.12"
+version = "0.1.13"
 description = "Deterministic, dependency-free context-economy stages for code-writing agents."
 readme = "README_PYPI.md"
 requires-python = ">=3.9"

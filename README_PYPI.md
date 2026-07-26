@@ -40,6 +40,13 @@ emits — JSON by default, or e.g. an [ISON](https://ison.dev) table).
 
 No embeddings, no model calls, **zero dependencies** — pure Python 3.9+.
 
+## Install
+
+```bash
+pip install contexel              # pure Python, zero dependencies
+pip install "contexel[accurate]"  # + tiktoken, for exact token counts
+```
+
 ## Sixty seconds
 
 ```python

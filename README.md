@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.1.12-blue.svg" alt="Version"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.1.13-blue.svg" alt="Version"></a>
   <a href="https://github.com/maheshvaikri-code/contexel/actions"><img src="https://github.com/maheshvaikri-code/contexel/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.9%2B-blue.svg" alt="Python 3.9+"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/dependencies-0-brightgreen.svg" alt="Zero dependencies"></a>
@@ -243,8 +243,7 @@ needs the `benchmarks` extra).
   (semantic reranking, summarization, semantic dedupe) would layer on top
   behind an injected client — deliberately out of scope today.
 
-  [![SkillDen](https://skillden.cv/card/maheshvaikri-code.svg?theme=certificate)](https://skillden.cv/u/maheshvaikri-code?theme=certificate)
-
+[![SkillDen](https://skillden.cv/card/maheshvaikri-code.svg?theme=certificate)](https://skillden.cv/u/maheshvaikri-code?theme=certificate)
 ## License
 
 MIT

@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
 `z.y.x` — Mega. Major. minor/patch — and every commit bumps the version.
 
+## [0.1.13] — 2026-07-26
+
+### Changed
+- Site getting-started now leads with `pip install contexel` (annotated as
+  in-flight until the first release lands), with the from-source block kept
+  for the benchmark extras; `README_PYPI.md` gains its missing Install
+  section.
+
 ## [0.1.12] — 2026-07-26
 
 ### Added

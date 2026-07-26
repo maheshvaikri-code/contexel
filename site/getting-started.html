@@ -36,12 +36,16 @@
 <h1>Getting started</h1>
 
 <h2>Install</h2>
+<pre><code>pip install contexel              # pure Python, zero dependencies
+pip install "contexel[accurate]"  # + tiktoken, for exact token counts</code></pre>
+<p class="note" style="font-size:.9rem">The first PyPI release is in
+flight — until it lands, install from source below. This note disappears
+with the release.</p>
+<p>From source (also how you get the benchmark suites):</p>
 <pre><code>git clone https://github.com/maheshvaikri-code/contexel && cd contexel
-pip install -e .                  # pure Python, zero dependencies
-pip install -e ".[accurate]"      # + tiktoken, for exact token counts
+pip install -e .                  # the library
+pip install -e ".[accurate]"      # + tiktoken
 pip install -e ".[benchmarks]"    # + everything the benchmark suites use</code></pre>
-<p>A PyPI release is pending; <code>pip install contexel</code> will work
-once it ships.</p>
 
 <h2>Shape your first tool output</h2>
 <p>Everything operates on <code>list[dict]</code> — the shape tools already
