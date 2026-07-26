@@ -100,6 +100,73 @@ def rank(records: Records, by: Union[str, Callable[[Record], Any]], desc: bool =
     return present + missing
 
 
+@traced
+def allowlist(records: Records, field: str, allowed: Sequence[Any]) -> Records:
+    """Provenance gate: keep only records whose ``field`` value is in
+    ``allowed``. The strongest injection control a shaper can offer is
+    refusing content from sources you did not approve — apply this FIRST,
+    before any relevance logic, so untrusted records never compete for the
+    budget. Fail closed: records missing the field (or carrying an
+    unhashable value) are dropped. Deterministic; dropped records appear in
+    the trace/audit with this stage as the reason.
+    """
+    allowed_set = set(allowed)
+    out: Records = []
+    for r in records:
+        try:
+            ok = r.get(field) in allowed_set
+        except TypeError:
+            ok = False
+        if ok:
+            out.append(r)
+    return out
+
+
+_INJECTION_PATTERNS = (
+    r"ignore\s+(?:all\s+|any\s+)?(?:previous|prior|above|earlier)\s+"
+    r"(?:instructions|messages|prompts|context)",
+    r"disregard\s+(?:all\s+|the\s+)?(?:previous|prior|above|earlier)",
+    r"you\s+are\s+now\s+",
+    r"new\s+instructions\s*:",
+    r"system\s+prompt",
+    r"</?\s*(?:system|assistant|instructions?)\s*>",
+)
+
+
+@traced
+def quarantine(records: Records, fields: Sequence[str] = ("snippet",),
+               patterns: Optional[Sequence[str]] = None,
+               action: str = "drop", into: str = "quarantined") -> Records:
+    """Deterministic tripwire for the crudest prompt-injection markers
+    ("ignore all previous instructions", role-reset phrases, system-prompt
+    tags) in the given text ``fields``.
+
+    ``action="drop"`` removes matching records (traced/audited);
+    ``action="flag"`` keeps every record and writes a boolean to ``into``
+    so downstream policy — or the harness — decides.
+
+    Honest scope: this is NOT a security boundary. A paraphrased attack
+    passes; a benign document quoting an attack trips it. Provenance
+    gating (:func:`allowlist`) is the stronger control; this one makes the
+    loud, literal cases visible in the audit trail instead of letting them
+    compete for the budget silently. Caller-supplied ``patterns`` are the
+    caller's responsibility (including their regex complexity).
+    """
+    if action not in ("drop", "flag"):
+        raise ValueError(f"action must be 'drop' or 'flag', got {action!r}")
+    matcher = re.compile("|".join(patterns or _INJECTION_PATTERNS),
+                         re.IGNORECASE)
+    out: Records = []
+    for r in records:
+        text = " ".join(str(r.get(f, "")) for f in fields)
+        hit = matcher.search(text) is not None
+        if action == "flag":
+            out.append({**r, into: hit})
+        elif not hit:
+            out.append(r)
+    return out
+
+
 _TOKEN = re.compile(r"[^\W_]+")  # word tokens; underscores split snake_case
 
 

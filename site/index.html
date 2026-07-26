@@ -75,10 +75,11 @@ boundary</strong>. Same input, byte-identical context, every run — a
     search tool's score quality.</p>
   </div>
   <div class="card"><span class="k">Zero dependencies</span>
-    <h3>Plain Python, 13&nbsp;ms import</h3>
-    <p>No embeddings, no model calls, no packages. Six pipeline stages plus
-    a <code>merge</code> combiner, function composition, an opt-in trace —
-    auditable in an afternoon.</p>
+    <h3>Plain Python, sub-20&nbsp;ms import</h3>
+    <p>No embeddings, no model calls, no packages. Eight pipeline stages
+    (including provenance and injection-tripwire gates) plus a
+    <code>merge</code> combiner, function composition, an audit-grade
+    opt-in trace — auditable in an afternoon.</p>
   </div>
 </div>
 
@@ -93,11 +94,11 @@ separate shared-glue canonical task. Details and method on the
 <div class="scroll">
 <table>
 <tr><th>Implementation</th><th>Native ops</th><th>ms @28k</th><th>Recall (strong/weak signal)</th><th>Budget compliance</th><th>Useful tokens</th><th>Deps</th></tr>
-<tr><td><strong>contexel</strong></td><td class="best">6/6</td><td>59</td><td class="best">100% / 100%</td><td class="best">100%</td><td class="best">100%</td><td class="best">0</td></tr>
-<tr><td>hand-written glue</td><td>0</td><td>27</td><td class="poor">93% / 32%</td><td>100%</td><td>100%</td><td>—</td></tr>
-<tr><td>toolz</td><td>2</td><td>42</td><td>100% / 100%</td><td class="poor">0% (92× budget)</td><td>100%</td><td>0</td></tr>
-<tr><td>langchain-core</td><td>1</td><td>139</td><td class="poor">30% / 30%</td><td>100%</td><td class="poor">89.8%</td><td>25</td></tr>
-<tr><td>llama-index-core</td><td>0</td><td>516</td><td>100% / 100%</td><td class="poor">0% (129× budget)</td><td class="poor">74.2%</td><td>60</td></tr>
+<tr><td><strong>contexel</strong></td><td class="best">6/6</td><td>69</td><td class="best">100% / 100%</td><td class="best">100%</td><td class="best">100%</td><td class="best">0</td></tr>
+<tr><td>hand-written glue</td><td>0/6</td><td>27</td><td class="poor">93% / 32%</td><td>100%</td><td>100%</td><td>—</td></tr>
+<tr><td>toolz</td><td>2/6</td><td>45</td><td>100% / 100%</td><td class="poor">0% (92× budget)</td><td>100%</td><td>0</td></tr>
+<tr><td>langchain-core</td><td>1/6</td><td>147</td><td class="poor">30% / 30%</td><td>100%</td><td class="poor">89.8%</td><td>25</td></tr>
+<tr><td>llama-index-core</td><td>0/6</td><td>189</td><td>100% / 100%</td><td class="poor">0% (129× budget)</td><td class="poor">74.2%</td><td>60</td></tr>
 </table>
 </div>
 

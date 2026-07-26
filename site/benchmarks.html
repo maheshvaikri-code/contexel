@@ -50,14 +50,14 @@ Highlights:</p>
   <li><strong>Budget tightness</strong> — shaped with tiktoken, actual cost
   lands under budget (1,890/2,000); shaped with the default estimator it can
   overshoot ~0.5%. <code>truncate_field</code> never exceeded its cap.</li>
-  <li><strong>Speed</strong> — ~195k records/sec through the full contract
+  <li><strong>Speed</strong> — ~190k records/sec through the full contract
   (100k records ≈ 0.5 s); <code>select</code> has no measurable overhead vs
-  a hand-written comprehension. Tracing: 46.3 ms inactive vs 176.7 ms
-  active (3.81×) over 10k records — inactive is within run noise of the
-  untraced 43.6 ms baseline; active tracing token-counts every stage
-  boundary and is priced accordingly.</li>
+  a hand-written comprehension. Tracing: 49.8 ms inactive vs 173.3 ms
+  active (3.48×) over 10k records — inactive adds single-digit
+  milliseconds over the untraced 44.4 ms baseline; active tracing
+  token-counts every stage boundary and is priced accordingly.</li>
   <li><strong>Default tokenizer accuracy</strong> — ~4 chars/token is
-  roughly on the mark for typical prose and code (−0.4% to +4%), but can
+  roughly on the mark for typical prose and code (−1.5% to +4%), but can
   over-estimate dense prose by ~18% and <strong>under-estimates JSON-heavy
   records by ~29%</strong>: install <code>contexel[accurate]</code> when
   budget precision matters.</li>
@@ -77,17 +77,17 @@ loss, not retrieval loss. Budget: 1,500 tokens.</p>
 <tr><th>Implementation</th><th>Native ops</th><th>ms @28k</th><th>ms/episode</th>
 <th>Recall (strong/weak)</th><th>Compliance</th><th>Fill</th><th>Useful</th>
 <th>Import ms</th><th>Deps</th></tr>
-<tr><td><strong>contexel</strong></td><td class="best">6/6</td><td>59</td><td>14.9</td>
+<tr><td><strong>contexel</strong></td><td class="best">6/6</td><td>69</td><td>15.5</td>
 <td class="best">100% / 100%</td><td class="best">100%</td><td>0.95×</td>
-<td class="best">100%</td><td>13</td><td class="best">0</td></tr>
-<tr><td>hand-written glue</td><td>0</td><td>27</td><td>1.6</td>
+<td class="best">100%</td><td>19</td><td class="best">0</td></tr>
+<tr><td>hand-written glue</td><td>0/6</td><td>27</td><td>1.6</td>
 <td class="poor">93% / 32%</td><td>100%</td><td>0.95×</td><td>100%</td><td>—</td><td>—</td></tr>
-<tr><td>toolz</td><td>2</td><td>42</td><td>6.9</td>
-<td>100% / 100%</td><td class="poor">0%</td><td class="poor">91.6×</td><td>100%</td><td>13</td><td>0</td></tr>
-<tr><td>langchain-core</td><td>1</td><td>139</td><td>7.2</td>
-<td class="poor">30% / 30%</td><td>100%</td><td>0.52×</td><td class="poor">89.8%</td><td>91</td><td>25</td></tr>
-<tr><td>llama-index-core</td><td>0</td><td>516</td><td>21.4</td>
-<td>100% / 100%</td><td class="poor">0%</td><td class="poor">129×</td><td class="poor">74.2%</td><td>1,095</td><td>60</td></tr>
+<tr><td>toolz</td><td>2/6</td><td>45</td><td>6.8</td>
+<td>100% / 100%</td><td class="poor">0%</td><td class="poor">91.6×</td><td>100%</td><td>14</td><td>0</td></tr>
+<tr><td>langchain-core</td><td>1/6</td><td>147</td><td>7.1</td>
+<td class="poor">30% / 30%</td><td>100%</td><td>0.52×</td><td class="poor">89.8%</td><td>96</td><td>25</td></tr>
+<tr><td>llama-index-core</td><td>0/6</td><td>189</td><td>20.8</td>
+<td>100% / 100%</td><td class="poor">0%</td><td class="poor">129×</td><td class="poor">74.2%</td><td>1,209</td><td>60</td></tr>
 </table>
 </div>
 
@@ -130,10 +130,12 @@ paraphrase belong to semantic rerankers (LLMLingua, ColBERT,
 cross-encoders), which contexel deliberately does not compete with.</p>
 <p><strong>And shaping is not an injection defense:</strong> rescore ranks
 textual relevance — a hostile record that matches the query well ranks
-well, including one that says "ignore all previous instructions". Content
-authentication (source allowlists, trust tiers, sanitization) belongs
-upstream of the contract; treat every shaped record as data, never as
-instructions.</p>
+well, including one that says "ignore all previous instructions". contexel
+ships two deterministic boundary controls — <code>allowlist</code> (a
+provenance gate, the strong control) and <code>quarantine</code> (a pattern
+tripwire for the loud, literal cases; paraphrase passes it) — both traced
+and audited. Content authentication still belongs upstream of the
+contract; treat every shaped record as data, never as instructions.</p>
 </div>
 
 </main>

@@ -24,6 +24,15 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
 - `trace(id_field=...)` + `Trace.audit()` — the governance record: policy
   fingerprints, per-stage dropped record IDs (stage = removal reason),
   token movement.
+- **Injection controls (gap 6, now implemented, not just documented):**
+  `allowlist(records, field, allowed)` — a fail-closed provenance gate
+  (the strong control; apply before relevance logic) — and
+  `quarantine(records, fields=..., action="drop"|"flag")` — a
+  deterministic tripwire for literal injection markers ("ignore all
+  previous instructions", role resets, system tags). Both traced and
+  audited; honestly scoped: paraphrase passes the tripwire, and neither is
+  a semantic guardrail. The audit's probe (an adversarial record
+  outranking the legitimate one) is now a regression test.
 
 ### Changed
 - Benchmarks re-run after the plane changes: **shaped outputs are
@@ -39,9 +48,16 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   provenance attestations** — no long-lived token (gap 7). One-time PyPI
   publisher registration required before the next tag; see the workflow
   header.
-- Threat model stated in README / PyPI readme (gap 6): shaping is not an
-  injection defense — content authentication belongs upstream; records are
-  data, never instructions.
+- Threat model stated in README / PyPI readme / site (gap 6): shaping is
+  not an injection defense — the new boundary controls make hostile
+  records excluded or visible, but content authentication belongs
+  upstream; records are data, never instructions.
+- Comparison labels made consistent: the at-a-glance "Native ops" column
+  now uses the /6 denominator (the outcome task's six operations) for
+  every row, and the capability matrix gains the missing
+  `rescore(lexical)` column. Labels only — measurements retained from the
+  canonical run; README/site quote that run (contexel 69 ms @28k, 15.5
+  ms/episode, sub-20 ms import).
 
 ## [0.1.14] — 2026-07-26
 

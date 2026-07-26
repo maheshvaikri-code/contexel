@@ -18,20 +18,27 @@ nightly rewrite.
 
 ## What you get
 
-Six deterministic pipeline stages plus a `merge` combiner, over plain
+Eight deterministic pipeline stages plus a `merge` combiner, over plain
 `list[dict]` — the shape tools already return — with composition and
 observability:
 
 - `select` — project to the fields you need (lossless)
 - `dedupe` — drop duplicates by key, type-qualified, order preserved (lossless)
+- `allowlist` — provenance gate: refuse records from unapproved sources
+  (fail closed; the strong injection control)
+- `quarantine` — tripwire for literal injection markers; drop or flag
+  (paraphrase passes — not a security boundary)
 - `rescore` — BM25-style lexical relevance derived from the records' own
   text, so ranking doesn't have to trust the tool's score
 - `rank` — stable sort, missing-field records last
 - `truncate_field` — clip a text field to a token cap, never exceeding it
 - `trim_to_budget` — keep the top records that fit a token budget
 - `merge` — unify differently-shaped tool outputs into one schema
-- `pipeline([...])` / `@shaped` / `trace()` — compose, pin at the tool
-  boundary, and inspect what every stage removed
+- `pipeline([...])` / `@shaped` / `trace()` — compose (each pipeline
+  carries a stable policy fingerprint), pin at the tool boundary (async
+  tools are awaited, then shaped), and inspect what every stage removed —
+  `trace(id_field=...)` + `t.audit()` record exactly which records were
+  dropped, per stage
 
 Token counting is pluggable twice over: the *tokenizer* (a dependency-free
 estimate by default; `tokens.use_tiktoken()` for exact) and the
@@ -89,7 +96,7 @@ contexel is the only implementation among the near-neighbours
 all the operations natively, holds a 1,500-token budget in 100% of
 episodes, keeps the needed record in 100% of them under both a strong and
 a weak retrieval signal, and spends 100% of context tokens on unique,
-needed fields — at 0 dependencies and a 13 ms import. It is also the
+needed fields — at 0 dependencies and a sub-20 ms import. It is also the
 slowest budget-compliant row, *because it does the most work per record* —
 and the limits are stated with the same care: recall@budget is bounded by
 query specificity for any shaper, and `rescore` is lexical, not semantic.
@@ -104,9 +111,10 @@ Two limits, stated plainly: hard token limits require an exact tokenizer
 providers plug their own counter via `set_tokenizer`; the built-in estimate
 is for soft budgeting only),
 and **shaping is not an injection defense** — `rescore` ranks textual
-relevance, so content authentication (source allowlists, trust tiers,
-sanitization) belongs upstream. Treat every shaped record as untrusted
-data, never as instructions.
+relevance. contexel ships `allowlist` (provenance gate) and `quarantine`
+(pattern tripwire) as deterministic boundary controls, but content
+authentication still belongs upstream. Treat every shaped record as
+untrusted data, never as instructions.
 
 Full method and tables:
 [benchmarks/COMPARISON.md](https://github.com/maheshvaikri-code/contexel/blob/main/benchmarks/COMPARISON.md)

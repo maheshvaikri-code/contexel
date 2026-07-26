@@ -32,6 +32,7 @@
   </div>
   <div class="group"><span>On this page</span>
     <a href="#select">select</a><a href="#dedupe">dedupe</a>
+    <a href="#allowlist">allowlist</a><a href="#quarantine">quarantine</a>
     <a href="#rescore">rescore</a><a href="#rank">rank</a>
     <a href="#truncate_field">truncate_field</a>
     <a href="#trim_to_budget">trim_to_budget</a>
@@ -60,6 +61,28 @@ insensitive); a field name or list of names compares those fields.
 Fingerprints are type-qualified — <code>1</code>, <code>1.0</code>,
 <code>True</code>, <code>"1"</code> are four different values — with a
 canonical-JSON fallback for unhashable values.</p>
+
+<h2 id="allowlist">allowlist(records, field, allowed)</h2>
+<p><strong>Provenance gate.</strong> Keeps only records whose
+<code>field</code> value is in <code>allowed</code>; records missing the
+field, or carrying an unhashable value, are dropped — fail closed. The
+strongest injection control a shaper can offer is refusing content from
+sources you did not approve: apply this <em>first</em>, before any
+relevance logic, so untrusted records never compete for the budget.
+Dropped records appear in the trace/audit with this stage as the reason.</p>
+
+<h2 id="quarantine">quarantine(records, fields=("snippet",), patterns=None, action="drop", into="quarantined")</h2>
+<p><strong>Injection tripwire.</strong> A deterministic, case-insensitive
+pattern screen over the given text fields for the crudest prompt-injection
+markers — "ignore all previous instructions", role resets ("you are now"),
+system-prompt tags. <code>action="drop"</code> removes matches (audited);
+<code>action="flag"</code> keeps everything and writes a boolean to
+<code>into</code> so downstream policy decides.</p>
+<div class="note">Honest scope: <strong>not a security boundary.</strong> A
+paraphrased attack passes; a benign document quoting an attack trips it.
+<a href="#allowlist">allowlist</a> by provenance is the stronger control —
+this one makes the loud, literal cases visible instead of letting them
+compete silently.</div>
 
 <h2 id="rescore">rescore(records, query, fields=("snippet",), into="score", proximity=True, match="word")</h2>
 <p><strong>Writes</strong> a deterministic lexical relevance score to
@@ -132,9 +155,9 @@ transform — the one stage that is not auto-traced.</p>
   <code>id_field</code> also <em>which</em> records each stage dropped
   (records lacking the field are untracked). <code>t.audit()</code> emits
   the JSON-able governance record. Inactive overhead is a single ContextVar
-  lookup per stage — within run noise (46.3 vs 43.6&nbsp;ms over 10k records
-  in RESULTS.md); active tracing token-counts every stage boundary and is
-  priced accordingly.</li>
+  lookup per stage — single-digit milliseconds (49.8 vs 44.4&nbsp;ms over
+  10k records in RESULTS.md); active tracing token-counts every stage
+  boundary and is priced accordingly.</li>
   <li><code>tokens</code> — <code>count</code>, <code>use_tiktoken()</code>
   (exact where tiktoken covers the model), <code>tiktoken_tokenizer()</code>,
   <code>set_tokenizer(fn)</code>, <code>set_serializer(fn)</code>,

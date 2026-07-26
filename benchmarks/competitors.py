@@ -480,32 +480,40 @@ def native_outcomes() -> List[Dict[str, Any]]:
 # Report
 # --------------------------------------------------------------------------- #
 MATRIX = [
-    {"library": "contexel", "select": "yes", "dedupe_key": "yes", "rank": "yes",
+    {"library": "contexel", "select": "yes", "dedupe_key": "yes",
+     "rescore_lex": "yes", "rank": "yes",
      "truncate_tok": "yes", "trim_budget": "yes", "merge_schema": "yes",
      "operand": "list[dict]", "ran": "timed"},
     {"library": "toolz", "select": "keyfilter", "dedupe_key": "unique(key)",
+     "rescore_lex": "no",
      "rank": "stdlib", "truncate_tok": "no", "trim_budget": "no",
      "merge_schema": "no", "operand": "any dicts", "ran": "timed"},
     {"library": "langchain-core", "select": "no", "dedupe_key": "no",
+     "rescore_lex": "no",
      "rank": "no", "truncate_tok": "no", "trim_budget": "trim_messages",
      "merge_schema": "no", "operand": "BaseMessage", "ran": "timed"},
     {"library": "llama-index-core", "select": "no", "dedupe_key": "no",
+     "rescore_lex": "no (model rerankers)",
      "rank": "score filter/reorder", "truncate_tok": "no", "trim_budget": "no",
      "merge_schema": "no", "operand": "NodeWithScore", "ran": "timed"},
     {"library": "haystack-ai (DocumentJoiner)", "select": "no",
-     "dedupe_key": "by doc id", "rank": "join/RRF", "truncate_tok": "no",
+     "dedupe_key": "by doc id", "rescore_lex": "no (rank fusion)",
+     "rank": "join/RRF", "truncate_tok": "no",
      "trim_budget": "no", "merge_schema": "no (uniform Document)",
      "operand": "Document",
      "ran": "matrix only: pre-existing haystack/farm-haystack conflict in env"},
     {"library": "langchain EmbeddingsRedundantFilter", "select": "no",
-     "dedupe_key": "semantic", "rank": "no", "truncate_tok": "no",
+     "dedupe_key": "semantic", "rescore_lex": "no", "rank": "no",
+     "truncate_tok": "no",
      "trim_budget": "no", "merge_schema": "no", "operand": "Document",
      "ran": "matrix only: needs embedding model; model/version-dependent"},
     {"library": "LLMLingua / ColBERT / rerankers", "select": "no",
-     "dedupe_key": "no", "rank": "semantic", "truncate_tok": "semantic",
+     "dedupe_key": "no", "rescore_lex": "semantic", "rank": "semantic",
+     "truncate_tok": "semantic",
      "trim_budget": "semantic", "merge_schema": "no", "operand": "text",
      "ran": "out of scope by design (contexel concedes semantic quality)"},
     {"library": "context-engineering-toolkit", "select": "-", "dedupe_key": "-",
+     "rescore_lex": "-",
      "rank": "-", "truncate_tok": "-", "trim_budget": "-", "merge_schema": "-",
      "operand": "-",
      "ran": "NOT FOUND on PyPI — prior-art claim did not verify"},
@@ -523,12 +531,14 @@ def main() -> None:
 
     foot = {f["library"]: f for f in results["footprint"]}
     out_by = {o["impl"]: o for o in outcomes}
+    # denominator = the 6 outcome-task operations
+    # (select, dedupe, rescore, truncate, rank, trim)
     ops_summary = {
-        "contexel": "6/6 (incl. rescore)",
-        "hand-written": "0/5 - improvised",
-        "toolz": "2/5 (select, dedupe)",
-        "langchain-core": "1/5 (trim)",
-        "llama-index-core": "0/5 (filter/reorder only)",
+        "contexel": "6/6",
+        "hand-written": "0/6 - improvised",
+        "toolz": "2/6 (select, dedupe)",
+        "langchain-core": "1/6 (trim)",
+        "llama-index-core": "0/6 (filter/reorder only)",
     }
     combined = []
     for row in results["task"]:
@@ -571,7 +581,10 @@ contexel concedes semantic quality by design.
 ## At a glance — all three benchmarks clubbed
 
 One row per implementation, joining the three tables below: **native
-operations** (of the task's 5 stages the library expresses itself),
+operations** (how many of the outcome task's six operations — select,
+dedupe, rescore, truncate, rank, trim — the library expresses itself; the
+timed table's "Native stages" uses /5 because its query-free task has no
+rescore),
 **speed** on the 28k-record canonical task, the ground-truth **outcome**
 metrics (recall under a strong / weak retrieval signal; *compliance* = % of
 episodes whose final context fit the 1,500-token budget; *fill* = mean
@@ -605,6 +618,7 @@ compliance (langchain-core, by filling the budget with bloat).
 
 {_table(MATRIX, [
     ("library", "Library"), ("select", "select"), ("dedupe_key", "dedupe(key)"),
+    ("rescore_lex", "rescore(lexical)"),
     ("rank", "rank"), ("truncate_tok", "truncate(tok)"),
     ("trim_budget", "trim(budget)"), ("merge_schema", "merge(schema)"),
     ("operand", "Operand"), ("ran", "In timed run?"),

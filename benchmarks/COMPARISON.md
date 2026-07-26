@@ -22,7 +22,10 @@ contexel concedes semantic quality by design.
 ## At a glance — all three benchmarks clubbed
 
 One row per implementation, joining the three tables below: **native
-operations** (of the task's 5 stages the library expresses itself),
+operations** (how many of the outcome task's six operations — select,
+dedupe, rescore, truncate, rank, trim — the library expresses itself; the
+timed table's "Native stages" uses /5 because its query-free task has no
+rescore),
 **speed** on the 28k-record canonical task, the ground-truth **outcome**
 metrics (recall under a strong / weak retrieval signal; *compliance* = % of
 episodes whose final context fit the 1,500-token budget; *fill* = mean
@@ -30,11 +33,11 @@ context tokens / budget), and **footprint**.
 
 | Implementation | Native ops | ms @28k | ms/episode | Recall % s/w | Compliance % | Fill x | Useful % | Import ms | Deps |
 |---|---|---|---|---|---|---|---|---|---|
-| contexel | 6/6 (incl. rescore) | 77.21 | 15.90 | 100 / 100 | 100.00 | 0.95 | 100.00 | 18.66 | 0 |
-| hand-written | 0/5 - improvised | 31.34 | 1.51 | 93 / 32 | 100.00 | 0.95 | 100.00 | - | - |
-| toolz | 2/5 (select, dedupe) | 47.99 | 7.51 | 100 / 100 | 0.00 | 91.62 | 100.00 | 13.50 | 0 |
-| langchain-core | 1/5 (trim) | 147.71 | 7.23 | 30 / 30 | 100.00 | 0.52 | 89.75 | 97.43 | 25 |
-| llama-index-core | 0/5 (filter/reorder only) | 199.48 | 21.43 | 100 / 100 | 0.00 | 129.21 | 74.15 | 1,262.19 | 60 |
+| contexel | 6/6 | 69.27 | 15.46 | 100 / 100 | 100.00 | 0.95 | 100.00 | 19.28 | 0 |
+| hand-written | 0/6 - improvised | 26.99 | 1.56 | 93 / 32 | 100.00 | 0.95 | 100.00 | - | - |
+| toolz | 2/6 (select, dedupe) | 45.00 | 6.77 | 100 / 100 | 0.00 | 91.62 | 100.00 | 13.92 | 0 |
+| langchain-core | 1/6 (trim) | 146.64 | 7.10 | 30 / 30 | 100.00 | 0.52 | 89.75 | 95.59 | 25 |
+| llama-index-core | 0/6 (filter/reorder only) | 189.26 | 20.75 | 100 / 100 | 0.00 | 129.21 | 74.15 | 1,209.19 | 60 |
 
 Recall columns come from the ground-truth outcome benchmark, where contexel's
 standard contract includes `rescore` (relevance derived from the query, not
@@ -54,26 +57,26 @@ compliance (langchain-core, by filling the budget with bloat).
 
 ## Capability matrix (native operations on tool-output records)
 
-| Library | select | dedupe(key) | rank | truncate(tok) | trim(budget) | merge(schema) | Operand | In timed run? |
-|---|---|---|---|---|---|---|---|---|
-| contexel | yes | yes | yes | yes | yes | yes | list[dict] | timed |
-| toolz | keyfilter | unique(key) | stdlib | no | no | no | any dicts | timed |
-| langchain-core | no | no | no | no | trim_messages | no | BaseMessage | timed |
-| llama-index-core | no | no | score filter/reorder | no | no | no | NodeWithScore | timed |
-| haystack-ai (DocumentJoiner) | no | by doc id | join/RRF | no | no | no (uniform Document) | Document | matrix only: pre-existing haystack/farm-haystack conflict in env |
-| langchain EmbeddingsRedundantFilter | no | semantic | no | no | no | no | Document | matrix only: needs embedding model; model/version-dependent |
-| LLMLingua / ColBERT / rerankers | no | no | semantic | semantic | semantic | no | text | out of scope by design (contexel concedes semantic quality) |
-| context-engineering-toolkit | - | - | - | - | - | - | - | NOT FOUND on PyPI — prior-art claim did not verify |
+| Library | select | dedupe(key) | rescore(lexical) | rank | truncate(tok) | trim(budget) | merge(schema) | Operand | In timed run? |
+|---|---|---|---|---|---|---|---|---|---|
+| contexel | yes | yes | yes | yes | yes | yes | yes | list[dict] | timed |
+| toolz | keyfilter | unique(key) | no | stdlib | no | no | no | any dicts | timed |
+| langchain-core | no | no | no | no | no | trim_messages | no | BaseMessage | timed |
+| llama-index-core | no | no | no (model rerankers) | score filter/reorder | no | no | no | NodeWithScore | timed |
+| haystack-ai (DocumentJoiner) | no | by doc id | no (rank fusion) | join/RRF | no | no | no (uniform Document) | Document | matrix only: pre-existing haystack/farm-haystack conflict in env |
+| langchain EmbeddingsRedundantFilter | no | semantic | no | no | no | no | no | Document | matrix only: needs embedding model; model/version-dependent |
+| LLMLingua / ColBERT / rerankers | no | no | semantic | semantic | semantic | semantic | no | text | out of scope by design (contexel concedes semantic quality) |
+| context-engineering-toolkit | - | - | - | - | - | - | - | - | NOT FOUND on PyPI — prior-art claim did not verify |
 
 ## Canonical task on real records
 
 | Implementation | Native stages | ms (best of 5) | Records kept | Tokens out | Deterministic |
 |---|---|---|---|---|---|
-| contexel | 5/5 | 77.21 | 36 | 1,909 | yes |
-| hand-written | 0/5 | 31.34 | 36 | 1,924 | yes |
-| toolz | 2/5 | 47.99 | 36 | 1,924 | yes |
-| langchain-core | 1/5 | 147.71 | 36 | 1,924 | yes |
-| llama-index-core | 0/5 | 199.48 | 36 | 1,924 | yes |
+| contexel | 5/5 | 69.27 | 36 | 1,909 | yes |
+| hand-written | 0/5 | 26.99 | 36 | 1,924 | yes |
+| toolz | 2/5 | 45.00 | 36 | 1,924 | yes |
+| langchain-core | 1/5 | 146.64 | 36 | 1,924 | yes |
+| llama-index-core | 0/5 | 189.26 | 36 | 1,924 | yes |
 
 ## What each achieves natively (ground-truth outcome benchmark)
 
@@ -100,11 +103,11 @@ buries the target under term-happy decoys.
 
 | Implementation | Recall % (strong) | Recall % (weak) | Compliance % | Fill x | Useful share % | ms/episode |
 |---|---|---|---|---|---|---|
-| contexel | 100.00 | 100.00 | 100.00 | 0.95 | 100.00 | 15.90 |
-| hand-written | 93.00 | 32.00 | 100.00 | 0.95 | 100.00 | 1.51 |
-| toolz | 100.00 | 100.00 | 0.00 | 91.62 | 100.00 | 7.51 |
-| langchain-core | 30.00 | 30.00 | 100.00 | 0.52 | 89.75 | 7.23 |
-| llama-index-core | 100.00 | 100.00 | 0.00 | 129.21 | 74.15 | 21.43 |
+| contexel | 100.00 | 100.00 | 100.00 | 0.95 | 100.00 | 15.46 |
+| hand-written | 93.00 | 32.00 | 100.00 | 0.95 | 100.00 | 1.56 |
+| toolz | 100.00 | 100.00 | 0.00 | 91.62 | 100.00 | 6.77 |
+| langchain-core | 30.00 | 30.00 | 100.00 | 0.52 | 89.75 | 7.10 |
+| llama-index-core | 100.00 | 100.00 | 0.00 | 129.21 | 74.15 | 20.75 |
 
 What the numbers say each is best at:
 
@@ -141,10 +144,10 @@ deps counts installed distributions the package requires (recursive).
 
 | Library | Import ms | Transitive deps |
 |---|---|---|
-| contexel | 18.66 | 0 |
-| toolz | 13.50 | 0 |
-| langchain-core | 97.43 | 25 |
-| llama-index-core | 1,262.19 | 60 |
+| contexel | 19.28 | 0 |
+| toolz | 13.92 | 0 |
+| langchain-core | 95.59 | 25 |
+| llama-index-core | 1,209.19 | 60 |
 
 ## Reading the results
 

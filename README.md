@@ -40,13 +40,18 @@ never mutates its input, and composes with the others:
 | `rank(records, by=...)` | order by importance | stable sort on a field or key function; records missing the field go last |
 | `truncate_field(records, field, max_tokens=...)` | clip one long text field | longest prefix that fits the token cap — closed-form for the built-in estimator, binary search for custom tokenizers — then `…` |
 | `trim_to_budget(records, max_tokens=...)` | keep the top records that fit a budget | greedy prefix: each record costs the token count of its serialized text (+2 list framing); stops before the budget is crossed |
+| `allowlist(records, field, allowed)` | provenance gate — refuse unapproved sources | keeps records whose `field` value is in the allowed set; missing or unhashable values are dropped (fail closed); apply *before* any relevance logic |
+| `quarantine(records, fields=...)` | tripwire for literal injection markers | case-insensitive pattern screen ("ignore previous instructions", role resets, system tags); `drop` or `flag` — not a security boundary: paraphrase passes, provenance gating is the stronger control |
 | `merge(*sources, schema=...)` | unify differently-shaped tool outputs | maps candidate field names onto one schema, first match wins; optional cross-source dedupe |
 
 Compose them with `pipeline([...])` — plain function composition, any
 `records -> records` callable is a valid stage — or attach a pipeline to a
-tool with `@shaped` so the model never sees raw output. `trace()` records
-what every stage removed, so a shaping decision is inspectable instead of
-silent.
+tool with `@shaped` so the model never sees raw output (async tools are
+awaited, then shaped). `trace()` records what every stage removed;
+`trace(id_field=...)` additionally records *which* records each stage
+dropped, and `t.audit()` emits a JSON-able governance record keyed by the
+pipeline's policy fingerprint — a shaping decision is inspectable and
+attributable instead of silent.
 
 All of it is stdlib-only Python. No embeddings, no model calls, no
 dependencies — which is what makes the determinism claim checkable: the
@@ -66,11 +71,11 @@ agent *needed* is known in advance. Full method and tables in
 
 | Implementation | Native ops | ms @28k | ms/episode | Recall % | Compliance % | Useful % | Import ms | Deps |
 |---|---|---|---|---|---|---|---|---|
-| **contexel** | **6/6** | 59 | 14.9 | **100 / 100** | **100** | **100** | 13 | **0** |
-| hand-written | 0 | 27 | 1.6 | 93 / 32 | 100 | 100 | — | — |
-| toolz | 2 | 42 | 6.9 | 100 / 100 | 0 | 100 | 13 | 0 |
-| langchain-core | 1 | 139 | 7.2 | 30 / 30 | 100 | 89.8 | 91 | 25 |
-| llama-index-core | 0 | 516 | 21.4 | 100 / 100 | 0 | 74.2 | 1,095 | 60 |
+| **contexel** | **6/6** | 69 | 15.5 | **100 / 100** | **100** | **100** | 19 | **0** |
+| hand-written | 0/6 | 27 | 1.6 | 93 / 32 | 100 | 100 | — | — |
+| toolz | 2/6 | 45 | 6.8 | 100 / 100 | 0 | 100 | 14 | 0 |
+| langchain-core | 1/6 | 147 | 7.1 | 30 / 30 | 100 | 89.8 | 96 | 25 |
+| llama-index-core | 0/6 | 189 | 20.8 | 100 / 100 | 0 | 74.2 | 1,209 | 60 |
 
 How to read each column, plainly:
 
@@ -103,9 +108,9 @@ How to read each column, plainly:
   itself — and every row here is negligible next to a single model call.
 
 The same trade shows in `ms @28k` (the query-free bulk task): contexel's
-59 ms includes token-accurate truncation; the 27 ms glue slices at ~4
-chars/token and lands looser under the budget. Both are noise next to a
-single model call.
+69 ms includes token-accurate truncation and tenant-isolation plumbing; the
+27 ms glue slices at ~4 chars/token and lands looser under the budget. Both
+are noise next to a single model call.
 
 **Limits, measured and stated:** recall@budget has a ceiling no shaper
 escapes — when a query legitimately describes more records than the budget
@@ -122,10 +127,13 @@ tiktoken covers the model, or your provider's own counter via
 
 **And shaping is not an injection defense.** `rescore` ranks textual
 relevance; a hostile record that matches the query well ranks well —
-including one that says "ignore all previous instructions". Content
-authentication belongs *upstream* of the contract: source allowlists,
-trust tiers, sanitization. Treat every shaped record as untrusted data,
-never as instructions.
+including one that says "ignore all previous instructions". contexel ships
+two deterministic boundary controls: `allowlist` (a provenance gate —
+refuse sources you didn't approve, the strong control) and `quarantine`
+(a pattern tripwire for the loud, literal cases — paraphrase passes it).
+Both are traced and audited; neither is a semantic guardrail. Content
+authentication still belongs *upstream* of the contract, and every shaped
+record remains untrusted data, never instructions.
 
 ## Where it is used
 
