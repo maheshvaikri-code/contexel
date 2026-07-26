@@ -17,3 +17,22 @@ venv/
 # Editors
 .idea/
 .vscode/
+
+# >>> doctrine (managed by doctrine_install; delete this block to un-ignore) >>>
+.Doctrine.md
+.Doctrine/
+.doctrine-state/
+__pycache__/
+.mcp.json
+AGENTS.md
+tools/doctrine_*.py
+tests/test_doctrine_*.py
+.claude/agents/
+CLAUDE.md
+# Makefile   # uncomment if Doctrine created it (generic name)
+# <<< doctrine <<<
+
+# Doctrine installed these paths in this repository. Keep these local-only
+# even when doctrine_install refreshes its managed block.
+.claude/
+Makefile
