@@ -538,6 +538,7 @@ def main() -> None:
             "impl": name,
             "ops": ops_summary.get(name, row["native"]),
             "ms": row["ms"],
+            "ms_ep": o.get("ms_per_episode", 0.0),
             "recall": f"{o.get('recall_strong_pct', 0):.0f} / {o.get('recall_weak_pct', 0):.0f}",
             "compliance_pct": o.get("compliance_pct", 0.0),
             "fill_x": o.get("fill_x", 0.0),
@@ -578,7 +579,7 @@ context tokens / budget), and **footprint**.
 
 {_table(combined, [
     ("impl", "Implementation"), ("ops", "Native ops"),
-    ("ms", "ms @28k"), ("recall", "Recall % s/w"),
+    ("ms", "ms @28k"), ("ms_ep", "ms/episode"), ("recall", "Recall % s/w"),
     ("compliance_pct", "Compliance %"), ("fill_x", "Fill x"),
     ("useful_share_pct", "Useful %"), ("import_ms", "Import ms"),
     ("deps", "Deps"),
@@ -587,7 +588,12 @@ context tokens / budget), and **footprint**.
 Recall columns come from the ground-truth outcome benchmark, where contexel's
 standard contract includes `rescore` (relevance derived from the query, not
 trusted from the tool); `ms @28k` is the query-free canonical task, which has
-no rescore stage. Read it in one line per row: contexel is the only
+no rescore stage. contexel's `ms/episode` is the highest among the
+budget-compliant rows because it does the most per episode: on top of
+projecting, deduping, clipping, ranking, and budgeting, it scans ~1 KB of
+evidence per record to derive relevance itself — every cheaper row below it
+is cheaper by doing less (trusting the tool's score, skipping the budget, or
+skipping the record work). Read it in one line per row: contexel is the only
 implementation that covers the operations, respects the budget, keeps the
 needed record regardless of the tool's score quality, wastes no context
 tokens, and costs nothing to carry. Every alternative tops it on exactly one

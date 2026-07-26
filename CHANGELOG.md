@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
 `z.y.x` — Mega. Major. minor/patch — and every commit bumps the version.
 
+## [0.1.9] — 2026-07-26
+
+### Changed
+- At-a-glance comparison table gains a `ms/episode` column alongside
+  `ms @28k` and `Import ms`, with the framing made explicit: contexel's
+  per-episode time is the highest of the budget-compliant rows because it
+  does the most — deriving relevance from ~1 KB of evidence per record on
+  top of the five shaping stages; every cheaper row does less.
+
 ## [0.1.8] — 2026-07-26
 
 ### Added

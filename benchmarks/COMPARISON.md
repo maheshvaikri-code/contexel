@@ -28,18 +28,23 @@ metrics (recall under a strong / weak retrieval signal; *compliance* = % of
 episodes whose final context fit the 1,500-token budget; *fill* = mean
 context tokens / budget), and **footprint**.
 
-| Implementation | Native ops | ms @28k | Recall % s/w | Compliance % | Fill x | Useful % | Import ms | Deps |
-|---|---|---|---|---|---|---|---|---|
-| contexel | 6/6 (incl. rescore) | 66.52 | 100 / 100 | 100.00 | 0.95 | 100.00 | 13.55 | 0 |
-| hand-written | 0/5 - improvised | 28.99 | 93 / 32 | 100.00 | 0.95 | 100.00 | - | - |
-| toolz | 2/5 (select, dedupe) | 42.52 | 100 / 100 | 0.00 | 91.62 | 100.00 | 12.31 | 0 |
-| langchain-core | 1/5 (trim) | 228.82 | 30 / 30 | 100.00 | 0.52 | 89.75 | 102.54 | 25 |
-| llama-index-core | 0/5 (filter/reorder only) | 225.68 | 100 / 100 | 0.00 | 129.21 | 74.15 | 1,254.83 | 60 |
+| Implementation | Native ops | ms @28k | ms/episode | Recall % s/w | Compliance % | Fill x | Useful % | Import ms | Deps |
+|---|---|---|---|---|---|---|---|---|---|
+| contexel | 6/6 (incl. rescore) | 59.00 | 14.91 | 100 / 100 | 100.00 | 0.95 | 100.00 | 12.95 | 0 |
+| hand-written | 0/5 - improvised | 27.35 | 1.61 | 93 / 32 | 100.00 | 0.95 | 100.00 | - | - |
+| toolz | 2/5 (select, dedupe) | 41.96 | 6.85 | 100 / 100 | 0.00 | 91.62 | 100.00 | 13.15 | 0 |
+| langchain-core | 1/5 (trim) | 139.08 | 7.24 | 30 / 30 | 100.00 | 0.52 | 89.75 | 90.96 | 25 |
+| llama-index-core | 0/5 (filter/reorder only) | 515.92 | 21.39 | 100 / 100 | 0.00 | 129.21 | 74.15 | 1,095.47 | 60 |
 
 Recall columns come from the ground-truth outcome benchmark, where contexel's
 standard contract includes `rescore` (relevance derived from the query, not
 trusted from the tool); `ms @28k` is the query-free canonical task, which has
-no rescore stage. Read it in one line per row: contexel is the only
+no rescore stage. contexel's `ms/episode` is the highest among the
+budget-compliant rows because it does the most per episode: on top of
+projecting, deduping, clipping, ranking, and budgeting, it scans ~1 KB of
+evidence per record to derive relevance itself — every cheaper row below it
+is cheaper by doing less (trusting the tool's score, skipping the budget, or
+skipping the record work). Read it in one line per row: contexel is the only
 implementation that covers the operations, respects the budget, keeps the
 needed record regardless of the tool's score quality, wastes no context
 tokens, and costs nothing to carry. Every alternative tops it on exactly one
@@ -64,11 +69,11 @@ compliance (langchain-core, by filling the budget with bloat).
 
 | Implementation | Native stages | ms (best of 5) | Records kept | Tokens out | Deterministic |
 |---|---|---|---|---|---|
-| contexel | 5/5 | 66.52 | 36 | 1,909 | yes |
-| hand-written | 0/5 | 28.99 | 36 | 1,924 | yes |
-| toolz | 2/5 | 42.52 | 36 | 1,924 | yes |
-| langchain-core | 1/5 | 228.82 | 36 | 1,924 | yes |
-| llama-index-core | 0/5 | 225.68 | 36 | 1,924 | yes |
+| contexel | 5/5 | 59.00 | 36 | 1,909 | yes |
+| hand-written | 0/5 | 27.35 | 36 | 1,924 | yes |
+| toolz | 2/5 | 41.96 | 36 | 1,924 | yes |
+| langchain-core | 1/5 | 139.08 | 36 | 1,924 | yes |
+| llama-index-core | 0/5 | 515.92 | 36 | 1,924 | yes |
 
 ## What each achieves natively (ground-truth outcome benchmark)
 
@@ -95,11 +100,11 @@ buries the target under term-happy decoys.
 
 | Implementation | Recall % (strong) | Recall % (weak) | Compliance % | Fill x | Useful share % | ms/episode |
 |---|---|---|---|---|---|---|
-| contexel | 100.00 | 100.00 | 100.00 | 0.95 | 100.00 | 37.63 |
-| hand-written | 93.00 | 32.00 | 100.00 | 0.95 | 100.00 | 3.84 |
-| toolz | 100.00 | 100.00 | 0.00 | 91.62 | 100.00 | 12.25 |
-| langchain-core | 30.00 | 30.00 | 100.00 | 0.52 | 89.75 | 16.24 |
-| llama-index-core | 100.00 | 100.00 | 0.00 | 129.21 | 74.15 | 51.85 |
+| contexel | 100.00 | 100.00 | 100.00 | 0.95 | 100.00 | 14.91 |
+| hand-written | 93.00 | 32.00 | 100.00 | 0.95 | 100.00 | 1.61 |
+| toolz | 100.00 | 100.00 | 0.00 | 91.62 | 100.00 | 6.85 |
+| langchain-core | 30.00 | 30.00 | 100.00 | 0.52 | 89.75 | 7.24 |
+| llama-index-core | 100.00 | 100.00 | 0.00 | 129.21 | 74.15 | 21.39 |
 
 What the numbers say each is best at:
 
@@ -136,10 +141,10 @@ deps counts installed distributions the package requires (recursive).
 
 | Library | Import ms | Transitive deps |
 |---|---|---|
-| contexel | 13.55 | 0 |
-| toolz | 12.31 | 0 |
-| langchain-core | 102.54 | 25 |
-| llama-index-core | 1,254.83 | 60 |
+| contexel | 12.95 | 0 |
+| toolz | 13.15 | 0 |
+| langchain-core | 90.96 | 25 |
+| llama-index-core | 1,095.47 | 60 |
 
 ## Reading the results
 
