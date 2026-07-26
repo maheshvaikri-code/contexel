@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.1.14-blue.svg" alt="Version"></a>
+  <a href="https://pypi.org/project/contexel/"><img src="https://img.shields.io/pypi/v/contexel.svg" alt="PyPI"></a>
   <a href="https://github.com/maheshvaikri-code/contexel/actions"><img src="https://github.com/maheshvaikri-code/contexel/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.9%2B-blue.svg" alt="Python 3.9+"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/dependencies-0-brightgreen.svg" alt="Zero dependencies"></a>
@@ -144,13 +144,16 @@ request ids every call.
 ## How to use it
 
 ```bash
-git clone https://github.com/maheshvaikri-code/contexel && cd contexel
-pip install -e .                  # pure Python, zero dependencies
-pip install -e ".[accurate]"      # + tiktoken, for exact token counts
-pip install -e ".[benchmarks]"    # + everything the benchmark suites use
+pip install contexel              # pure Python, zero dependencies
+pip install "contexel[accurate]"  # + tiktoken, for exact token counts
 ```
 
-(A PyPI release is pending; `pip install contexel` will work once it ships.)
+From source — also how you get the benchmark suites:
+
+```bash
+git clone https://github.com/maheshvaikri-code/contexel && cd contexel
+pip install -e ".[benchmarks]"    # everything the benchmark suites use
+```
 
 Inline, with the shaping visible and traced:
 

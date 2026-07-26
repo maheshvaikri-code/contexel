@@ -32,12 +32,15 @@ $ python -m pytest tests reference_agent -q --ignore-glob="tests/test_doctrine_*
 46 passed in 0.22s
 ```
 
-Anomaly, recorded honestly: one earlier invocation of the same command
-reported `1 failed, 45 passed in 0.42s`; the failing test id was not
-captured, and five consecutive clean-state reruns pass. That invocation ran
-while G4 review agents were concurrently executing Python in this working
-tree (a plausible interference source — hypothesis, not established cause).
-Watch item: if it recurs, capture with `-x -lf` immediately.
+Anomaly — RESOLVED (2026-07-26, post-release): the earlier unexplained
+`1 failed, 45 passed` was NOT agent interference (that hypothesis was
+wrong). CI reproduced it deterministically on Python 3.10:
+`test_dedupe_unhashable_values_fall_back` — equal *sets* could fingerprint
+differently because set iteration order leaked into the JSON fallback
+(insertion-history/hash-seed dependent). Real library bug in `dedupe`,
+fixed in 0.1.15 by giving sets/frozensets a sorted, type-qualified
+fingerprint; verified with the full suite across PYTHONHASHSEED 0/1/2/3/42
+(47 passed on every seed).
 
 ## Package build
 

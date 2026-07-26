@@ -27,11 +27,19 @@ def _fingerprint(value: Any) -> str:
 
 
 def _typed_tuple(value: Any) -> Any:
-    """A hashable, type-qualified mirror of a value (1, 1.0, and True differ)."""
+    """A hashable, type-qualified mirror of a value (1, 1.0, and True differ).
+
+    Unordered collections are sorted by repr so equal sets fingerprint
+    identically regardless of insertion history or hash seed — set iteration
+    order is not deterministic, and a fingerprint must be.
+    """
     if isinstance(value, dict):
         return tuple(sorted((k, _typed_tuple(v)) for k, v in value.items()))
     if isinstance(value, (list, tuple)):
         return tuple(_typed_tuple(v) for v in value)
+    if isinstance(value, (set, frozenset)):
+        return (type(value).__name__,
+                tuple(sorted((_typed_tuple(v) for v in value), key=repr)))
     return (type(value).__name__, value)
 
 

@@ -4,6 +4,23 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
 `z.y.x` — Mega. Major. minor/patch — and every commit bumps the version.
 
+## [0.1.15] — 2026-07-26
+
+### Fixed
+- `dedupe`: equal sets could fail to dedupe — set iteration order
+  (insertion-history and hash-seed dependent) leaked into the fallback
+  fingerprint. Sets/frozensets now fingerprint as sorted, type-qualified
+  tuples; deterministic across interpreters and seeds (suite verified on
+  PYTHONHASHSEED 0/1/2/3/42). Found by CI on Python 3.10; the same bug
+  explains the previously unexplained local one-off failure.
+
+### Changed
+- Release-day cleanup after v0.1.13 shipped to PyPI: live PyPI version
+  badge, `pip install contexel` restored as the primary install in the
+  README and docs site (in-flight notes removed), `README_PYPI.md` install
+  section live, release record filed at `docs/releases/v0.1.13.md` with
+  the clean-venv post-publish verification output.
+
 ## [0.1.14] — 2026-07-26
 
 ### Fixed
