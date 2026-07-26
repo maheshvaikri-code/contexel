@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
 `z.y.x` — Mega. Major. minor/patch — and every commit bumps the version.
 
-## [Unreleased]
+## [0.1.14] — 2026-07-26
 
 ### Fixed
 - Pages workflow: first deploy failed at `configure-pages` because the
