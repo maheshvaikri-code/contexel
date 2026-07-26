@@ -4,9 +4,12 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
 `z.y.x` — Mega. Major. minor/patch — and every commit bumps the version.
 
-## [0.1.15] — 2026-07-26
+## [Unreleased]
 
 ### Fixed
+- Pages workflow: first deploy failed at `configure-pages` because the
+  repository had no Pages site yet; `enablement: true` now creates it on
+  first run (implements the opt-in recorded in `docs/brief.md`).
 - README PyPI badge appeared broken on GitHub: the camo image proxy had
   cached the pre-publish "package not found" response. Badge URL changed
   (query form, `?label=pypi`) so camo fetches fresh; shields.io verified
@@ -24,13 +27,6 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   README and docs site (in-flight notes removed), `README_PYPI.md` install
   section live, release record filed at `docs/releases/v0.1.13.md` with
   the clean-venv post-publish verification output.
-
-## [0.1.14] — 2026-07-26
-
-### Fixed
-- Pages workflow: first run failed at `configure-pages` because the
-  repository had no Pages site yet; `enablement: true` now creates it on
-  first run (implements the opt-in recorded in `docs/brief.md`).
 
 ## [0.1.13] — 2026-07-26
 
