@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
 `z.y.x` — Mega. Major. minor/patch — and every commit bumps the version.
 
+## [0.1.6] — 2026-07-26
+
+### Added
+- `rescore(records, query, fields=..., into="score")` — deterministic
+  lexical relevance computed within the batch (BM25-style: per-term IDF x
+  saturating term frequency), so `rank` no longer has to trust the search
+  tool's score. In the outcome benchmark this lifts weak-signal recall from
+  32% to 94% (identical under both signals) at unchanged 100% budget
+  compliance, leaving ~6 points as the measured cost of true semantic
+  (paraphrase/synonym) mismatch.
+
 ## [0.1.5] — 2026-07-26
 
 ### Added

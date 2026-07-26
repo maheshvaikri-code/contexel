@@ -30,11 +30,11 @@ context tokens / budget), and **footprint**.
 
 | Implementation | Native ops | ms @28k | Recall % s/w | Compliance % | Fill x | Useful % | Import ms | Deps |
 |---|---|---|---|---|---|---|---|---|
-| contexel | 5/5 (+ merge) | 108.97 | 93 / 32 | 100.00 | 0.95 | 100.00 | 17.82 | 0 |
-| hand-written | 0/5 - improvised | 27.31 | 93 / 32 | 100.00 | 0.95 | 100.00 | - | - |
-| toolz | 2/5 (select, dedupe) | 44.86 | 100 / 100 | 0.00 | 91.62 | 100.00 | 16.63 | 0 |
-| langchain-core | 1/5 (trim) | 139.76 | 30 / 30 | 100.00 | 0.52 | 89.75 | 97.07 | 25 |
-| llama-index-core | 0/5 (filter/reorder only) | 187.13 | 100 / 100 | 0.00 | 129.21 | 74.15 | 1,302.07 | 60 |
+| contexel | 5/5 (+ merge) | 110.23 | 93 / 32 | 100.00 | 0.95 | 100.00 | 14.10 | 0 |
+| hand-written | 0/5 - improvised | 26.35 | 93 / 32 | 100.00 | 0.95 | 100.00 | - | - |
+| toolz | 2/5 (select, dedupe) | 43.54 | 100 / 100 | 0.00 | 91.62 | 100.00 | 12.82 | 0 |
+| langchain-core | 1/5 (trim) | 128.46 | 30 / 30 | 100.00 | 0.52 | 89.75 | 103.51 | 25 |
+| llama-index-core | 0/5 (filter/reorder only) | 185.90 | 100 / 100 | 0.00 | 129.21 | 74.15 | 1,142.91 | 60 |
 
 Read it in one line per row: contexel is the only implementation that covers
 the operations, respects the budget, keeps the needed record (given a decent
@@ -61,11 +61,11 @@ filling the budget with bloat).
 
 | Implementation | Native stages | ms (best of 5) | Records kept | Tokens out | Deterministic |
 |---|---|---|---|---|---|
-| contexel | 5/5 | 108.97 | 36 | 1,909 | yes |
-| hand-written | 0/5 | 27.31 | 36 | 1,924 | yes |
-| toolz | 2/5 | 44.86 | 36 | 1,924 | yes |
-| langchain-core | 1/5 | 139.76 | 36 | 1,924 | yes |
-| llama-index-core | 0/5 | 187.13 | 36 | 1,924 | yes |
+| contexel | 5/5 | 110.23 | 36 | 1,909 | yes |
+| hand-written | 0/5 | 26.35 | 36 | 1,924 | yes |
+| toolz | 2/5 | 43.54 | 36 | 1,924 | yes |
+| langchain-core | 1/5 | 128.46 | 36 | 1,924 | yes |
+| llama-index-core | 0/5 | 185.90 | 36 | 1,924 | yes |
 
 ## What each achieves natively (ground-truth outcome benchmark)
 
@@ -92,11 +92,12 @@ buries the target under term-happy decoys.
 
 | Implementation | Recall % (strong) | Recall % (weak) | Compliance % | Fill x | Useful share % | ms/episode |
 |---|---|---|---|---|---|---|
-| contexel | 93.00 | 32.00 | 100.00 | 0.95 | 100.00 | 5.01 |
-| hand-written | 93.00 | 32.00 | 100.00 | 0.95 | 100.00 | 2.33 |
-| toolz | 100.00 | 100.00 | 0.00 | 91.62 | 100.00 | 10.57 |
-| langchain-core | 30.00 | 30.00 | 100.00 | 0.52 | 89.75 | 7.10 |
-| llama-index-core | 100.00 | 100.00 | 0.00 | 129.21 | 74.15 | 27.54 |
+| contexel | 93.00 | 32.00 | 100.00 | 0.95 | 100.00 | 4.17 |
+| contexel + rescore | 94.00 | 94.00 | 100.00 | 0.95 | 100.00 | 6.89 |
+| hand-written | 93.00 | 32.00 | 100.00 | 0.95 | 100.00 | 1.38 |
+| toolz | 100.00 | 100.00 | 0.00 | 91.62 | 100.00 | 6.95 |
+| langchain-core | 30.00 | 30.00 | 100.00 | 0.52 | 89.75 | 6.53 |
+| llama-index-core | 100.00 | 100.00 | 0.00 | 129.21 | 74.15 | 19.87 |
 
 What the numbers say each is best at:
 
@@ -104,9 +105,14 @@ What the numbers say each is best at:
   re-improvised per run) is the only configuration delivering recall,
   100% budget compliance, and an all-useful context *together* — but only
   when the retrieval signal is decent. Under the weak signal its recall
-  collapses too: deterministic shaping executes a ranking policy faithfully,
-  it cannot rescue a bad one. That is the measured cost of conceding
-  semantic reranking, and the two recall columns bound it.
+  collapses too: `rank(by="score")` trusts the tool's score, and a budget
+  trim faithfully executes a bad ordering.
+- **contexel + rescore** removes that dependency from inside the
+  deterministic lane: relevance is re-derived from the query and the
+  records' own fields (batch BM25-style — IDF x saturating term frequency),
+  so the two signal columns converge — the tool's score quality stops
+  mattering. What stays conceded to semantic rerankers is genuine
+  paraphrase/synonym mismatch, which no lexical score can see.
 - **toolz** achieves perfect recall by not doing the job — no token layer
   exists, so the "context" blows the budget by the fill factor shown. Best
   at: fast lossless projection/dedup when something else enforces budgets.
@@ -126,10 +132,10 @@ deps counts installed distributions the package requires (recursive).
 
 | Library | Import ms | Transitive deps |
 |---|---|---|
-| contexel | 17.82 | 0 |
-| toolz | 16.63 | 0 |
-| langchain-core | 97.07 | 25 |
-| llama-index-core | 1,302.07 | 60 |
+| contexel | 14.10 | 0 |
+| toolz | 12.82 | 0 |
+| langchain-core | 103.51 | 25 |
+| llama-index-core | 1,142.91 | 60 |
 
 ## Reading the results
 

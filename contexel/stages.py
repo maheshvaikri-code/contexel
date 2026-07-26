@@ -11,6 +11,8 @@ All of these are deterministic and free (no model calls). Model-augmented stages
 from __future__ import annotations
 
 import json
+import math
+import re
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 from . import tokens
@@ -69,6 +71,56 @@ def rank(records: Records, by: Union[str, Callable[[Record], Any]], desc: bool =
     missing = [r for r in records if by not in r]
     present.sort(key=lambda r: r[by], reverse=desc)
     return present + missing
+
+
+_WORD = re.compile(r"\w+")
+
+
+@traced
+def rescore(records: Records, query: Union[str, Sequence[str]],
+            fields: Sequence[str] = ("snippet",), into: str = "score") -> Records:
+    """Replace the tool's relevance score with a deterministic lexical one.
+
+    Ranking by a tool-provided score means inheriting that tool's ranking
+    quality: a weak score buries the record you actually need and a budget
+    trim then faithfully cuts it. ``rescore`` derives relevance from the
+    ``query`` and the records' own ``fields`` instead — a BM25-style score
+    computed within the batch: per-term IDF (rare terms weigh more) times a
+    saturating term frequency (k1 = 1.5), so covering *all* the query's terms
+    beats repeating one. Writes the score to ``into`` on a copy of each
+    record; use before :func:`rank`.
+
+    Deterministic and dependency-free by construction — and therefore
+    *lexical*: synonyms and paraphrase are invisible to it. When you need
+    semantic relevance, a model reranker belongs in front; this stage removes
+    the need to trust a tool's score, not the value of semantics.
+    """
+    terms = _WORD.findall(query.lower()) if isinstance(query, str) else [
+        t for part in query for t in _WORD.findall(str(part).lower())
+    ]
+    terms = list(dict.fromkeys(terms))
+    if not terms or not records:
+        return [{**r, into: 0.0} for r in records]
+
+    texts = [
+        " ".join(str(r.get(f, "")) for f in fields).lower() for r in records
+    ]
+    n = len(records)
+    idf = {}
+    for t in terms:
+        df = sum(1 for text in texts if t in text)
+        idf[t] = math.log((n - df + 0.5) / (df + 0.5) + 1.0)
+
+    k1 = 1.5
+    out: Records = []
+    for r, text in zip(records, texts):
+        score = 0.0
+        for t in terms:
+            tf = text.count(t)
+            if tf:
+                score += idf[t] * (tf / (tf + k1))
+        out.append({**r, into: round(score, 6)})
+    return out
 
 
 def _truncate_text(text: str, max_tokens: int, tokenizer: Any, suffix: str) -> str:

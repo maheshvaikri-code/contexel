@@ -7,15 +7,16 @@ it ever reaches the model's context window.
 from . import tokens
 from .pipeline import pipeline, stage
 from .shaped import shaped
-from .stages import dedupe, merge, rank, select, trim_to_budget, truncate_field
+from .stages import dedupe, merge, rank, rescore, select, trim_to_budget, truncate_field
 from .trace import Trace, trace
 
-__version__ = "0.1.5"
+__version__ = "0.1.6"
 
 __all__ = [
     "select",
     "dedupe",
     "rank",
+    "rescore",
     "truncate_field",
     "trim_to_budget",
     "merge",

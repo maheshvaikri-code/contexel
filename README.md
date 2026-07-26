@@ -84,6 +84,8 @@ less reliably, on every run. The magnitude is yours to dial.
 - `select(records, fields)` — project to the fields you need
 - `dedupe(records, key=...)` — drop duplicates, preserving order
 - `rank(records, by=..., desc=True)` — sort by a field (missing → last)
+- `rescore(records, query=..., fields=...)` — deterministic lexical relevance
+  (batch BM25-style) so ranking doesn't have to trust the tool's score
 - `truncate_field(records, field, max_tokens=...)` — clip a long text field to a token budget
 - `trim_to_budget(records, max_tokens=...)` — keep the top records that fit the budget
 - `merge(*sources, schema=..., dedupe_key=...)` — normalize heterogeneous tool outputs into one shape
@@ -168,7 +170,8 @@ mechanism. The nearest neighbours, so you can pick deliberately:
 - **Semantic compressors** (LLMLingua, ColBERT, cross-encoder rerankers) beat
   contexel on semantic quality, at the price of model inference and
   reproducibility. contexel is deterministic and non-semantic by design —
-  complementary, not superior.
+  complementary, not superior. `rescore` narrows what that concession costs
+  to genuine paraphrase/synonym mismatch (measured in the comparison below).
 - **The pattern itself** (Anthropic's "code execution with MCP", Cloudflare
   Code Mode) ships as a description, with the shaping left to code the model
   improvises each run — exactly the drift contexel removes.

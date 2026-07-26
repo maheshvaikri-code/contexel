@@ -31,7 +31,9 @@ from importlib import metadata
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-from contexel import dedupe, pipeline, rank, select, stage, trim_to_budget, truncate_field
+from contexel import (
+    dedupe, pipeline, rank, rescore, select, stage, trim_to_budget, truncate_field,
+)
 
 from .fetch_dataset import load
 from .suites import _best_of
@@ -349,7 +351,7 @@ def build_episodes(corpus: List[dict], n: int = N_EPISODES, seed: int = 11) -> L
             hits.extend(term_hits[:300])
         target = (corpus[i]["func_path_in_repository"], corpus[i]["func_name"])
         if any((h["path"], h["symbol"]) == target for h in hits):
-            episodes.append({"target": target, "hits": hits})
+            episodes.append({"target": target, "terms": terms, "hits": hits})
     return episodes
 
 
@@ -362,7 +364,8 @@ def _with_score(hits: List[dict], signal: str) -> List[dict]:
 
 
 # Native-only shapers: each uses ONLY what the library itself provides.
-def native_contexel(hits: List[dict]) -> List[dict]:
+# All take (hits, episode); most ignore the episode.
+def native_contexel(hits: List[dict], ep: dict) -> List[dict]:
     return pipeline([
         stage(select, fields=FIELDS),
         stage(dedupe, key=["path", "symbol"]),
@@ -372,11 +375,23 @@ def native_contexel(hits: List[dict]) -> List[dict]:
     ])(hits)
 
 
-def native_hand(hits: List[dict]) -> List[dict]:
+def native_contexel_rescore(hits: List[dict], ep: dict) -> List[dict]:
+    """Same contract, but relevance is derived from the query, not trusted."""
+    return pipeline([
+        stage(select, fields=FIELDS),
+        stage(dedupe, key=["path", "symbol"]),
+        stage(rescore, query=ep["terms"], fields=("snippet", "symbol", "path")),
+        stage(truncate_field, field="snippet", max_tokens=SNIPPET_CAP),
+        stage(rank, by="score", desc=True),
+        stage(trim_to_budget, max_tokens=EVAL_BUDGET),
+    ])(hits)
+
+
+def native_hand(hits: List[dict], ep: dict) -> List[dict]:
     return g_trim(g_rank(g_truncate(g_dedupe(g_select(hits)))), EVAL_BUDGET)
 
 
-def native_toolz(hits: List[dict]) -> List[dict]:
+def native_toolz(hits: List[dict], ep: dict) -> List[dict]:
     from toolz import unique
     from toolz.dicttoolz import keyfilter
 
@@ -385,7 +400,7 @@ def native_toolz(hits: List[dict]) -> List[dict]:
     # no token stage exists: the whole deduped set enters context
 
 
-def native_langchain(hits: List[dict]) -> List[dict]:
+def native_langchain(hits: List[dict], ep: dict) -> List[dict]:
     from langchain_core.messages import HumanMessage
     from langchain_core.messages.utils import trim_messages
 
@@ -400,7 +415,7 @@ def native_langchain(hits: List[dict]) -> List[dict]:
     # budget is native; projection/dedupe/rank are not, so raw records go in
 
 
-def native_llama(hits: List[dict]) -> List[dict]:
+def native_llama(hits: List[dict], ep: dict) -> List[dict]:
     from llama_index.core.postprocessor import LongContextReorder, SimilarityPostprocessor
     from llama_index.core.schema import NodeWithScore, TextNode
 
@@ -419,6 +434,7 @@ def native_llama(hits: List[dict]) -> List[dict]:
 
 NATIVE_IMPLS = [
     ("contexel", native_contexel),
+    ("contexel + rescore", native_contexel_rescore),
     ("hand-written", native_hand),
     ("toolz", native_toolz),
     ("langchain-core", native_langchain),
@@ -450,7 +466,7 @@ def native_outcomes() -> List[Dict[str, Any]]:
             fills, shares = [], []
             t0 = time.perf_counter()
             for ep in episodes:
-                context = fn(_with_score(ep["hits"], signal))
+                context = fn(_with_score(ep["hits"], signal), ep)
                 total = est_tokens(json.dumps(context, ensure_ascii=False))
                 fills.append(total / EVAL_BUDGET)
                 compliant += total <= EVAL_BUDGET
@@ -640,9 +656,14 @@ What the numbers say each is best at:
   re-improvised per run) is the only configuration delivering recall,
   100% budget compliance, and an all-useful context *together* — but only
   when the retrieval signal is decent. Under the weak signal its recall
-  collapses too: deterministic shaping executes a ranking policy faithfully,
-  it cannot rescue a bad one. That is the measured cost of conceding
-  semantic reranking, and the two recall columns bound it.
+  collapses too: `rank(by="score")` trusts the tool's score, and a budget
+  trim faithfully executes a bad ordering.
+- **contexel + rescore** removes that dependency from inside the
+  deterministic lane: relevance is re-derived from the query and the
+  records' own fields (batch BM25-style — IDF x saturating term frequency),
+  so the two signal columns converge — the tool's score quality stops
+  mattering. What stays conceded to semantic rerankers is genuine
+  paraphrase/synonym mismatch, which no lexical score can see.
 - **toolz** achieves perfect recall by not doing the job — no token layer
   exists, so the "context" blows the budget by the fill factor shown. Best
   at: fast lossless projection/dedup when something else enforces budgets.
