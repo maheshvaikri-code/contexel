@@ -1,0 +1,159 @@
+"""Deterministic context-economy stages.
+
+A *record* is a plain ``dict``; a collection is a ``list`` of dicts -- the shape
+almost every tool returns. Each stage takes a list of records and returns a new
+list, so stages compose by passing one's output into the next. Stages never
+mutate their input.
+
+All of these are deterministic and free (no model calls). Model-augmented stages
+(relevance ranking, summarization, semantic dedupe) layer on top of these.
+"""
+from __future__ import annotations
+
+import json
+from typing import Any, Callable, Dict, List, Optional, Sequence, Union
+
+from . import tokens
+from .trace import traced
+
+Record = Dict[str, Any]
+Records = List[Record]
+
+
+def _fingerprint(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, default=str, sort_keys=True)
+
+
+@traced
+def select(records: Records, fields: Sequence[str]) -> Records:
+    """Keep only ``fields`` on each record. The fastest way to cut tool-output bloat."""
+    keep = list(fields)
+    return [{k: r[k] for k in keep if k in r} for r in records]
+
+
+@traced
+def dedupe(records: Records, key: Optional[Union[str, Sequence[str]]] = None) -> Records:
+    """Drop duplicate records, keeping the first occurrence and preserving order.
+
+    ``key=None`` dedupes on the whole record; a str or list of strs dedupes on
+    those field(s).
+    """
+    if isinstance(key, str):
+        keys: Optional[List[str]] = [key]
+    elif key is None:
+        keys = None
+    else:
+        keys = list(key)
+
+    seen = set()
+    out: Records = []
+    for r in records:
+        fp = _fingerprint(r if keys is None else [r.get(k) for k in keys])
+        if fp in seen:
+            continue
+        seen.add(fp)
+        out.append(r)
+    return out
+
+
+@traced
+def rank(records: Records, by: Union[str, Callable[[Record], Any]], desc: bool = True) -> Records:
+    """Sort records by a field name or key function. Records missing the field go last.
+
+    Use before :func:`trim_to_budget` so the least important records are dropped.
+    Values of ``by`` must be mutually comparable.
+    """
+    if callable(by):
+        return sorted(list(records), key=by, reverse=desc)
+    present = [r for r in records if by in r]
+    missing = [r for r in records if by not in r]
+    present.sort(key=lambda r: r[by], reverse=desc)
+    return present + missing
+
+
+def _truncate_text(text: str, max_tokens: int, tokenizer: Any, suffix: str) -> str:
+    if tokens.count(text, tokenizer) <= max_tokens:
+        return text
+    budget = max(1, max_tokens - tokens.count(suffix, tokenizer))
+    # Binary search the longest prefix whose token count fits the budget.
+    lo, hi = 0, len(text)
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if tokens.count(text[:mid], tokenizer) <= budget:
+            lo = mid
+        else:
+            hi = mid - 1
+    return text[:lo].rstrip() + suffix
+
+
+@traced
+def truncate_field(records: Records, field: str, max_tokens: int,
+                   tokenizer: Any = None, suffix: str = "\u2026") -> Records:
+    """Clip a long text field on each record down to ~``max_tokens``.
+
+    Non-string values pass through untouched.
+    """
+    out: Records = []
+    for r in records:
+        value = r.get(field)
+        if isinstance(value, str):
+            r = {**r, field: _truncate_text(value, max_tokens, tokenizer, suffix)}
+        out.append(r)
+    return out
+
+
+@traced
+def trim_to_budget(records: Records, max_tokens: int, tokenizer: Any = None) -> Records:
+    """Keep records from the front until the token budget is reached; drop the rest.
+
+    Assumes records are already ordered by importance (e.g. via :func:`rank`). A
+    greedy prefix: a record is kept only if adding it stays within ``max_tokens``.
+    If even the first record exceeds the budget, the result is empty -- run
+    :func:`truncate_field` first for oversized records.
+    """
+    out: Records = []
+    used = 0
+    for r in records:
+        cost = tokens.count(r, tokenizer) + 2  # +2 approximates per-item list framing
+        if used + cost > max_tokens:
+            break
+        out.append(r)
+        used += cost
+    return out
+
+
+def merge(*sources: Records,
+          schema: Optional[Dict[str, Union[str, Sequence[str]]]] = None,
+          dedupe_key: Optional[str] = None) -> Records:
+    """Normalize and combine record-lists from different tools into one list.
+
+    ``schema`` maps a unified field name to a source field name, or to a list of
+    candidate names tried in order -- handling tools that label the same thing
+    differently::
+
+        merge(web, docs, schema={"title": ["title", "name", "headline"],
+                                 "url":   ["url", "link", "href"]})
+
+    With ``schema=None`` the sources are concatenated unchanged. ``dedupe_key``
+    optionally removes duplicates across the merged result.
+
+    (``merge`` is a combiner / entry point rather than a single-collection
+    transform, so it is not auto-traced.)
+    """
+    combined: Records = []
+    for src in sources:
+        for r in src:
+            if schema is None:
+                combined.append(r)
+                continue
+            mapped: Record = {}
+            for unified, candidates in schema.items():
+                names = [candidates] if isinstance(candidates, str) else list(candidates)
+                for name in names:
+                    if name in r:
+                        mapped[unified] = r[name]
+                        break
+            combined.append(mapped)
+    if dedupe_key is not None:
+        combined = dedupe(combined, key=dedupe_key)
+    return combined

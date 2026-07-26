@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>contexel · architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --ink: #090d15;
+    --ink-2: #0e1421;
+    --surface: #121b2b;
+    --surface-2: #16202f;
+    --line: #243349;
+    --line-soft: rgba(255, 255, 255, 0.045);
+    --text: #c9d5e6;
+    --muted: #7e8ca6;
+    --faint: #4a5670;
+    --signal: #f4b740;
+    --signal-2: #ffce63;
+    --signal-soft: rgba(244, 183, 64, 0.13);
+    --teal: #5fd6c2;
+    --teal-soft: rgba(95, 214, 194, 0.12);
+    --green: #79d18b;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --display: "Fraunces", Georgia, serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { -webkit-font-smoothing: antialiased; }
+
+  body {
+    font-family: var(--mono);
+    color: var(--text);
+    background-color: var(--ink);
+    background-image:
+      radial-gradient(70% 55% at 50% 22%, rgba(244, 183, 64, 0.10), transparent 72%),
+      radial-gradient(50% 40% at 80% 90%, rgba(95, 214, 194, 0.06), transparent 70%);
+    background-attachment: fixed;
+    min-height: 100vh;
+    line-height: 1.5;
+    padding: 64px 24px 88px;
+    position: relative;
+    overflow-x: hidden;
+  }
+
+  /* blueprint grid */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--line-soft) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
+    background-size: 34px 34px;
+    mask-image: radial-gradient(120% 90% at 50% 30%, #000 55%, transparent 100%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .wrap { max-width: 1040px; margin: 0 auto; position: relative; z-index: 1; }
+
+  /* ---------- header ---------- */
+  header { text-align: center; margin-bottom: 54px; }
+
+  .eyebrow {
+    font-size: 11px; letter-spacing: 0.32em; text-transform: uppercase;
+    color: var(--signal); margin-bottom: 18px; opacity: 0;
+    animation: rise 0.7s ease forwards;
+  }
+  .wordmark {
+    font-family: var(--display); font-weight: 900; font-size: clamp(46px, 9vw, 92px);
+    line-height: 0.92; letter-spacing: -0.02em; color: var(--text);
+    opacity: 0; animation: rise 0.8s ease 0.06s forwards;
+  }
+  .wordmark .dot { color: var(--signal); }
+  .tagline {
+    margin-top: 16px; font-size: 14px; color: var(--muted); letter-spacing: 0.02em;
+    opacity: 0; animation: rise 0.8s ease 0.14s forwards;
+  }
+  .placement {
+    margin-top: 10px; font-size: 12.5px; color: var(--faint);
+    opacity: 0; animation: rise 0.8s ease 0.2s forwards;
+  }
+  .placement b { color: var(--teal); font-weight: 500; }
+
+  /* ---------- node (source / sink) ---------- */
+  .node {
+    width: min(440px, 100%); margin: 0 auto; border-radius: 14px; padding: 20px 24px;
+    text-align: center; position: relative; opacity: 0;
+    animation: rise 0.6s ease forwards;
+  }
+  .node .ntag {
+    font-size: 10px; letter-spacing: 0.26em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 8px;
+  }
+  .node .nname {
+    font-size: 17px; font-weight: 600; letter-spacing: 0.04em;
+  }
+  .node .nsub { margin-top: 6px; font-size: 12px; color: var(--muted); }
+
+  /* noisy source */
+  .source {
+    border: 1px solid var(--line); background: var(--ink-2);
+    background-image: radial-gradient(rgba(255,255,255,0.10) 0.7px, transparent 0.8px);
+    background-size: 7px 7px;
+    animation-delay: 0.26s;
+  }
+  .source .nname { color: var(--text); }
+
+  /* lit sink */
+  .sink {
+    border: 1px solid var(--signal); background: var(--signal-soft);
+    box-shadow: 0 0 0 1px rgba(244,183,64,0.18), 0 22px 60px -28px rgba(244,183,64,0.6);
+    animation-delay: 0.92s;
+  }
+  .sink .ntag { color: var(--signal); }
+  .sink .nname { color: var(--signal-2); }
+  .sink .nsub { color: rgba(244,183,64,0.7); }
+
+  /* ---------- connectors ---------- */
+  .conn {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    padding: 14px 0; opacity: 0; animation: rise 0.5s ease forwards;
+  }
+  .conn .line { width: 1.5px; height: 26px; background: linear-gradient(var(--faint), var(--signal)); }
+  .conn .chev { color: var(--signal); font-size: 12px; line-height: 1; margin-top: -4px; }
+  .conn .clabel {
+    font-size: 11px; color: var(--muted); letter-spacing: 0.05em;
+    border: 1px dashed var(--line); border-radius: 999px; padding: 3px 12px; background: var(--ink);
+  }
+  .conn.lit .clabel { color: var(--signal-2); border-color: rgba(244,183,64,0.4); }
+  .conn-in { animation-delay: 0.32s; }
+  .conn-out { animation-delay: 0.86s; }
+
+  /* ---------- boundary wrapper (boundary + aside) ---------- */
+  .frame { display: grid; grid-template-columns: 1fr 250px; gap: 22px; align-items: start; }
+
+  .boundary {
+    border: 1px solid var(--line); border-radius: 18px; background: var(--ink-2);
+    padding: 16px 16px 20px; position: relative; overflow: hidden;
+  }
+  .boundary::before {
+    content: ""; position: absolute; inset: 0;
+    background: radial-gradient(80% 60% at 50% 0%, var(--signal-soft), transparent 60%);
+    pointer-events: none;
+  }
+  .blabel {
+    display: flex; align-items: center; gap: 8px; font-size: 11px; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--muted); padding: 4px 6px 14px; position: relative;
+  }
+  .blabel .pip { width: 7px; height: 7px; border-radius: 2px; background: var(--signal); box-shadow: 0 0 10px var(--signal); }
+  .blabel b { color: var(--text); font-weight: 600; letter-spacing: 0.04em; }
+
+  .pipe { display: flex; flex-direction: column; position: relative; }
+
+  .stage {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 11px;
+    padding: 12px 15px; display: flex; align-items: center; gap: 14px;
+    position: relative; opacity: 0; animation: slidein 0.5s ease forwards;
+    transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+  }
+  .stage:hover { transform: translateX(4px); border-color: var(--signal); background: var(--surface-2); }
+  .stage .sname { font-size: 15px; font-weight: 600; color: var(--signal-2); letter-spacing: 0.02em; min-width: 132px; }
+  .stage .sdesc { font-size: 12.5px; color: var(--muted); flex: 1; }
+  .stage .badge {
+    font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase;
+    padding: 3px 8px; border-radius: 999px; border: 1px solid; white-space: nowrap;
+  }
+  .b-combiner { color: var(--faint); border-color: var(--line); }
+  .b-lossless { color: var(--green); border-color: rgba(121,209,139,0.35); background: rgba(121,209,139,0.07); }
+  .b-order    { color: var(--muted); border-color: var(--line); }
+  .b-choice   { color: var(--signal); border-color: rgba(244,183,64,0.4); background: var(--signal-soft); }
+
+  .cmini { height: 16px; width: 1.5px; background: var(--line); margin: 0 auto; }
+
+  .stage:nth-of-type(1) { animation-delay: 0.40s; }
+  .pipe .cmini:nth-of-type(2) { animation: none; }
+  .stage:nth-of-type(3) { animation-delay: 0.47s; }
+  .stage:nth-of-type(5) { animation-delay: 0.54s; }
+  .stage:nth-of-type(7) { animation-delay: 0.61s; }
+  .stage:nth-of-type(9) { animation-delay: 0.68s; }
+  .stage:nth-of-type(11){ animation-delay: 0.75s; }
+
+  /* notes inside boundary */
+  .notes { margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--line); display: grid; gap: 10px; }
+  .note {
+    font-size: 11.5px; color: var(--muted); border-left: 2px dashed var(--teal);
+    padding: 2px 0 2px 12px; line-height: 1.55;
+  }
+  .note .nt { color: var(--teal); font-weight: 600; }
+  .note.future { border-left-color: var(--faint); }
+  .note.future .nt { color: var(--text); }
+  .note code { color: var(--signal-2); }
+
+  /* aside: trace side-channel */
+  .aside {
+    border: 1px dashed var(--line); border-radius: 14px; padding: 16px 16px;
+    background: rgba(255,255,255,0.012); position: relative; margin-top: 46px;
+    opacity: 0; animation: rise 0.6s ease 0.7s forwards;
+  }
+  .aside::before {
+    content: "trace"; position: absolute; top: -9px; left: 16px; background: var(--ink);
+    font-size: 9.5px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--teal); padding: 0 8px;
+  }
+  .aside .atitle { font-size: 13px; color: var(--text); font-weight: 600; margin-bottom: 6px; }
+  .aside .adesc { font-size: 11.5px; color: var(--muted); line-height: 1.55; }
+  .aside .never { display: inline-block; margin-top: 10px; font-size: 10px; letter-spacing: 0.08em;
+    color: var(--faint); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
+
+  /* ---------- legend ---------- */
+  .legend {
+    margin-top: 46px; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 18px;
+    opacity: 0; animation: rise 0.7s ease 1.05s forwards;
+  }
+  .leg { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); letter-spacing: 0.03em; }
+  .leg .sw { width: 12px; height: 12px; border-radius: 3px; border: 1px solid; }
+  .sw-src { background: var(--ink-2); border-color: var(--line); }
+  .sw-sig { background: var(--signal-soft); border-color: var(--signal); }
+  .sw-loss { background: rgba(121,209,139,0.1); border-color: rgba(121,209,139,0.4); }
+  .sw-util { background: var(--teal-soft); border-color: var(--teal); border-style: dashed; }
+  .sw-fut { background: transparent; border-color: var(--faint); border-style: dashed; }
+
+  .foot { text-align: center; margin-top: 30px; font-size: 11px; color: var(--faint);
+    opacity: 0; animation: rise 0.7s ease 1.15s forwards; }
+
+  /* ---------- motion ---------- */
+  @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+  @keyframes slidein { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: none; } }
+
+  @media (max-width: 760px) {
+    .frame { grid-template-columns: 1fr; }
+    .aside { margin-top: 4px; }
+    .stage { flex-wrap: wrap; gap: 8px 12px; }
+    .stage .sname { min-width: auto; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; opacity: 1 !important; transform: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">architecture</div>
+    <div class="wordmark">contex<span class="dot">e</span>l</div>
+    <div class="tagline">the context element — keep the signal, drop the noise</div>
+    <div class="placement">library code on the data path, in the <b>code-execution layer</b>, at the <b>tool&nbsp;→&nbsp;context</b> boundary</div>
+  </header>
+
+  <!-- SOURCE -->
+  <div class="node source">
+    <div class="ntag">tool / MCP call</div>
+    <div class="nname">raw output</div>
+    <div class="nsub">heavy · noisy · list[dict]</div>
+  </div>
+
+  <div class="conn conn-in">
+    <div class="line"></div><div class="chev">▼</div>
+    <div class="clabel">raw, unshaped</div>
+  </div>
+
+  <!-- BOUNDARY + TRACE ASIDE -->
+  <div class="frame">
+    <div class="boundary">
+      <div class="blabel"><span class="pip"></span> contexel · <b>the boundary</b></div>
+
+      <div class="pipe">
+        <div class="stage"><span class="sname">merge</span><span class="sdesc">normalize sources into one shape</span><span class="badge b-combiner">combiner</span></div>
+        <div class="cmini"></div>
+        <div class="stage"><span class="sname">select</span><span class="sdesc">drop unused fields</span><span class="badge b-lossless">lossless</span></div>
+        <div class="cmini"></div>
+        <div class="stage"><span class="sname">dedupe</span><span class="sdesc">remove true duplicates</span><span class="badge b-lossless">lossless</span></div>
+        <div class="cmini"></div>
+        <div class="stage"><span class="sname">truncate_field</span><span class="sdesc">clip long text to a token budget</span><span class="badge b-choice">by choice</span></div>
+        <div class="cmini"></div>
+        <div class="stage"><span class="sname">rank</span><span class="sdesc">order by importance</span><span class="badge b-order">order</span></div>
+        <div class="cmini"></div>
+        <div class="stage"><span class="sname">trim_to_budget</span><span class="sdesc">keep the top records that fit</span><span class="badge b-choice">by choice</span></div>
+      </div>
+
+      <div class="notes">
+        <div class="note"><span class="nt">tokens</span> — pluggable counter (heuristic by default, tiktoken optional). Off the data path; consulted by <code>truncate_field</code> &amp; <code>trim_to_budget</code> to measure cost.</div>
+        <div class="note future"><span class="nt">model-augmented · v0.2</span> — <code>relevance_rank</code>, <code>summarize</code>, <code>semantic_dedupe</code>. Same <code>records → records</code> shape, so they plug in alongside <code>rank</code>.</div>
+      </div>
+    </div>
+
+    <div class="aside">
+      <div class="atitle">→ your logs</div>
+      <div class="adesc">Each stage records what it did — record counts and tokens before/after. A side-channel for observability; zero cost when off.</div>
+      <span class="never">never sent to the model</span>
+    </div>
+  </div>
+
+  <div class="conn conn-out lit">
+    <div class="line"></div><div class="chev">▼</div>
+    <div class="clabel">distilled · high-signal only</div>
+  </div>
+
+  <!-- SINK -->
+  <div class="node sink">
+    <div class="ntag">model context window</div>
+    <div class="nname">distilled context</div>
+    <div class="nsub">only this crosses the boundary</div>
+  </div>
+
+  <!-- LEGEND -->
+  <div class="legend">
+    <div class="leg"><span class="sw sw-src"></span> source (raw)</div>
+    <div class="leg"><span class="sw sw-loss"></span> lossless removal</div>
+    <div class="leg"><span class="sw sw-sig"></span> by-choice / budget</div>
+    <div class="leg"><span class="sw sw-util"></span> utility (off-path)</div>
+    <div class="leg"><span class="sw sw-fut"></span> v0.2 extension</div>
+  </div>
+  <div class="foot">reduction magnitude is a function of your data and your budget — not a fixed property of the library</div>
+
+</div>
+</body>
+</html>
