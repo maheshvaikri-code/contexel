@@ -26,6 +26,15 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   token movement.
 
 ### Changed
+- Benchmarks re-run after the plane changes: **shaped outputs are
+  byte-identical** (determinism hash unchanged, `6c9fd99fc2f01c4b`) and
+  every outcome metric (recall/compliance/fill/useful) is unchanged for all
+  implementations. Cost of the tenant-isolation plumbing: two ContextVar
+  lookups per `tokens.count()` ≈ +2.4 µs/record on token-counting hot paths
+  — ~8–10% on the 28k canonical task after correcting for machine drift
+  (59 → ~68 ms; the hand-written baseline drifted +7% in the same session).
+  Accepted: isolation is worth microseconds; all rows remain noise next to
+  a model call.
 - Release workflow publishes via **PyPI Trusted Publishing (OIDC) with
   provenance attestations** — no long-lived token (gap 7). One-time PyPI
   publisher registration required before the next tag; see the workflow
