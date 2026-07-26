@@ -92,13 +92,13 @@ def rank(records: Records, by: Union[str, Callable[[Record], Any]], desc: bool =
     return present + missing
 
 
-_WORD = re.compile(r"\w+")
+_TOKEN = re.compile(r"[^\W_]+")  # word tokens; underscores split snake_case
 
 
 @traced
 def rescore(records: Records, query: Union[str, Sequence[str]],
             fields: Sequence[str] = ("snippet",), into: str = "score",
-            proximity: bool = True) -> Records:
+            proximity: bool = True, match: str = "word") -> Records:
     """Replace the tool's relevance score with a deterministic lexical one.
 
     Ranking by a tool-provided score means inheriting that tool's ranking
@@ -110,16 +110,22 @@ def rescore(records: Records, query: Union[str, Sequence[str]],
     beats repeating one. With ``proximity`` (default on), consecutive query
     terms co-occurring *in order* within an 80-character window earn a bonus
     — the source a query was phrased from usually carries its terms in
-    sequence; decoys that merely mention them scattered do not. Writes the
-    score to ``into`` on a copy of each record; use before :func:`rank`.
+    sequence.
+
+    ``match="word"`` (default) counts exact word occurrences, the way BM25 /
+    Lucene do — ``value`` does not match ``values`` — with underscores
+    treated as boundaries so snake_case splits. ``match="substring"`` counts
+    raw substring occurrences instead: more forgiving of morphology, more
+    decoy-prone. Writes the score to ``into`` on a copy of each record; use
+    before :func:`rank`.
 
     Deterministic and dependency-free by construction — and therefore
     *lexical*: synonyms and paraphrase are invisible to it. When you need
     semantic relevance, a model reranker belongs in front; this stage removes
     the need to trust a tool's score, not the value of semantics.
     """
-    terms = _WORD.findall(query.lower()) if isinstance(query, str) else [
-        t for part in query for t in _WORD.findall(str(part).lower())
+    terms = _TOKEN.findall(query.lower()) if isinstance(query, str) else [
+        t for part in query for t in _TOKEN.findall(str(part).lower())
     ]
     terms = list(dict.fromkeys(terms))
     if not terms or not records:
@@ -128,29 +134,45 @@ def rescore(records: Records, query: Union[str, Sequence[str]],
     texts = [
         " ".join(str(r.get(f, "")) for f in fields).lower() for r in records
     ]
+    if match == "word":
+        # one boundary-guarded alternation, scanned once per text at C speed;
+        # underscores count as boundaries, so snake_case splits
+        alt = "|".join(re.escape(t) for t in sorted(terms, key=len, reverse=True))
+        finder = re.compile(rf"(?<![^\W_])(?:{alt})(?![^\W_])").finditer
     n = len(records)
     tfs: List[Dict[str, int]] = []           # one pass: tf per term, df for free
+    positions: List[Dict[str, int]] = []     # first char position per term
     df = dict.fromkeys(terms, 0)
     for text in texts:
         row: Dict[str, int] = {}
-        for t in terms:
-            count = text.count(t)
-            if count:
-                row[t] = count
-                df[t] += 1
+        first: Dict[str, int] = {}
+        if match == "word":
+            for found in finder(text):
+                t = found.group(0)
+                row[t] = row.get(t, 0) + 1
+                first.setdefault(t, found.start())
+        else:
+            for t in terms:
+                count = text.count(t)
+                if count:
+                    row[t] = count
+                    first[t] = text.find(t)
+        for t in row:
+            df[t] += 1
         tfs.append(row)
+        positions.append(first)
     idf = {t: math.log((n - df[t] + 0.5) / (df[t] + 0.5) + 1.0) for t in terms}
 
     k1 = 1.5
+    window = 80  # characters, either mode
     out: Records = []
-    for r, text, row in zip(records, texts, tfs):
+    for r, row, first in zip(records, tfs, positions):
         score = sum(idf[t] * (tf / (tf + k1)) for t, tf in row.items())
         if proximity and len(row) > 1:
             for t1, t2 in zip(terms, terms[1:]):
-                if t1 in row and t2 in row:
-                    i1 = text.find(t1)
-                    i2 = text.find(t2, i1 + len(t1))
-                    if i2 != -1 and i2 - i1 <= 80:
+                if t1 in first and t2 in first:
+                    gap = first[t2] - first[t1]
+                    if 0 < gap <= window:
                         score += (idf[t1] + idf[t2]) / 4
         out.append({**r, into: round(score, 6)})
     return out

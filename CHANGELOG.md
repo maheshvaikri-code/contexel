@@ -4,6 +4,24 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
 `z.y.x` — Mega. Major. minor/patch — and every commit bumps the version.
 
+## [0.1.8] — 2026-07-26
+
+### Added
+- `rescore(..., match="word")` (new default): exact word-occurrence matching
+  the way BM25/Lucene tokenize — `value` no longer matches `values`, and
+  underscores are boundaries so snake_case splits. Implemented as one
+  boundary-guarded alternation regex scanned per record at C speed.
+  `match="substring"` keeps the previous behavior.
+
+### Changed
+- The comparison's standard contexel contract now includes `rescore`
+  (relevance derived from the query, never trusted from the tool); the
+  separate "contexel + rescore" row is gone. Outcome benchmark: **100%
+  recall under both retrieval signals**, 100% budget compliance, 100%
+  useful-token share. The report also states the ceiling no shaper escapes:
+  when a query legitimately describes more records than the budget holds,
+  some valid record must be cut — semantic or not.
+
 ## [0.1.7] — 2026-07-26
 
 ### Added

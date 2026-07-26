@@ -366,17 +366,8 @@ def _with_score(hits: List[dict], signal: str) -> List[dict]:
 # Native-only shapers: each uses ONLY what the library itself provides.
 # All take (hits, episode); most ignore the episode.
 def native_contexel(hits: List[dict], ep: dict) -> List[dict]:
-    return pipeline([
-        stage(select, fields=FIELDS),
-        stage(dedupe, key=["path", "symbol"]),
-        stage(truncate_field, field="snippet", max_tokens=SNIPPET_CAP),
-        stage(rank, by="score", desc=True),
-        stage(trim_to_budget, max_tokens=EVAL_BUDGET),
-    ])(hits)
-
-
-def native_contexel_rescore(hits: List[dict], ep: dict) -> List[dict]:
-    """Same contract, but relevance is derived from the query, not trusted."""
+    """The standard contract: relevance derived from the query via rescore,
+    never trusted from the tool's score."""
     return pipeline([
         stage(select, fields=FIELDS),
         stage(dedupe, key=["path", "symbol"]),
@@ -434,7 +425,6 @@ def native_llama(hits: List[dict], ep: dict) -> List[dict]:
 
 NATIVE_IMPLS = [
     ("contexel", native_contexel),
-    ("contexel + rescore", native_contexel_rescore),
     ("hand-written", native_hand),
     ("toolz", native_toolz),
     ("langchain-core", native_langchain),
@@ -534,7 +524,7 @@ def main() -> None:
     foot = {f["library"]: f for f in results["footprint"]}
     out_by = {o["impl"]: o for o in outcomes}
     ops_summary = {
-        "contexel": "5/5 (+ merge)",
+        "contexel": "6/6 (incl. rescore)",
         "hand-written": "0/5 - improvised",
         "toolz": "2/5 (select, dedupe)",
         "langchain-core": "1/5 (trim)",
@@ -594,13 +584,16 @@ context tokens / budget), and **footprint**.
     ("deps", "Deps"),
 ])}
 
-Read it in one line per row: contexel is the only implementation that covers
-the operations, respects the budget, keeps the needed record (given a decent
-retrieval signal), wastes no context tokens, and costs nothing to carry.
-Every alternative tops it on exactly one column by sacrificing another —
-speed (hand-written, by re-improvising the policy each run), recall (toolz,
-llama-index, by ignoring the budget), or compliance (langchain-core, by
-filling the budget with bloat).
+Recall columns come from the ground-truth outcome benchmark, where contexel's
+standard contract includes `rescore` (relevance derived from the query, not
+trusted from the tool); `ms @28k` is the query-free canonical task, which has
+no rescore stage. Read it in one line per row: contexel is the only
+implementation that covers the operations, respects the budget, keeps the
+needed record regardless of the tool's score quality, wastes no context
+tokens, and costs nothing to carry. Every alternative tops it on exactly one
+column by sacrificing another — speed (hand-written, by re-improvising the
+policy each run), recall (toolz, llama-index, by ignoring the budget), or
+compliance (langchain-core, by filling the budget with bloat).
 
 ## Capability matrix (native operations on tool-output records)
 
@@ -652,18 +645,20 @@ buries the target under term-happy decoys.
 
 What the numbers say each is best at:
 
-- **contexel** (and the **hand-written** policy, which is the same policy
-  re-improvised per run) is the only configuration delivering recall,
-  100% budget compliance, and an all-useful context *together* — but only
-  when the retrieval signal is decent. Under the weak signal its recall
-  collapses too: `rank(by="score")` trusts the tool's score, and a budget
-  trim faithfully executes a bad ordering.
-- **contexel + rescore** removes that dependency from inside the
-  deterministic lane: relevance is re-derived from the query and the
-  records' own fields (batch BM25-style — IDF x saturating term frequency),
-  so the two signal columns converge — the tool's score quality stops
-  mattering. What stays conceded to semantic rerankers is genuine
-  paraphrase/synonym mismatch, which no lexical score can see.
+- **contexel** (the standard contract: select → dedupe → `rescore` →
+  truncate → rank → trim) is the only configuration delivering recall, 100%
+  budget compliance, and an all-useful context *together* — and its two
+  recall columns are identical because `rescore` derives relevance from the
+  query and the records' own fields (batch BM25: exact word tokens, IDF x
+  saturating tf, in-order proximity), so the tool's score quality does not
+  matter.
+- **hand-written** is the same pipeline as improvised code writes it:
+  it trusts the tool's score, so its recall tracks that score's quality
+  (93% / 32%) — and it gets re-derived, slightly differently, every run.
+- Recall@budget has a ceiling no shaper escapes, semantic or not: when a
+  query legitimately describes more records than the budget can hold, some
+  valid record is cut. Any recall short of 100% below is that ambiguity,
+  now measured — not a scoring defect.
 - **toolz** achieves perfect recall by not doing the job — no token layer
   exists, so the "context" blows the budget by the fill factor shown. Best
   at: fast lossless projection/dedup when something else enforces budgets.

@@ -41,3 +41,20 @@ def test_deterministic_and_non_mutating():
 
 def test_empty_query_scores_zero():
     assert all(r["score"] == 0.0 for r in rescore(RECORDS, ""))
+
+
+def test_word_matching_ignores_morphological_decoys():
+    records = [
+        {"id": 1, "snippet": "return random value"},
+        {"id": 2, "snippet": "returns randomly values"},
+    ]
+    word = {r["id"]: r["score"] for r in rescore(records, "random value")}
+    assert word[1] > 0.0 and word[2] == 0.0  # exact tokens, like BM25/Lucene
+    sub = {r["id"]: r["score"] for r in rescore(records, "random value",
+                                                match="substring")}
+    assert sub[2] > 0.0  # substring mode stays available
+
+
+def test_word_matching_splits_snake_case():
+    records = [{"symbol": "random_vector", "snippet": ""}]
+    assert rescore(records, "random", fields=("symbol",))[0]["score"] > 0.0

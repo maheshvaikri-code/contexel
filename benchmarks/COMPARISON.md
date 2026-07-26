@@ -30,19 +30,22 @@ context tokens / budget), and **footprint**.
 
 | Implementation | Native ops | ms @28k | Recall % s/w | Compliance % | Fill x | Useful % | Import ms | Deps |
 |---|---|---|---|---|---|---|---|---|
-| contexel | 5/5 (+ merge) | 59.77 | 93 / 32 | 100.00 | 0.95 | 100.00 | 13.57 | 0 |
-| hand-written | 0/5 - improvised | 25.05 | 93 / 32 | 100.00 | 0.95 | 100.00 | - | - |
-| toolz | 2/5 (select, dedupe) | 37.31 | 100 / 100 | 0.00 | 91.62 | 100.00 | 12.23 | 0 |
-| langchain-core | 1/5 (trim) | 242.62 | 30 / 30 | 100.00 | 0.52 | 89.75 | 99.76 | 25 |
-| llama-index-core | 0/5 (filter/reorder only) | 457.13 | 100 / 100 | 0.00 | 129.21 | 74.15 | 1,098.12 | 60 |
+| contexel | 6/6 (incl. rescore) | 66.52 | 100 / 100 | 100.00 | 0.95 | 100.00 | 13.55 | 0 |
+| hand-written | 0/5 - improvised | 28.99 | 93 / 32 | 100.00 | 0.95 | 100.00 | - | - |
+| toolz | 2/5 (select, dedupe) | 42.52 | 100 / 100 | 0.00 | 91.62 | 100.00 | 12.31 | 0 |
+| langchain-core | 1/5 (trim) | 228.82 | 30 / 30 | 100.00 | 0.52 | 89.75 | 102.54 | 25 |
+| llama-index-core | 0/5 (filter/reorder only) | 225.68 | 100 / 100 | 0.00 | 129.21 | 74.15 | 1,254.83 | 60 |
 
-Read it in one line per row: contexel is the only implementation that covers
-the operations, respects the budget, keeps the needed record (given a decent
-retrieval signal), wastes no context tokens, and costs nothing to carry.
-Every alternative tops it on exactly one column by sacrificing another —
-speed (hand-written, by re-improvising the policy each run), recall (toolz,
-llama-index, by ignoring the budget), or compliance (langchain-core, by
-filling the budget with bloat).
+Recall columns come from the ground-truth outcome benchmark, where contexel's
+standard contract includes `rescore` (relevance derived from the query, not
+trusted from the tool); `ms @28k` is the query-free canonical task, which has
+no rescore stage. Read it in one line per row: contexel is the only
+implementation that covers the operations, respects the budget, keeps the
+needed record regardless of the tool's score quality, wastes no context
+tokens, and costs nothing to carry. Every alternative tops it on exactly one
+column by sacrificing another — speed (hand-written, by re-improvising the
+policy each run), recall (toolz, llama-index, by ignoring the budget), or
+compliance (langchain-core, by filling the budget with bloat).
 
 ## Capability matrix (native operations on tool-output records)
 
@@ -61,11 +64,11 @@ filling the budget with bloat).
 
 | Implementation | Native stages | ms (best of 5) | Records kept | Tokens out | Deterministic |
 |---|---|---|---|---|---|
-| contexel | 5/5 | 59.77 | 36 | 1,909 | yes |
-| hand-written | 0/5 | 25.05 | 36 | 1,924 | yes |
-| toolz | 2/5 | 37.31 | 36 | 1,924 | yes |
-| langchain-core | 1/5 | 242.62 | 36 | 1,924 | yes |
-| llama-index-core | 0/5 | 457.13 | 36 | 1,924 | yes |
+| contexel | 5/5 | 66.52 | 36 | 1,909 | yes |
+| hand-written | 0/5 | 28.99 | 36 | 1,924 | yes |
+| toolz | 2/5 | 42.52 | 36 | 1,924 | yes |
+| langchain-core | 1/5 | 228.82 | 36 | 1,924 | yes |
+| llama-index-core | 0/5 | 225.68 | 36 | 1,924 | yes |
 
 ## What each achieves natively (ground-truth outcome benchmark)
 
@@ -92,27 +95,28 @@ buries the target under term-happy decoys.
 
 | Implementation | Recall % (strong) | Recall % (weak) | Compliance % | Fill x | Useful share % | ms/episode |
 |---|---|---|---|---|---|---|
-| contexel | 93.00 | 32.00 | 100.00 | 0.95 | 100.00 | 2.31 |
-| contexel + rescore | 98.00 | 98.00 | 100.00 | 0.94 | 100.00 | 4.87 |
-| hand-written | 93.00 | 32.00 | 100.00 | 0.95 | 100.00 | 1.49 |
-| toolz | 100.00 | 100.00 | 0.00 | 91.62 | 100.00 | 6.75 |
-| langchain-core | 30.00 | 30.00 | 100.00 | 0.52 | 89.75 | 7.75 |
-| llama-index-core | 100.00 | 100.00 | 0.00 | 129.21 | 74.15 | 20.64 |
+| contexel | 100.00 | 100.00 | 100.00 | 0.95 | 100.00 | 37.63 |
+| hand-written | 93.00 | 32.00 | 100.00 | 0.95 | 100.00 | 3.84 |
+| toolz | 100.00 | 100.00 | 0.00 | 91.62 | 100.00 | 12.25 |
+| langchain-core | 30.00 | 30.00 | 100.00 | 0.52 | 89.75 | 16.24 |
+| llama-index-core | 100.00 | 100.00 | 0.00 | 129.21 | 74.15 | 51.85 |
 
 What the numbers say each is best at:
 
-- **contexel** (and the **hand-written** policy, which is the same policy
-  re-improvised per run) is the only configuration delivering recall,
-  100% budget compliance, and an all-useful context *together* — but only
-  when the retrieval signal is decent. Under the weak signal its recall
-  collapses too: `rank(by="score")` trusts the tool's score, and a budget
-  trim faithfully executes a bad ordering.
-- **contexel + rescore** removes that dependency from inside the
-  deterministic lane: relevance is re-derived from the query and the
-  records' own fields (batch BM25-style — IDF x saturating term frequency),
-  so the two signal columns converge — the tool's score quality stops
-  mattering. What stays conceded to semantic rerankers is genuine
-  paraphrase/synonym mismatch, which no lexical score can see.
+- **contexel** (the standard contract: select → dedupe → `rescore` →
+  truncate → rank → trim) is the only configuration delivering recall, 100%
+  budget compliance, and an all-useful context *together* — and its two
+  recall columns are identical because `rescore` derives relevance from the
+  query and the records' own fields (batch BM25: exact word tokens, IDF x
+  saturating tf, in-order proximity), so the tool's score quality does not
+  matter.
+- **hand-written** is the same pipeline as improvised code writes it:
+  it trusts the tool's score, so its recall tracks that score's quality
+  (93% / 32%) — and it gets re-derived, slightly differently, every run.
+- Recall@budget has a ceiling no shaper escapes, semantic or not: when a
+  query legitimately describes more records than the budget can hold, some
+  valid record is cut. Any recall short of 100% below is that ambiguity,
+  now measured — not a scoring defect.
 - **toolz** achieves perfect recall by not doing the job — no token layer
   exists, so the "context" blows the budget by the fill factor shown. Best
   at: fast lossless projection/dedup when something else enforces budgets.
@@ -132,10 +136,10 @@ deps counts installed distributions the package requires (recursive).
 
 | Library | Import ms | Transitive deps |
 |---|---|---|
-| contexel | 13.57 | 0 |
-| toolz | 12.23 | 0 |
-| langchain-core | 99.76 | 25 |
-| llama-index-core | 1,098.12 | 60 |
+| contexel | 13.55 | 0 |
+| toolz | 12.31 | 0 |
+| langchain-core | 102.54 | 25 |
+| llama-index-core | 1,254.83 | 60 |
 
 ## Reading the results
 
