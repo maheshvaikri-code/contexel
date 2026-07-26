@@ -4,6 +4,27 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
 `z.y.x` — Mega. Major. minor/patch — and every commit bumps the version.
 
+## [0.1.10] — 2026-07-26
+
+### Changed
+- README rewritten mechanics-first: logo + badges header; a "what it does,
+  and exactly how" stage table (each stage's precise algorithm); a "what the
+  benchmark shows — and how to read it" section that explains every column
+  and states plainly that contexel is the slowest budget-compliant row
+  *because* it does the most work; "where it is used" (five placements, each
+  linked to its runnable example) and "how to use it". Verified by a
+  three-judge adversarial review (accuracy vs the committed tables and code,
+  overclaim hunting, newcomer usability) — all eight findings fixed,
+  including three overclaims and a quickstart syntax error.
+- Install instructions switched to git + `pip install -e .` (the package is
+  not yet on PyPI — the old instructions failed); PyPI badge replaced by a
+  version badge until a release ships.
+
+### Added
+- `benchmarks` extra (`pip install -e ".[benchmarks]"`) covering everything
+  the benchmark suites import: tiktoken, requests, pyarrow, toolz,
+  langchain-core, llama-index-core, packaging.
+
 ## [0.1.9] — 2026-07-26
 
 ### Changed

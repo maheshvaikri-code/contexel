@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "contexel"
-version = "0.1.9"
+version = "0.1.10"
 description = "Deterministic, dependency-free context-economy stages for code-writing agents."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -28,6 +28,15 @@ dependencies = []
 [project.optional-dependencies]
 accurate = ["tiktoken>=0.5"]
 dev = ["pytest>=7"]
+benchmarks = [
+    "tiktoken>=0.5",
+    "requests",
+    "pyarrow",
+    "toolz",
+    "langchain-core",
+    "llama-index-core",
+    "packaging",
+]
 
 [project.urls]
 Homepage = "https://github.com/maheshvaikri-code/contexel"
