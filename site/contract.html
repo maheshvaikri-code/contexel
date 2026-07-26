@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The context contract — contexel</title>
+<meta name="description" content="Why context assembly should be a versioned, reviewed artifact — the thesis behind contexel.">
+<link rel="icon" href="assets/contexel_logo.png">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<header class="top">
+  <a href="index.html"><img src="assets/contexel_logo.png" alt="contexel"></a>
+  <span class="spacer"></span>
+  <a class="btn" href="https://github.com/maheshvaikri-code/contexel">GitHub</a>
+</header>
+
+<div class="shell">
+<nav class="side" aria-label="Site">
+  <div class="group"><span>Overview</span>
+    <a href="index.html">Home</a>
+    <a href="architecture.html">Architecture</a>
+  </div>
+  <div class="group"><span>Guide</span>
+    <a href="getting-started.html">Getting started</a>
+    <a href="stages.html">Stage reference</a>
+  </div>
+  <div class="group"><span>Evidence</span>
+    <a href="benchmarks.html">Benchmarks</a>
+    <a class="here" href="contract.html">The context contract</a>
+  </div>
+</nav>
+
+<main class="page">
+<h1>The context contract</h1>
+<p class="lead">Spec-driven development made <em>intent</em> an explicit,
+versioned artifact. The context an agent reasons over deserves the same
+promotion — because today it is the loose variable that quietly undermines
+reproducibility.</p>
+
+<h2>The leak</h2>
+<p>An agent's behavior is a function of its instructions <em>and the context
+it assembled from the repo</em>. The instructions are written, reviewed,
+versioned. The context is improvised at runtime and thrown away: the model
+writes throwaway reshaping code, run by run, that re-derives field
+selection, truncation, and trimming slightly differently each time. Two runs
+against identical instructions can see materially different contexts —
+and therefore produce materially different results.</p>
+
+<h2>Where the drift compounds</h2>
+<div class="cards">
+  <div class="card"><span class="k">Iteration → iteration</span>
+    <h3>The fix loop</h3>
+    <p>Implement, run tests, read failures, fix, repeat. If the shaping of
+    the test output wobbles, the agent's view of "what is still failing"
+    wobbles with it — the loop thrashes on a moving target.</p></div>
+  <div class="card"><span class="k">Run → run</span>
+    <h3>Re-running a story</h3>
+    <p>Same task, same repo — you expect the same behavior. Ad hoc
+    reshaping breaks that even when nothing else changed.</p></div>
+  <div class="card"><span class="k">Story → story</span>
+    <h3>One repo, many tasks</h3>
+    <p>A backlog hits one codebase. You want the agent's <em>treatment</em>
+    of that codebase to be uniform, so behavior is a function of the task —
+    not of how the model compressed things that day.</p></div>
+</div>
+
+<h2>The contract</h2>
+<p>A contexel pipeline is a deterministic function from raw tool output to
+distilled context. Write it once, version it in the repo, apply it at every
+tool boundary:</p>
+<pre><code># project_context.py — one context policy for this repo, versioned with it
+def code_search(task_query: str):
+    """The repo's one lens on code search; the query varies, the policy never does."""
+    return pipeline([
+        stage(select, fields=["path", "line", "symbol", "snippet", "score"]),
+        stage(dedupe, key=["path", "line"]),
+        stage(rescore, query=task_query, fields=("snippet", "symbol", "path")),
+        stage(truncate_field, field="snippet", max_tokens=60),
+        stage(rank, by="score", desc=True),
+        stage(trim_to_budget, max_tokens=2000),
+    ])</code></pre>
+<p>Two guarantees make this a contract rather than a convenience:
+<strong>deterministic shaping</strong> — identical input yields
+byte-identical output, so reshaping stops being a variable — and
+<strong>uniform policy</strong> — one lens on the repo across every
+iteration, run, and story. And it is inspectable: <code>trace()</code>
+records what each stage did, so a shaping decision is a reviewable artifact
+instead of a silent one.</p>
+
+<h2>Two kinds of removed tokens — never conflated</h2>
+<p><code>select</code> and <code>dedupe</code> remove genuine redundancy —
+losslessly; nothing of value is lost. <code>truncate_field</code> and
+<code>trim_to_budget</code> discard detail and low-ranked records to hit
+limits <em>you</em> set — a deliberate completeness-for-budget trade. A good
+contract makes both deterministic and makes the second <em>visible</em>
+through the trace: what you chose to drop is an explicit, reviewable
+decision.</p>
+
+<h2>What it does not do</h2>
+<div class="note">
+<p><strong>It pins shaping, not inputs.</strong> If retrieval is
+nondeterministic or the repo changed between runs, contexel faithfully
+shapes what it is handed; it cannot make varying inputs identical. It
+removes the largest <em>controllable</em> drift source — necessary, not
+sufficient.</p>
+<p><strong>It is stateless, not memory.</strong> It holds nothing between
+calls. Carrying decisions forward across runs is a memory layer — a
+different primitive.</p>
+<p><strong>It is lexical, not semantic.</strong> Synonym- and
+paraphrase-aware relevance belongs to model rerankers, which trade exactly
+the reproducibility this contract exists to provide. The
+<a href="benchmarks.html">benchmarks</a> measure where that line sits.</p>
+</div>
+
+<h2>The payoff</h2>
+<p>Because a backlog reworks the same repository repeatedly, a context
+contract is amortized: write the lens once and every story inherits it.
+And the failure mode changes character — when an implementation misses
+something, the trace lets you ask a precise question: <em>did the relevant
+context even reach the model?</em> Debugging the contract is a tractable
+engineering activity; debugging a black-box miss is not.</p>
+
+<p>The full thesis lives in the repo:
+<a href="https://github.com/maheshvaikri-code/contexel/blob/main/the-context-contract.md">the-context-contract.md</a>.</p>
+
+</main>
+</div>
+
+<footer>
+  contexel · MIT license ·
+  <a href="https://github.com/maheshvaikri-code/contexel">GitHub</a> ·
+  <a href="https://github.com/maheshvaikri-code/contexel/blob/main/CHANGELOG.md">Changelog</a>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Getting started — contexel</title>
+<meta name="description" content="Install contexel, shape your first tool output, and pick where the contract lives.">
+<link rel="icon" href="assets/contexel_logo.png">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<header class="top">
+  <a href="index.html"><img src="assets/contexel_logo.png" alt="contexel"></a>
+  <span class="spacer"></span>
+  <a class="btn" href="https://github.com/maheshvaikri-code/contexel">GitHub</a>
+</header>
+
+<div class="shell">
+<nav class="side" aria-label="Site">
+  <div class="group"><span>Overview</span>
+    <a href="index.html">Home</a>
+    <a href="architecture.html">Architecture</a>
+  </div>
+  <div class="group"><span>Guide</span>
+    <a class="here" href="getting-started.html">Getting started</a>
+    <a href="stages.html">Stage reference</a>
+  </div>
+  <div class="group"><span>Evidence</span>
+    <a href="benchmarks.html">Benchmarks</a>
+    <a href="contract.html">The context contract</a>
+  </div>
+</nav>
+
+<main class="page">
+<h1>Getting started</h1>
+
+<h2>Install</h2>
+<pre><code>git clone https://github.com/maheshvaikri-code/contexel && cd contexel
+pip install -e .                  # pure Python, zero dependencies
+pip install -e ".[accurate]"      # + tiktoken, for exact token counts
+pip install -e ".[benchmarks]"    # + everything the benchmark suites use</code></pre>
+<p>A PyPI release is pending; <code>pip install contexel</code> will work
+once it ships.</p>
+
+<h2>Shape your first tool output</h2>
+<p>Everything operates on <code>list[dict]</code> — the shape tools already
+return. Compose stages inline, and wrap them in <code>trace()</code> to see
+exactly what each one removed:</p>
+<pre><code>from contexel import select, dedupe, rescore, truncate_field, rank, trim_to_budget, trace
+
+raw = search_tool(query=user_query)          # a batch of verbose results
+
+with trace() as t:
+    r = select(raw, ["title", "url", "snippet", "published"])
+    r = dedupe(r, key="url")
+    r = rescore(r, query=user_query, fields=("title", "snippet"))
+    r = truncate_field(r, "snippet", max_tokens=120)
+    r = rank(r, by="score", desc=True)
+    r = trim_to_budget(r, max_tokens=1500)
+
+print(t.report())    # per-stage: records in → out, tokens before → after
+context = r          # only this distilled result enters the model's context</code></pre>
+
+<h2>Pin the policy at the tool boundary</h2>
+<p>For a policy the model can never vary, attach it to the tool itself with
+<code>@shaped</code> — the <a href="contract.html">context contract</a>
+pattern:</p>
+<pre><code>from contexel import shaped, stage, select, dedupe, trim_to_budget
+
+@shaped([
+    stage(select, fields=["path", "line", "snippet"]),
+    stage(dedupe, key=["path", "line"]),
+    stage(trim_to_budget, max_tokens=2000),
+])
+def search_code(query: str) -> list[dict]:
+    return repo.search(query)     # raw and heavy — shaped identically, every call</code></pre>
+
+<h2>Where the contract lives</h2>
+<div class="cards">
+  <div class="card"><span class="k">Pattern 1</span>
+    <h3>Agent sandbox</h3>
+    <p>Programmatic tool calling: the sandbox imports the stages, the model
+    composes them. <code>examples/programmatic_tool_calling.py</code></p></div>
+  <div class="card"><span class="k">Pattern 2</span>
+    <h3>Tool wrapper</h3>
+    <p><code>@shaped</code> on the tool; the model never sees raw output.
+    <code>examples/tool_boundary_wrapper.py</code></p></div>
+  <div class="card"><span class="k">Pattern 3</span>
+    <h3>MCP server</h3>
+    <p>Shape responses before they leave the server.
+    <code>examples/mcp_server.py</code></p></div>
+  <div class="card"><span class="k">Pattern 4</span>
+    <h3>Under a framework</h3>
+    <p>A <code>records ⇄ Document</code> adapter for LangChain / LlamaIndex.
+    <code>examples/framework_adapter.py</code></p></div>
+  <div class="card"><span class="k">Pattern 5</span>
+    <h3>Shape, then encode</h3>
+    <p>Price budgets in the encoding that actually enters context — e.g. an
+    <a href="https://ison.dev">ISON</a> table.
+    <code>examples/ison_boundary.py</code></p></div>
+  <div class="card"><span class="k">Full example</span>
+    <h3>Reference agent</h3>
+    <p>A complete code-execution agent, no API key needed:
+    <code>python -m reference_agent</code>. Its tests prove byte-identical
+    context across runs.</p></div>
+</div>
+
+<h2>Token accounting</h2>
+<p>Two pluggable axes, both process-wide:</p>
+<pre><code>from contexel import tokens
+
+tokens.use_tiktoken()          # exact counts (needs the accurate extra)
+tokens.set_tokenizer(fn)       # or your own text → count
+tokens.set_serializer(fn)      # price records in your boundary's encoding
+tokens.set_serializer(None)    # back to canonical JSON</code></pre>
+<p>Budgets are encoding-relative: a record's cost is the token count of its
+<em>serialized</em> text. If your boundary emits something other than JSON,
+plug that in so <code>trim_to_budget</code> prices what actually ships.</p>
+
+<p>Next: the <a href="stages.html">stage reference</a>, or the
+<a href="benchmarks.html">evidence</a>.</p>
+
+</main>
+</div>
+
+<footer>
+  contexel · MIT license ·
+  <a href="https://github.com/maheshvaikri-code/contexel">GitHub</a> ·
+  <a href="https://github.com/maheshvaikri-code/contexel/blob/main/CHANGELOG.md">Changelog</a>
+</footer>
+
+</body>
+</html>

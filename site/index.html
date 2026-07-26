@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>contexel — deterministic context shaping for code-writing agents</title>
+<meta name="description" content="Deterministic, dependency-free context shaping at the tool-to-context boundary: the same transform, every run.">
+<link rel="icon" href="assets/contexel_logo.png">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<header class="top">
+  <a href="index.html"><img src="assets/contexel_logo.png" alt="contexel"></a>
+  <span class="spacer"></span>
+  <a class="btn" href="https://github.com/maheshvaikri-code/contexel">GitHub</a>
+</header>
+
+<div class="shell">
+<nav class="side" aria-label="Site">
+  <div class="group"><span>Overview</span>
+    <a class="here" href="index.html">Home</a>
+    <a href="architecture.html">Architecture</a>
+  </div>
+  <div class="group"><span>Guide</span>
+    <a href="getting-started.html">Getting started</a>
+    <a href="stages.html">Stage reference</a>
+  </div>
+  <div class="group"><span>Evidence</span>
+    <a href="benchmarks.html">Benchmarks</a>
+    <a href="contract.html">The context contract</a>
+  </div>
+</nav>
+
+<main class="page">
+
+<div class="hero">
+  <h1 class="visually-hidden">contexel — the context element</h1>
+  <img src="assets/contexel_logo.png" alt="contexel wordmark">
+  <p class="tag">Deterministic, dependency-free context shaping for
+  code-writing agents — <strong>the same transform, every run</strong>.</p>
+  <a class="cta" href="getting-started.html">Get started</a>
+  <a class="cta ghost" href="benchmarks.html">See the evidence</a>
+</div>
+
+<h2>The problem it owns</h2>
+<p class="lead">An agent's tools return big lists of records — search hits,
+file reads, API responses — far too verbose for a context window. Today the
+cutting-down is usually code the model improvises fresh on every run. That
+improvisation <em>drifts</em>: different field choices, different truncation,
+different survivors, run after run. The pipe that feeds the agent is itself a
+source of nondeterminism.</p>
+<p class="lead">contexel replaces the improvisation with a small set of
+vetted, versioned stages applied at the <strong>tool → context
+boundary</strong>. Same input, byte-identical context, every run — a
+<a href="contract.html">context contract</a> instead of a nightly rewrite.</p>
+
+<div class="cards">
+  <div class="card"><span class="k">Deterministic</span>
+    <h3>Byte-identical, proven</h3>
+    <p>The benchmark hashes the same contract's output across fresh
+    interpreters with different <code>PYTHONHASHSEED</code> values — same
+    SHA-256 every time, even when raw tool output carries fresh request ids.</p>
+  </div>
+  <div class="card"><span class="k">Token-aware</span>
+    <h3>Budgets that hold</h3>
+    <p>Stages reason in tokens, not rows. <code>trim_to_budget</code> and
+    <code>truncate_field</code> enforce the limits you set; counting is
+    pluggable (heuristic, tiktoken, your own) and encoding-aware.</p>
+  </div>
+  <div class="card"><span class="k">Evidence-ranked</span>
+    <h3>rescore, not trust</h3>
+    <p>A BM25-style lexical scorer computed inside the batch derives
+    relevance from the records' own text, so ranking no longer inherits the
+    search tool's score quality.</p>
+  </div>
+  <div class="card"><span class="k">Zero dependencies</span>
+    <h3>Plain Python, 13&nbsp;ms import</h3>
+    <p>No embeddings, no model calls, no packages. Six pipeline stages plus
+    a <code>merge</code> combiner, function composition, an opt-in trace —
+    auditable in an afternoon.</p>
+  </div>
+</div>
+
+<h2>The record, at a glance</h2>
+<p>Measured on the full CodeSearchNet python/test split — 28,047 real
+search-tool records. The outcome columns (Recall / Compliance / Useful) come
+from 100 ground-truth episodes at a 1,500-token budget where each library
+acts <em>only</em> through its own operations; <code>ms @28k</code> is the
+separate shared-glue canonical task. Details and method on the
+<a href="benchmarks.html">benchmarks page</a>.</p>
+
+<div class="scroll">
+<table>
+<tr><th>Implementation</th><th>Native ops</th><th>ms @28k</th><th>Recall (strong/weak signal)</th><th>Budget compliance</th><th>Useful tokens</th><th>Deps</th></tr>
+<tr><td><strong>contexel</strong></td><td class="best">6/6</td><td>59</td><td class="best">100% / 100%</td><td class="best">100%</td><td class="best">100%</td><td class="best">0</td></tr>
+<tr><td>hand-written glue</td><td>0</td><td>27</td><td class="poor">93% / 32%</td><td>100%</td><td>100%</td><td>—</td></tr>
+<tr><td>toolz</td><td>2</td><td>42</td><td>100% / 100%</td><td class="poor">0% (92× budget)</td><td>100%</td><td>0</td></tr>
+<tr><td>langchain-core</td><td>1</td><td>139</td><td class="poor">30% / 30%</td><td>100%</td><td class="poor">89.8%</td><td>25</td></tr>
+<tr><td>llama-index-core</td><td>0</td><td>516</td><td>100% / 100%</td><td class="poor">0% (129× budget)</td><td class="poor">74.2%</td><td>60</td></tr>
+</table>
+</div>
+
+<div class="note"><strong>Read it honestly:</strong> contexel is the only row
+green across every column — and it is the slowest budget-compliant row
+<em>because it does the most work</em>: deriving relevance from ~1&nbsp;KB of
+evidence per record on top of projecting, deduping, clipping, ranking, and
+budgeting. Every faster row is faster by doing less. All rows are negligible
+next to a single model call.</div>
+
+<h2>Sixty seconds of code</h2>
+<pre><code>from contexel import select, dedupe, rescore, truncate_field, rank, trim_to_budget, trace
+
+with trace() as t:
+    r = select(raw, ["title", "url", "snippet", "published"])
+    r = dedupe(r, key="url")
+    r = rescore(r, query=user_query, fields=("title", "snippet"))
+    r = truncate_field(r, "snippet", max_tokens=120)
+    r = rank(r, by="score", desc=True)
+    r = trim_to_budget(r, max_tokens=1500)
+
+print(t.report())   # what every stage removed — inspectable, not silent</code></pre>
+
+<p>Continue with <a href="getting-started.html">getting started</a>, or see
+<a href="architecture.html">how the pieces fit</a>.</p>
+
+</main>
+</div>
+
+<footer>
+  contexel · MIT license ·
+  <a href="https://github.com/maheshvaikri-code/contexel">GitHub</a> ·
+  <a href="https://github.com/maheshvaikri-code/contexel/blob/main/CHANGELOG.md">Changelog</a>
+  · pairs with <a href="https://ison.dev">ISON</a>
+</footer>
+
+</body>
+</html>

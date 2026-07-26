@@ -4,6 +4,31 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
 `z.y.x` — Mega. Major. minor/patch — and every commit bumps the version.
 
+## [0.1.11] — 2026-07-26
+
+### Added
+- Docs site under `site/` (GitHub Pages-ready, wiki-style, bright theme
+  with an AA-checked dark variant, fully self-contained — no CDN): home,
+  interactive architecture (clickable pipeline explorer + live budget-slider
+  demo), getting started, per-stage reference, benchmarks, and the context-
+  contract thesis. Root `architecture.html` now redirects there (the old
+  dark, CDN-font page is retired).
+- `README_PYPI.md` — the PyPI-facing narrative with absolute URLs;
+  `pyproject.toml` now points `readme` at it and adds Documentation/
+  Changelog/Issues URLs. Repo README links the docs site.
+- `.github/workflows/pages.yml` — opt-in Pages publish (recorded in
+  `docs/brief.md`): path-scoped to `site/`, actions pinned by full SHA,
+  fail-closed on `tools/site_check.py` (link/asset/CDN/secret checks over
+  HTML and CSS) before any deploy.
+- Doctrine gate artifacts: `docs/brief.md`, `docs/plans/`, `docs/reviews/`,
+  `docs/qa/` for this task (G2–G5; 15 review findings, all resolved).
+
+### Changed
+- Bundled site logo optimized 197 KB → 9.5 KB.
+- Package builds verified: `python -m build` + `twine check` PASSED for
+  sdist and wheel. Publishing to PyPI and enabling Pages remain manual,
+  human-approved actions.
+
 ## [0.1.10] — 2026-07-26
 
 ### Changed

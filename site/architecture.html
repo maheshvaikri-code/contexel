@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture — contexel</title>
+<meta name="description" content="How contexel works: the tool-to-context boundary, the stage pipeline, and a live budget demo.">
+<link rel="icon" href="assets/contexel_logo.png">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<header class="top">
+  <a href="index.html"><img src="assets/contexel_logo.png" alt="contexel"></a>
+  <span class="spacer"></span>
+  <a class="btn" href="https://github.com/maheshvaikri-code/contexel">GitHub</a>
+</header>
+
+<div class="shell">
+<nav class="side" aria-label="Site">
+  <div class="group"><span>Overview</span>
+    <a href="index.html">Home</a>
+    <a class="here" href="architecture.html">Architecture</a>
+  </div>
+  <div class="group"><span>Guide</span>
+    <a href="getting-started.html">Getting started</a>
+    <a href="stages.html">Stage reference</a>
+  </div>
+  <div class="group"><span>Evidence</span>
+    <a href="benchmarks.html">Benchmarks</a>
+    <a href="contract.html">The context contract</a>
+  </div>
+</nav>
+
+<main class="page">
+<h1>Architecture</h1>
+<p class="lead">contexel lives at exactly one place: the boundary where a
+tool's raw output becomes the model's context. Everything below is that one
+idea, mechanized.</p>
+
+<h2>The pipeline — click any stage</h2>
+<p>A <em>record</em> is a plain <code>dict</code>; a collection is
+<code>list[dict]</code>. Every stage is <code>(records, **params) →
+records</code>, never mutates its input, and composes with the rest:</p>
+
+<div class="pipe" id="pipe" aria-label="Pipeline stages">
+  <span class="node cap">raw tool output</span>
+  <span class="arrow">→</span>
+</div>
+<div class="stagebox" id="stagebox" aria-live="polite"></div>
+
+<h2>Two layers, one policy</h2>
+<div class="cards">
+  <div class="card"><span class="k">At the tool boundary</span>
+    <h3>@shaped — the model never sees raw</h3>
+    <p>Wrap the tool with a named pipeline. Every call returns bounded,
+    reshaped records — the same lens on the repo whether it is step 1 or
+    step 100. This is the <em>context contract</em>: versioned beside the
+    code, changed only by intention.</p>
+  </div>
+  <div class="card"><span class="k">Inside agent code</span>
+    <h3>Inline — for what a given step needs</h3>
+    <p>The sandbox imports the stages, so when the model writes code it
+    composes vetted transforms instead of improvising string surgery. Both
+    layers stack; only the distilled result re-enters context.</p>
+  </div>
+</div>
+
+<pre><code>@shaped([                                # the contract, pinned at the boundary
+    stage(select, fields=["path", "line", "snippet", "score"]),
+    stage(dedupe, key=["path", "line"]),
+    stage(trim_to_budget, max_tokens=2000),
+])
+def search_code(query: str) -> list[dict]:
+    return repo.search(query)            # raw, heavy — shaped identically, every call</code></pre>
+
+<h2>Try it — the budget, live</h2>
+<p>A faithful miniature of <code>select → dedupe → rank → trim_to_budget</code>
+running in your browser on twelve search-hit records (three are duplicates,
+all carry noise fields). Records are priced the way the library prices them
+— ≈4 chars/token on the serialized record, +2 framing per record.</p>
+
+<div class="demo">
+  <label><input type="checkbox" id="doSelect" checked>
+    <code>select</code> — drop noise fields (lossless)</label> &nbsp;
+  <label><input type="checkbox" id="doDedupe" checked>
+    <code>dedupe</code> — drop duplicates (lossless)</label>
+  <p style="margin:.8rem 0 .2rem"><label for="budget">Token budget:
+    <strong id="budgetVal">220</strong></label></p>
+  <input type="range" id="budget" min="60" max="700" value="220" step="10">
+  <div class="meterline">
+    <span id="statIn"></span><span id="statOut"></span>
+  </div>
+  <div class="recs" id="recs"></div>
+</div>
+
+<h2>Token accounting — two pluggable axes</h2>
+<div class="cards">
+  <div class="card"><span class="k">Tokenizer</span>
+    <h3>How text is priced</h3>
+    <p>Default: a dependency-free ~4-chars/token estimate.
+    <code>tokens.use_tiktoken()</code> for exact counts,
+    <code>set_tokenizer(fn)</code> for your own. Measured accuracy per
+    content type is in the <a href="benchmarks.html">benchmarks</a>.</p>
+  </div>
+  <div class="card"><span class="k">Serializer</span>
+    <h3>What encoding is priced</h3>
+    <p>Budgets are encoding-relative: a record costs the tokens of its
+    <em>serialized</em> text. Canonical JSON by default;
+    <code>set_serializer(fn)</code> prices records in the encoding your
+    boundary actually emits — e.g. an <a href="https://ison.dev">ISON</a>
+    table, where the same budget holds more records.</p>
+  </div>
+</div>
+
+<h2>The reference agent loop</h2>
+<p>The repo ships a complete code-execution agent
+(<code>python -m reference_agent</code>, no API key) that closes the loop:</p>
+<div class="pipe">
+  <span class="node cap">model proposes code</span><span class="arrow">→</span>
+  <span class="node cap">sandbox runs it (tools are @shaped)</span><span class="arrow">→</span>
+  <span class="node cap">only distilled <code>result</code> enters context</span><span class="arrow">→</span>
+  <span class="node cap">repeat until answer</span>
+</div>
+<p>Its tests prove the headline guarantee: two runs build byte-identical
+context even though the raw tool layer returns fresh request ids on every
+call.</p>
+
+</main>
+</div>
+
+<footer>
+  contexel · MIT license ·
+  <a href="https://github.com/maheshvaikri-code/contexel">GitHub</a> ·
+  <a href="https://github.com/maheshvaikri-code/contexel/blob/main/CHANGELOG.md">Changelog</a>
+</footer>
+
+<script>
+/* ---- stage explorer ---- */
+const STAGES = [
+  ["select", "select(records, fields)",
+   "Keep only the fields you need. A per-record projection onto the keep-list, order preserved — the fastest lossless cut, and it makes rows uniform (which downstream encodings like ISON reward)."],
+  ["dedupe", "dedupe(records, key=...)",
+   "Drop duplicate records, first occurrence wins, order preserved. Fingerprints the key fields as type-qualified tuples — 1, 1.0, True, and \"1\" stay distinct — with a canonical-JSON fallback for unhashable values."],
+  ["rescore", "rescore(records, query=..., fields=...)",
+   "Replace the tool's relevance score with one derived from evidence: BM25-style inside the batch — per-term IDF ln((N−df+0.5)/(df+0.5)+1) × saturating tf/(tf+1.5), exact word-boundary matching (value ≠ values, snake_case splits), plus a bonus when consecutive query terms appear in order within 80 chars. Lexical by design: paraphrase belongs to semantic rerankers."],
+  ["truncate_field", "truncate_field(records, field, max_tokens=...)",
+   "Clip one long text field to the longest prefix that fits the cap, then append an ellipsis. Closed-form O(1) cut for the built-in estimator (ceil(len/4) is invertible); binary search for custom tokenizers. Never exceeds the cap."],
+  ["rank", "rank(records, by=..., desc=True)",
+   "Stable sort by a field or key function; records missing the field go last. Put it after rescore so the budget trim drops the least relevant records, not arbitrary ones."],
+  ["trim_to_budget", "trim_to_budget(records, max_tokens=...)",
+   "Greedy prefix under a budget: each record costs the token count of its serialized text plus 2 for list framing; the walk stops before the budget is crossed. Assumes rank already ordered by importance."],
+];
+const pipe = document.getElementById("pipe");
+const box = document.getElementById("stagebox");
+STAGES.forEach(([name, sig, how], i) => {
+  const b = document.createElement("button");
+  b.className = "node"; b.textContent = name;
+  b.setAttribute("aria-pressed", "false");
+  b.onclick = () => show(i);
+  pipe.appendChild(b);
+  pipe.insertAdjacentHTML("beforeend", '<span class="arrow">→</span>');
+});
+pipe.insertAdjacentHTML("beforeend", '<span class="node cap">model context</span>');
+function show(i) {
+  [...pipe.querySelectorAll("button.node")].forEach((n, j) => {
+    n.classList.toggle("on", j === i);
+    n.setAttribute("aria-pressed", String(j === i));
+  });
+  const [name, sig, how] = STAGES[i];
+  box.innerHTML = "<h3>" + name + "</h3><p class='sig'><code>" + sig +
+    "</code></p><p>" + how + "</p>";
+}
+show(0);
+
+/* ---- budget demo: faithful miniature of select/dedupe/rank/trim ---- */
+const FIELDS = ["path", "line", "snippet", "score"];
+const BASE = [
+  ["src/retry.py", 38, "def retry_backoff(max_retries, base_delay):", 9.1],
+  ["src/retry.py", 55, "delay = min(max_delay, base_delay * 2 ** n)", 8.4],
+  ["src/config.py", 3, "RETRY_MAX_ATTEMPTS = 5", 7.9],
+  ["src/http_client.py", 9, "@retry_backoff(max_retries=3)", 7.2],
+  ["src/retry.py", 38, "def retry_backoff(max_retries, base_delay):", 9.1],
+  ["tests/test_retry.py", 12, "def test_eventually_succeeds():", 6.8],
+  ["src/retry.py", 44, "class TransientError(Exception):", 6.1],
+  ["src/config.py", 5, "RETRY_JITTER = True", 5.7],
+  ["src/http_client.py", 14, "raise TransientError(resp.status)", 5.2],
+  ["tests/test_retry.py", 12, "def test_eventually_succeeds():", 6.8],
+  ["src/retry.py", 61, "time.sleep(delay)", 4.6],
+  ["src/config.py", 3, "RETRY_MAX_ATTEMPTS = 5", 7.9],
+].map(([path, line, snippet, score], i) => ({
+  path, line, snippet, score,
+  blob_sha: "deadbeef" + i, request_id: "req-" + (1000 + i * 37),
+  fetched_at: "2026-07-26T10:0" + (i % 10) + ":00Z",
+}));
+const cost = r => Math.max(1, Math.ceil(JSON.stringify(r).length / 4)) + 2;
+
+const els = {
+  budget: document.getElementById("budget"),
+  budgetVal: document.getElementById("budgetVal"),
+  doSelect: document.getElementById("doSelect"),
+  doDedupe: document.getElementById("doDedupe"),
+  recs: document.getElementById("recs"),
+  statIn: document.getElementById("statIn"),
+  statOut: document.getElementById("statOut"),
+};
+function run() {
+  const budget = +els.budget.value;
+  els.budgetVal.textContent = budget;
+  let shaped = BASE.map(r =>
+    els.doSelect.checked
+      ? Object.fromEntries(FIELDS.map(f => [f, r[f]])) : { ...r });
+  const seen = new Set(), dupIdx = new Set();
+  if (els.doDedupe.checked) {
+    shaped.forEach((r, i) => {
+      const k = r.path + ":" + r.line;
+      if (seen.has(k)) dupIdx.add(i); else seen.add(k);
+    });
+  }
+  const order = shaped.map((r, i) => ({ r, i }))
+    .filter(x => !dupIdx.has(x.i))
+    .sort((a, b) => b.r.score - a.r.score);
+  const kept = new Set(); let used = 0;
+  for (const { r, i } of order) {
+    const c = cost(r);
+    if (used + c > budget) break;
+    kept.add(i); used += c;
+  }
+  const rawTokens = BASE.reduce((s, r) => s + cost(r), 0);
+  els.statIn.textContent = "raw: 12 records, ~" + rawTokens + " tokens";
+  els.statOut.textContent = "context: " + kept.size + " records, ~" + used +
+    " / " + budget + " tokens";
+  els.recs.innerHTML = "";
+  BASE.forEach((r, i) => {
+    const chip = document.createElement("span");
+    chip.className = "rec " +
+      (dupIdx.has(i) ? "dup cut" : kept.has(i) ? "kept" : "cut");
+    chip.title = dupIdx.has(i) ? "removed: duplicate of an earlier record"
+      : kept.has(i) ? "kept: fits the budget (" + cost(shaped[i]) + " tokens)"
+      : "cut: over budget after ranking";
+    chip.textContent = r.path + ":" + r.line + " (" + r.score + ")";
+    els.recs.appendChild(chip);
+  });
+}
+["input", "change"].forEach(ev => {
+  els.budget.addEventListener(ev, run);
+  els.doSelect.addEventListener(ev, run);
+  els.doDedupe.addEventListener(ev, run);
+});
+run();
+</script>
+
+</body>
+</html>

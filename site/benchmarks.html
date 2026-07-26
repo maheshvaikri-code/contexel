@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Benchmarks — contexel</title>
+<meta name="description" content="Measured, not asserted: determinism, budget tightness, speed, and a ground-truth comparison with prior art on real CodeSearchNet data.">
+<link rel="icon" href="assets/contexel_logo.png">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<header class="top">
+  <a href="index.html"><img src="assets/contexel_logo.png" alt="contexel"></a>
+  <span class="spacer"></span>
+  <a class="btn" href="https://github.com/maheshvaikri-code/contexel">GitHub</a>
+</header>
+
+<div class="shell">
+<nav class="side" aria-label="Site">
+  <div class="group"><span>Overview</span>
+    <a href="index.html">Home</a>
+    <a href="architecture.html">Architecture</a>
+  </div>
+  <div class="group"><span>Guide</span>
+    <a href="getting-started.html">Getting started</a>
+    <a href="stages.html">Stage reference</a>
+  </div>
+  <div class="group"><span>Evidence</span>
+    <a class="here" href="benchmarks.html">Benchmarks</a>
+    <a href="contract.html">The context contract</a>
+  </div>
+</nav>
+
+<main class="page">
+<h1>Benchmarks</h1>
+<p class="lead">Measured, not asserted — and deliberately without a headline
+"X% reduction" number, because reduction is a property of your data and your
+budget, not of the library. Two reproducible suites; full tables live in the
+repo (<code>benchmarks/RESULTS.md</code>, <code>benchmarks/COMPARISON.md</code>).</p>
+
+<h2>Suite 1 — contexel's own claims</h2>
+<p><code>python -m benchmarks</code> (needs the <code>accurate</code> extra).
+Highlights:</p>
+<ul>
+  <li><strong>Determinism, 4/4 PASS</strong> — the same contract over 5,000
+  seeded records hashes to the same SHA-256 in three fresh interpreters with
+  different <code>PYTHONHASHSEED</code> values, and shaped output is
+  identical even when raw records carry fresh request ids and timestamps.</li>
+  <li><strong>Budget tightness</strong> — shaped with tiktoken, actual cost
+  lands under budget (1,890/2,000); shaped with the default estimator it can
+  overshoot ~0.5%. <code>truncate_field</code> never exceeded its cap.</li>
+  <li><strong>Speed</strong> — ~195k records/sec through the full contract
+  (100k records ≈ 0.5 s); <code>select</code> has no measurable overhead vs
+  a hand-written comprehension. Tracing: 46.3 ms inactive vs 176.7 ms
+  active (3.81×) over 10k records — inactive is within run noise of the
+  untraced 43.6 ms baseline; active tracing token-counts every stage
+  boundary and is priced accordingly.</li>
+  <li><strong>Default tokenizer accuracy</strong> — ~4 chars/token is
+  roughly on the mark for typical prose and code (−0.4% to +4%), but can
+  over-estimate dense prose by ~18% and <strong>under-estimates JSON-heavy
+  records by ~29%</strong>: install <code>contexel[accurate]</code> when
+  budget precision matters.</li>
+</ul>
+
+<h2>Suite 2 — against the prior art, on real data</h2>
+<p><code>python -m benchmarks.competitors</code> (needs the
+<code>benchmarks</code> extra; first run downloads the CodeSearchNet
+python/test split, ~30&nbsp;MB). The full split — 22,176 real functions —
+is reconstructed into 28,047 search-tool records with genuine duplicates,
+plus 100 ground-truth episodes where the record the agent <em>needed</em> is
+known and guaranteed present in the raw hits, so recall isolates shaping
+loss, not retrieval loss. Budget: 1,500 tokens.</p>
+
+<div class="scroll">
+<table>
+<tr><th>Implementation</th><th>Native ops</th><th>ms @28k</th><th>ms/episode</th>
+<th>Recall (strong/weak)</th><th>Compliance</th><th>Fill</th><th>Useful</th>
+<th>Import ms</th><th>Deps</th></tr>
+<tr><td><strong>contexel</strong></td><td class="best">6/6</td><td>59</td><td>14.9</td>
+<td class="best">100% / 100%</td><td class="best">100%</td><td>0.95×</td>
+<td class="best">100%</td><td>13</td><td class="best">0</td></tr>
+<tr><td>hand-written glue</td><td>0</td><td>27</td><td>1.6</td>
+<td class="poor">93% / 32%</td><td>100%</td><td>0.95×</td><td>100%</td><td>—</td><td>—</td></tr>
+<tr><td>toolz</td><td>2</td><td>42</td><td>6.9</td>
+<td>100% / 100%</td><td class="poor">0%</td><td class="poor">91.6×</td><td>100%</td><td>13</td><td>0</td></tr>
+<tr><td>langchain-core</td><td>1</td><td>139</td><td>7.2</td>
+<td class="poor">30% / 30%</td><td>100%</td><td>0.52×</td><td class="poor">89.8%</td><td>91</td><td>25</td></tr>
+<tr><td>llama-index-core</td><td>0</td><td>516</td><td>21.4</td>
+<td>100% / 100%</td><td class="poor">0%</td><td class="poor">129×</td><td class="poor">74.2%</td><td>1,095</td><td>60</td></tr>
+</table>
+</div>
+
+<h3>How to read it</h3>
+<ul>
+  <li><strong>Two experiments in one table.</strong> <code>ms @28k</code>
+  holds the policy constant — libraries get identical hand-written glue for
+  whatever they lack, so timing differences are theirs. The outcome columns
+  (Recall / Compliance / Useful) are the opposite: each library acts
+  <em>only</em> through its own operations, so they show what each one
+  actually ships.</li>
+  <li><strong>Recall with 0% compliance is not recall.</strong> toolz and
+  llama-index keep the needed record by emitting 92–129× the budget — a
+  context no window accepts. langchain-core holds the budget but, with no
+  projection or dedupe, fills it with bloat and the needed record survives
+  only 30% of the time.</li>
+  <li><strong>contexel's 14.9 ms/episode is the work, not overhead.</strong>
+  It is the slowest budget-compliant row because it does the most: deriving
+  relevance from ~1&nbsp;KB of evidence per record on top of projecting,
+  deduping, clipping, ranking, and budgeting. Every faster row is faster by
+  doing less. All rows are noise next to one model call.</li>
+  <li><strong>The two recall columns bound the semantic concession.</strong>
+  The hand-written row trusts the tool's score: 93% under a decent
+  retrieval signal, 32% under a weak one. contexel's
+  <a href="stages.html#rescore">rescore</a> derives relevance itself, so
+  both columns read 100% — on these episodes.</li>
+</ul>
+
+<h2>Limits, stated plainly</h2>
+<div class="note">
+<p><strong>Recall@budget has a ceiling no shaper escapes:</strong> when a
+query legitimately describes more records than the budget holds, some valid
+record is cut — semantic or not. The 100% here means the ambiguity clusters
+resolved once exact-word evidence was used; vaguer queries, a different
+corpus, or a tighter budget can put it back under 100, and that is the
+data's property, not the policy's.</p>
+<p><strong>rescore is lexical:</strong> a query saying <em>parsing</em>
+scores zero against a document saying <em>parse</em>; synonyms and
+paraphrase belong to semantic rerankers (LLMLingua, ColBERT,
+cross-encoders), which contexel deliberately does not compete with.</p>
+</div>
+
+</main>
+</div>
+
+<footer>
+  contexel · MIT license ·
+  <a href="https://github.com/maheshvaikri-code/contexel">GitHub</a> ·
+  <a href="https://github.com/maheshvaikri-code/contexel/blob/main/CHANGELOG.md">Changelog</a>
+</footer>
+
+</body>
+</html>

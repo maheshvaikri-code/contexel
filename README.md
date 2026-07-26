@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.1.10-blue.svg" alt="Version"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.1.11-blue.svg" alt="Version"></a>
   <a href="https://github.com/maheshvaikri-code/contexel/actions"><img src="https://github.com/maheshvaikri-code/contexel/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.9%2B-blue.svg" alt="Python 3.9+"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/dependencies-0-brightgreen.svg" alt="Zero dependencies"></a>
@@ -12,6 +12,11 @@
 
 **The context element.** Deterministic, dependency-free context shaping for
 code-writing agents — the same transform, every run.
+
+**Docs site:** [maheshvaikri-code.github.io/contexel](https://maheshvaikri-code.github.io/contexel/)
+— architecture with a live budget demo, guides, the stage reference, and the
+full benchmark story. Served from this repo's [site/](site/) directory (also
+browsable locally: open `site/index.html`).
 
 An agent's tools return big lists of records: search hits, file reads, API
 responses. Before they reach the model's context window they must be cut
@@ -237,6 +242,8 @@ needs the `benchmarks` extra).
 - The deterministic stages are free and reproducible. Model-augmented stages
   (semantic reranking, summarization, semantic dedupe) would layer on top
   behind an injected client — deliberately out of scope today.
+
+  [![SkillDen](https://skillden.cv/card/maheshvaikri-code.svg?theme=certificate)](https://skillden.cv/u/maheshvaikri-code?theme=certificate)
 
 ## License
 

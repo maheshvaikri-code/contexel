@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stage reference — contexel</title>
+<meta name="description" content="Wiki-style reference: every contexel stage, its exact behavior, and its edge rules.">
+<link rel="icon" href="assets/contexel_logo.png">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<header class="top">
+  <a href="index.html"><img src="assets/contexel_logo.png" alt="contexel"></a>
+  <span class="spacer"></span>
+  <a class="btn" href="https://github.com/maheshvaikri-code/contexel">GitHub</a>
+</header>
+
+<div class="shell">
+<nav class="side" aria-label="Site">
+  <div class="group"><span>Overview</span>
+    <a href="index.html">Home</a>
+    <a href="architecture.html">Architecture</a>
+  </div>
+  <div class="group"><span>Guide</span>
+    <a href="getting-started.html">Getting started</a>
+    <a class="here" href="stages.html">Stage reference</a>
+  </div>
+  <div class="group"><span>Evidence</span>
+    <a href="benchmarks.html">Benchmarks</a>
+    <a href="contract.html">The context contract</a>
+  </div>
+  <div class="group"><span>On this page</span>
+    <a href="#select">select</a><a href="#dedupe">dedupe</a>
+    <a href="#rescore">rescore</a><a href="#rank">rank</a>
+    <a href="#truncate_field">truncate_field</a>
+    <a href="#trim_to_budget">trim_to_budget</a>
+    <a href="#merge">merge</a><a href="#compose">pipeline · shaped · trace</a>
+  </div>
+</nav>
+
+<main class="page">
+<h1>Stage reference</h1>
+<p class="lead">Every stage: <code>(records, **params) → records</code> over
+plain <code>list[dict]</code>, deterministic, non-mutating, auto-traced when
+a <code>trace()</code> is active. Contract, not implementation — inputs,
+outputs, and the invariants held.</p>
+
+<h2 id="select">select(records, fields)</h2>
+<p><strong>Keeps</strong> only <code>fields</code> on each record, in
+keep-list order. Missing fields are simply absent (no error, no
+<code>None</code> padding). Lossless: the dropped tokens were fields you
+were never going to use. Also the stage that makes rows uniform — which
+downstream table encodings reward.</p>
+
+<h2 id="dedupe">dedupe(records, key=None)</h2>
+<p><strong>Drops</strong> duplicates, first occurrence wins, order
+preserved. <code>key=None</code> compares whole records (key-order
+insensitive); a field name or list of names compares those fields.
+Fingerprints are type-qualified — <code>1</code>, <code>1.0</code>,
+<code>True</code>, <code>"1"</code> are four different values — with a
+canonical-JSON fallback for unhashable values.</p>
+
+<h2 id="rescore">rescore(records, query, fields=("snippet",), into="score", proximity=True, match="word")</h2>
+<p><strong>Writes</strong> a deterministic lexical relevance score to
+<code>into</code> on a copy of each record, so ranking stops inheriting the
+search tool's score quality. BM25-style, computed inside the batch:</p>
+<ul>
+  <li>per-term IDF <code>ln((N−df+0.5)/(df+0.5)+1)</code> — rare terms weigh more;</li>
+  <li>saturating term frequency <code>tf/(tf+1.5)</code> — covering all the
+  query's terms beats repeating one;</li>
+  <li><code>match="word"</code> (default) counts exact word occurrences the
+  way BM25/Lucene tokenize — <code>value</code> ≠ <code>values</code>,
+  underscores split snake_case; <code>match="substring"</code> is the
+  forgiving, decoy-prone alternative;</li>
+  <li><code>proximity=True</code>: consecutive query terms in order within
+  80 characters earn a bonus — the source a query was phrased from usually
+  carries its terms in sequence.</li>
+</ul>
+<div class="note">Lexical by construction: synonyms and paraphrase are
+invisible to it. When you need semantic relevance, put a model reranker in
+front — this stage removes the need to <em>trust a tool's score</em>, not
+the value of semantics.</div>
+
+<h2 id="rank">rank(records, by, desc=True)</h2>
+<p><strong>Sorts</strong> stably by a field name or key function; records
+missing the field go last. Run it before <code>trim_to_budget</code> so the
+budget drops the least important records, not arbitrary ones. Values of
+<code>by</code> must be mutually comparable.</p>
+
+<h2 id="truncate_field">truncate_field(records, field, max_tokens, tokenizer=None, suffix="…")</h2>
+<p><strong>Clips</strong> one long text field to the longest prefix that
+fits the cap, then appends the suffix. For the built-in estimator the cut is
+closed-form (<code>ceil(len/4)</code> is invertible: 4×budget characters);
+for custom tokenizers it binary-searches. Non-string values pass through
+untouched. Never exceeds the cap.</p>
+
+<h2 id="trim_to_budget">trim_to_budget(records, max_tokens, tokenizer=None)</h2>
+<p><strong>Keeps</strong> the greedy prefix that fits the budget: each
+record costs the token count of its serialized text plus 2 for list
+framing; the walk stops before the budget is crossed. Assumes records are
+already ordered by importance. If even the first record exceeds the budget
+the result is empty — run <code>truncate_field</code> first for oversized
+records.</p>
+
+<h2 id="merge">merge(*sources, schema=None, dedupe_key=None)</h2>
+<p><strong>Unifies</strong> differently-shaped tool outputs into one record
+shape. <code>schema</code> maps a unified field name to a source field name
+or a list of candidates tried in order; <code>dedupe_key</code> optionally
+dedupes across the merged result. With <code>schema=None</code> the sources
+are concatenated unchanged. A combiner rather than a single-collection
+transform — the one stage that is not auto-traced.</p>
+<pre><code>merge(web, docs, schema={"title": ["title", "name", "headline"],
+                         "url":   ["url", "link", "href"]})</code></pre>
+
+<h2 id="compose">pipeline · stage · shaped · trace · tokens</h2>
+<ul>
+  <li><code>pipeline([...])</code> — plain left-to-right function
+  composition; any <code>records → records</code> callable (even a lambda)
+  is a valid stage, so you can drop to code for anything irregular and
+  still breakpoint inside it.</li>
+  <li><code>stage(fn, **params)</code> — binds keyword args so a stage slots
+  into a pipeline.</li>
+  <li><code>@shaped(pipe)</code> — runs a tool's record-list return value
+  through a pipeline before it returns; the model never sees raw output.</li>
+  <li><code>trace()</code> — context manager; every stage records
+  records-in/out and tokens-before/after. Inactive overhead is a single
+  ContextVar lookup per stage — within run noise (46.3 vs 43.6&nbsp;ms over
+  10k records in RESULTS.md); active tracing token-counts every stage
+  boundary and is priced accordingly.</li>
+  <li><code>tokens</code> — <code>count</code>, <code>use_tiktoken()</code>,
+  <code>set_tokenizer(fn)</code>, <code>set_serializer(fn)</code>,
+  <code>serialize(value)</code>. Strings always bypass the serializer.</li>
+</ul>
+
+</main>
+</div>
+
+<footer>
+  contexel · MIT license ·
+  <a href="https://github.com/maheshvaikri-code/contexel">GitHub</a> ·
+  <a href="https://github.com/maheshvaikri-code/contexel/blob/main/CHANGELOG.md">Changelog</a>
+</footer>
+
+</body>
+</html>
