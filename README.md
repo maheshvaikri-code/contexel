@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://pypi.org/project/contexel/"><img src="https://img.shields.io/pypi/v/contexel.svg" alt="PyPI"></a>
+  <a href="https://pypi.org/project/contexel/"><img src="https://img.shields.io/pypi/v/contexel?label=pypi" alt="PyPI"></a>
   <a href="https://github.com/maheshvaikri-code/contexel/actions"><img src="https://github.com/maheshvaikri-code/contexel/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.9%2B-blue.svg" alt="Python 3.9+"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/dependencies-0-brightgreen.svg" alt="Zero dependencies"></a>
@@ -247,6 +247,7 @@ needs the `benchmarks` extra).
   behind an injected client — deliberately out of scope today.
 
 [![SkillDen](https://skillden.cv/card/maheshvaikri-code.svg?theme=certificate)](https://skillden.cv/u/maheshvaikri-code?theme=certificate)
+
 ## License
 
 MIT

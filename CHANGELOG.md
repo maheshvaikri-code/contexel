@@ -7,6 +7,10 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
 ## [0.1.15] — 2026-07-26
 
 ### Fixed
+- README PyPI badge appeared broken on GitHub: the camo image proxy had
+  cached the pre-publish "package not found" response. Badge URL changed
+  (query form, `?label=pypi`) so camo fetches fresh; shields.io verified
+  serving `pypi: v0.1.13`. (Docs-only fix — no version bump, per policy.)
 - `dedupe`: equal sets could fail to dedupe — set iteration order
   (insertion-history and hash-seed dependent) leaked into the fallback
   fingerprint. Sets/frozensets now fingerprint as sorted, type-qualified
