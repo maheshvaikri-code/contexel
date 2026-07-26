@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
 `z.y.x` — Mega. Major. minor/patch — and every commit bumps the version.
 
+## [0.1.4] — 2026-07-26
+
+### Added
+- Ground-truth outcome benchmark in the comparison (`COMPARISON.md` → "What
+  each achieves natively"): 100 CodeSearchNet episodes with a known needed
+  record, each library restricted to its own operations, scored on
+  recall@budget under two retrieval signals, budget compliance, context
+  fill, and useful-token share. Key results: contexel (and the equivalent
+  hand-written policy) is the only configuration with recall + compliance +
+  all-useful context together (93% recall, strong signal); a weak retrieval
+  signal drops that to 32% — the measured cost of conceding semantic
+  reranking; competitors reach 100% recall only at 92-129x budget, or hold
+  the budget while filling it with bloat (30% recall).
+
 ## [0.1.3] — 2026-07-26
 
 ### Changed

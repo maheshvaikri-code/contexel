@@ -36,11 +36,63 @@ contexel concedes semantic quality by design.
 
 | Implementation | Native stages | ms (best of 5) | Records kept | Tokens out | Deterministic |
 |---|---|---|---|---|---|
-| contexel | 5/5 | 112.16 | 36 | 1,909 | yes |
-| hand-written | 0/5 | 26.22 | 36 | 1,924 | yes |
-| toolz | 2/5 | 44.74 | 36 | 1,924 | yes |
-| langchain-core | 1/5 | 114.58 | 36 | 1,924 | yes |
-| llama-index-core | 0/5 | 189.80 | 36 | 1,924 | yes |
+| contexel | 5/5 | 112.01 | 36 | 1,909 | yes |
+| hand-written | 0/5 | 30.68 | 36 | 1,924 | yes |
+| toolz | 2/5 | 43.84 | 36 | 1,924 | yes |
+| langchain-core | 1/5 | 137.37 | 36 | 1,924 | yes |
+| llama-index-core | 0/5 | 194.52 | 36 | 1,924 | yes |
+
+## What each achieves natively (ground-truth outcome benchmark)
+
+The tables above hold the *policy* constant and let glue fill the gaps. This
+one asks the question that matters — **was the output useful?** — and lets
+each library act only through its own operations. 100 episodes with
+known ground truth: a target function, plus the hit list a
+multi-term docstring search over the full corpus returns (the target is
+always present in the raw hits, so every miss below is a *shaping* loss, not
+a retrieval loss). Budget: 1,500 tokens.
+
+Every hit carries two retrieval scores, because outcome quality depends on
+the ranking signal the search tool hands the shaper: **strong** ranks
+matching all the query's terms above matching one term often (the shape a
+real multi-term search returns); **weak** is a raw substring count, which
+buries the target under term-happy decoys.
+
+- **Recall@budget** — the record the agent actually needed survived into the
+  final context, under each signal.
+- **Compliance** — episodes where the context fits the budget; **Fill** —
+  mean context tokens / budget (over 1.00 = blown).
+- **Useful share** — fraction of context tokens spent on needed fields of
+  first-occurrence records (the rest is duplicates and field bloat).
+
+| Implementation | Recall % (strong) | Recall % (weak) | Compliance % | Fill x | Useful share % | ms/episode |
+|---|---|---|---|---|---|---|
+| contexel | 93.00 | 32.00 | 100.00 | 0.95 | 100.00 | 4.17 |
+| hand-written | 93.00 | 32.00 | 100.00 | 0.95 | 100.00 | 1.43 |
+| toolz | 100.00 | 100.00 | 0.00 | 91.62 | 100.00 | 6.86 |
+| langchain-core | 30.00 | 30.00 | 100.00 | 0.52 | 89.75 | 6.34 |
+| llama-index-core | 100.00 | 100.00 | 0.00 | 129.21 | 74.15 | 20.62 |
+
+What the numbers say each is best at:
+
+- **contexel** (and the **hand-written** policy, which is the same policy
+  re-improvised per run) is the only configuration delivering recall,
+  100% budget compliance, and an all-useful context *together* — but only
+  when the retrieval signal is decent. Under the weak signal its recall
+  collapses too: deterministic shaping executes a ranking policy faithfully,
+  it cannot rescue a bad one. That is the measured cost of conceding
+  semantic reranking, and the two recall columns bound it.
+- **toolz** achieves perfect recall by not doing the job — no token layer
+  exists, so the "context" blows the budget by the fill factor shown. Best
+  at: fast lossless projection/dedup when something else enforces budgets.
+- **langchain-core** is best at what it actually ships: budget enforcement
+  over message streams. With no record-level projection or dedupe, the
+  budget fills with bloat and duplicates, and whether the target makes the
+  cut depends entirely on incoming order.
+- **llama-index-core**'s postprocessors (score cutoff 2.0,
+  lost-in-middle reorder) are built for reordering retrieved RAG nodes, not
+  bounding them — recall is high because nearly everything is kept, at a
+  fill factor no context window accepts.
 
 ## Footprint
 
@@ -49,10 +101,10 @@ deps counts installed distributions the package requires (recursive).
 
 | Library | Import ms | Transitive deps |
 |---|---|---|
-| contexel | 14.76 | 0 |
-| toolz | 13.10 | 0 |
-| langchain-core | 97.67 | 25 |
-| llama-index-core | 1,145.31 | 60 |
+| contexel | 14.25 | 0 |
+| toolz | 13.13 | 0 |
+| langchain-core | 99.06 | 25 |
+| llama-index-core | 1,190.48 | 60 |
 
 ## Reading the results
 
