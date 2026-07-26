@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
 `z.y.x` — Mega. Major. minor/patch — and every commit bumps the version.
 
+## [0.1.3] — 2026-07-26
+
+### Changed
+- Comparative benchmark scaled to the full CodeSearchNet python/test split
+  (22,176 rows via the Hugging Face parquet export, replacing the 2,000-row
+  paged sample) and a 16-query workload — 28,047 tool-output records with
+  real duplicates. At this scale contexel's wall time sits at parity with
+  langchain-core and ahead of llama-index-core's node round-trip.
+
 ## [0.1.2] — 2026-07-26
 
 ### Added
