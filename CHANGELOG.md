@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
 `z.y.x` — Mega. Major. minor/patch — and every commit bumps the version.
 
+## [0.1.12] — 2026-07-26
+
+### Added
+- `.github/workflows/release.yml` — tag-gated PyPI publish (a human-created
+  `v*` tag or manual dispatch is the release decision): re-runs the full
+  suite on the exact tagged commit, enforces tag == `pyproject` version,
+  builds + `twine check`s, publishes via `pypa/gh-action-pypi-publish`
+  (pinned by commit SHA) using the `PYPI_TOKEN` **secret**, then a clean
+  post-publish job installs the published artifact from PyPI and runs the
+  quickstart against it.
+
 ## [0.1.11] — 2026-07-26
 
 ### Added
