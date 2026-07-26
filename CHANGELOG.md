@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
 `z.y.x` — Mega. Major. minor/patch — and every commit bumps the version.
 
+## [0.1.5] — 2026-07-26
+
+### Added
+- "At a glance" section in `COMPARISON.md` clubbing the three benchmark
+  tables — native operations, 28k-record timing, ground-truth outcomes
+  (recall, compliance, fill, useful share), and footprint — into one row
+  per implementation.
+
 ## [0.1.4] — 2026-07-26
 
 ### Added

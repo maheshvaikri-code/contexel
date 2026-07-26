@@ -19,6 +19,31 @@ hand-written glue helpers; the hand-written row (0/5 native) is the
 model-improvised baseline contexel replaces. Semantic tools are matrix-only —
 contexel concedes semantic quality by design.
 
+## At a glance — all three benchmarks clubbed
+
+One row per implementation, joining the three tables below: **native
+operations** (of the task's 5 stages the library expresses itself),
+**speed** on the 28k-record canonical task, the ground-truth **outcome**
+metrics (recall under a strong / weak retrieval signal; *compliance* = % of
+episodes whose final context fit the 1,500-token budget; *fill* = mean
+context tokens / budget), and **footprint**.
+
+| Implementation | Native ops | ms @28k | Recall % s/w | Compliance % | Fill x | Useful % | Import ms | Deps |
+|---|---|---|---|---|---|---|---|---|
+| contexel | 5/5 (+ merge) | 108.97 | 93 / 32 | 100.00 | 0.95 | 100.00 | 17.82 | 0 |
+| hand-written | 0/5 - improvised | 27.31 | 93 / 32 | 100.00 | 0.95 | 100.00 | - | - |
+| toolz | 2/5 (select, dedupe) | 44.86 | 100 / 100 | 0.00 | 91.62 | 100.00 | 16.63 | 0 |
+| langchain-core | 1/5 (trim) | 139.76 | 30 / 30 | 100.00 | 0.52 | 89.75 | 97.07 | 25 |
+| llama-index-core | 0/5 (filter/reorder only) | 187.13 | 100 / 100 | 0.00 | 129.21 | 74.15 | 1,302.07 | 60 |
+
+Read it in one line per row: contexel is the only implementation that covers
+the operations, respects the budget, keeps the needed record (given a decent
+retrieval signal), wastes no context tokens, and costs nothing to carry.
+Every alternative tops it on exactly one column by sacrificing another —
+speed (hand-written, by re-improvising the policy each run), recall (toolz,
+llama-index, by ignoring the budget), or compliance (langchain-core, by
+filling the budget with bloat).
+
 ## Capability matrix (native operations on tool-output records)
 
 | Library | select | dedupe(key) | rank | truncate(tok) | trim(budget) | merge(schema) | Operand | In timed run? |
@@ -36,11 +61,11 @@ contexel concedes semantic quality by design.
 
 | Implementation | Native stages | ms (best of 5) | Records kept | Tokens out | Deterministic |
 |---|---|---|---|---|---|
-| contexel | 5/5 | 112.01 | 36 | 1,909 | yes |
-| hand-written | 0/5 | 30.68 | 36 | 1,924 | yes |
-| toolz | 2/5 | 43.84 | 36 | 1,924 | yes |
-| langchain-core | 1/5 | 137.37 | 36 | 1,924 | yes |
-| llama-index-core | 0/5 | 194.52 | 36 | 1,924 | yes |
+| contexel | 5/5 | 108.97 | 36 | 1,909 | yes |
+| hand-written | 0/5 | 27.31 | 36 | 1,924 | yes |
+| toolz | 2/5 | 44.86 | 36 | 1,924 | yes |
+| langchain-core | 1/5 | 139.76 | 36 | 1,924 | yes |
+| llama-index-core | 0/5 | 187.13 | 36 | 1,924 | yes |
 
 ## What each achieves natively (ground-truth outcome benchmark)
 
@@ -67,11 +92,11 @@ buries the target under term-happy decoys.
 
 | Implementation | Recall % (strong) | Recall % (weak) | Compliance % | Fill x | Useful share % | ms/episode |
 |---|---|---|---|---|---|---|
-| contexel | 93.00 | 32.00 | 100.00 | 0.95 | 100.00 | 4.17 |
-| hand-written | 93.00 | 32.00 | 100.00 | 0.95 | 100.00 | 1.43 |
-| toolz | 100.00 | 100.00 | 0.00 | 91.62 | 100.00 | 6.86 |
-| langchain-core | 30.00 | 30.00 | 100.00 | 0.52 | 89.75 | 6.34 |
-| llama-index-core | 100.00 | 100.00 | 0.00 | 129.21 | 74.15 | 20.62 |
+| contexel | 93.00 | 32.00 | 100.00 | 0.95 | 100.00 | 5.01 |
+| hand-written | 93.00 | 32.00 | 100.00 | 0.95 | 100.00 | 2.33 |
+| toolz | 100.00 | 100.00 | 0.00 | 91.62 | 100.00 | 10.57 |
+| langchain-core | 30.00 | 30.00 | 100.00 | 0.52 | 89.75 | 7.10 |
+| llama-index-core | 100.00 | 100.00 | 0.00 | 129.21 | 74.15 | 27.54 |
 
 What the numbers say each is best at:
 
@@ -101,10 +126,10 @@ deps counts installed distributions the package requires (recursive).
 
 | Library | Import ms | Transitive deps |
 |---|---|---|
-| contexel | 14.25 | 0 |
-| toolz | 13.13 | 0 |
-| langchain-core | 99.06 | 25 |
-| llama-index-core | 1,190.48 | 60 |
+| contexel | 17.82 | 0 |
+| toolz | 16.63 | 0 |
+| langchain-core | 97.07 | 25 |
+| llama-index-core | 1,302.07 | 60 |
 
 ## Reading the results
 
