@@ -40,6 +40,15 @@ def set_tokenizer(tokenizer: Optional[Tokenizer]) -> None:
     _default = tokenizer or _heuristic
 
 
+def is_heuristic(tokenizer: Optional[Tokenizer] = None) -> bool:
+    """True when the tokenizer in effect is the built-in ~4-chars estimator.
+
+    Lets stages take exact fast paths that are only valid for the estimator
+    (its count, ``ceil(len/4)``, is invertible).
+    """
+    return (tokenizer or _default) is _heuristic
+
+
 def use_tiktoken(encoding: str = "cl100k_base") -> None:
     """Switch the default tokenizer to tiktoken (requires the ``accurate`` extra)."""
     import tiktoken

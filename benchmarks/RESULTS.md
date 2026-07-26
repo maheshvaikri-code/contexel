@@ -55,29 +55,29 @@ field, measured with the tokenizer that shaped it (docstring claims
 
 | Records | Stage | ms (best of 5) | Records/sec |
 |---|---|---|---|
-| 1,000 | select | 0.21 | 4,655,493.36 |
-| 1,000 | hand-written select | 0.21 | 4,672,897.20 |
-| 1,000 | dedupe (key) | 1.58 | 634,517.76 |
-| 1,000 | rank | 0.15 | 6,816,634.77 |
-| 1,000 | truncate_field | 2.67 | 374,953.14 |
-| 1,000 | trim_to_budget | 3.64 | 274,876.31 |
-| 1,000 | full contract | 4.59 | 217,651.54 |
-| 10,000 | select | 2.28 | 4,380,393.29 |
-| 10,000 | hand-written select | 2.22 | 4,510,193.03 |
-| 10,000 | dedupe (key) | 16.16 | 618,727.65 |
-| 10,000 | rank | 1.88 | 5,333,333.12 |
-| 10,000 | truncate_field | 27.32 | 366,004.08 |
-| 10,000 | trim_to_budget | 37.93 | 263,672.06 |
-| 10,000 | full contract | 48.64 | 205,573.09 |
-| 100,000 | select | 32.95 | 3,034,532.98 |
-| 100,000 | hand-written select | 32.73 | 3,055,440.98 |
-| 100,000 | dedupe (key) | 175.46 | 569,922.02 |
-| 100,000 | rank | 30.10 | 3,322,744.85 |
-| 100,000 | truncate_field | 299.91 | 333,437.37 |
-| 100,000 | trim_to_budget | 389.89 | 256,485.62 |
-| 100,000 | full contract | 523.65 | 190,967.87 |
+| 1,000 | select | 0.22 | 4,531,038.96 |
+| 1,000 | hand-written select | 0.21 | 4,694,833.29 |
+| 1,000 | dedupe (key) | 0.98 | 1,022,181.34 |
+| 1,000 | rank | 0.14 | 6,920,418.28 |
+| 1,000 | truncate_field | 0.82 | 1,215,805.33 |
+| 1,000 | trim_to_budget | 3.95 | 253,472.57 |
+| 1,000 | full contract | 4.20 | 238,021.57 |
+| 10,000 | select | 2.37 | 4,215,851.57 |
+| 10,000 | hand-written select | 2.21 | 4,521,613.16 |
+| 10,000 | dedupe (key) | 11.50 | 869,799.69 |
+| 10,000 | rank | 1.77 | 5,646,846.30 |
+| 10,000 | truncate_field | 8.82 | 1,133,478.42 |
+| 10,000 | trim_to_budget | 39.60 | 252,551.40 |
+| 10,000 | full contract | 43.64 | 229,154.92 |
+| 100,000 | select | 31.14 | 3,211,087.24 |
+| 100,000 | hand-written select | 33.19 | 3,013,046.48 |
+| 100,000 | dedupe (key) | 154.52 | 647,156.62 |
+| 100,000 | rank | 29.93 | 3,341,218.60 |
+| 100,000 | truncate_field | 104.91 | 953,158.00 |
+| 100,000 | trim_to_budget | 387.59 | 258,002.33 |
+| 100,000 | full contract | 512.13 | 195,261.32 |
 
-Trace overhead on the full contract over 10,000 records: 52.2 ms inactive vs 173.9 ms active (3.33x). Inactive tracing is the "zero cost" claim; active tracing token-counts every stage boundary and is priced accordingly.
+Trace overhead on the full contract over 10,000 records: 46.3 ms inactive vs 176.7 ms active (3.81x). Inactive tracing is the "zero cost" claim; active tracing token-counts every stage boundary and is priced accordingly.
 
 ## 4. Default tokenizer accuracy (heuristic vs tiktoken cl100k_base)
 
@@ -85,9 +85,9 @@ Positive error = the heuristic over-estimates (conservative for budgets).
 
 | Sample | Actual | Heuristic | Error % |
 |---|---|---|---|
-| prose (README.md) | 2,177 | 2,169 | -0.37 |
+| prose (README.md) | 2,323 | 2,313 | -0.43 |
 | prose (the-context-contract.md) | 2,365 | 2,779 | 17.51 |
-| code (contexel/stages.py) | 1,328 | 1,390 | 4.67 |
+| code (contexel/stages.py) | 2,303 | 2,302 | -0.04 |
 | code (reference_agent/tools.py) | 1,709 | 1,781 | 4.21 |
 | json (500 search-hit records) | 56,877 | 40,606 | -28.61 |
 

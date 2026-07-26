@@ -4,6 +4,24 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
 `z.y.x` — Mega. Major. minor/patch — and every commit bumps the version.
 
+## [0.1.7] — 2026-07-26
+
+### Added
+- `rescore(..., proximity=True)`: consecutive query terms co-occurring in
+  order within an 80-char window earn a bonus, breaking lexical ties in
+  favor of the record the query was phrased from. Outcome recall rises from
+  94% to 98% under both retrieval signals.
+
+### Changed (performance; outputs identical)
+- `truncate_field`: closed-form prefix cut when the built-in heuristic
+  tokenizer is in effect (`ceil(len/4)` is invertible) — 2.9x faster at
+  100k records; the generic binary search remains for custom tokenizers.
+- `dedupe`: type-qualified hashable fingerprints with a canonical-JSON
+  fallback for unhashable values; JSON semantics preserved (1, 1.0, True,
+  "1" stay distinct).
+- `rescore`: single-pass term-frequency scan (df derived, not rescanned).
+- Net: the 28k-record canonical comparison task runs in 60 ms (was 109).
+
 ## [0.1.6] — 2026-07-26
 
 ### Added

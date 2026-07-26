@@ -26,6 +26,25 @@ def _fingerprint(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, default=str, sort_keys=True)
 
 
+def _typed_tuple(value: Any) -> Any:
+    """A hashable, type-qualified mirror of a value (1, 1.0, and True differ)."""
+    if isinstance(value, dict):
+        return tuple(sorted((k, _typed_tuple(v)) for k, v in value.items()))
+    if isinstance(value, (list, tuple)):
+        return tuple(_typed_tuple(v) for v in value)
+    return (type(value).__name__, value)
+
+
+def _dedupe_fp(value: Any) -> Any:
+    """Fast hashable fingerprint; falls back to canonical JSON when needed."""
+    try:
+        fp = _typed_tuple(value)
+        hash(fp)
+        return fp
+    except TypeError:
+        return _fingerprint(value)
+
+
 @traced
 def select(records: Records, fields: Sequence[str]) -> Records:
     """Keep only ``fields`` on each record. The fastest way to cut tool-output bloat."""
@@ -50,7 +69,7 @@ def dedupe(records: Records, key: Optional[Union[str, Sequence[str]]] = None) ->
     seen = set()
     out: Records = []
     for r in records:
-        fp = _fingerprint(r if keys is None else [r.get(k) for k in keys])
+        fp = _dedupe_fp(r if keys is None else [r.get(k) for k in keys])
         if fp in seen:
             continue
         seen.add(fp)
@@ -78,7 +97,8 @@ _WORD = re.compile(r"\w+")
 
 @traced
 def rescore(records: Records, query: Union[str, Sequence[str]],
-            fields: Sequence[str] = ("snippet",), into: str = "score") -> Records:
+            fields: Sequence[str] = ("snippet",), into: str = "score",
+            proximity: bool = True) -> Records:
     """Replace the tool's relevance score with a deterministic lexical one.
 
     Ranking by a tool-provided score means inheriting that tool's ranking
@@ -87,8 +107,11 @@ def rescore(records: Records, query: Union[str, Sequence[str]],
     ``query`` and the records' own ``fields`` instead — a BM25-style score
     computed within the batch: per-term IDF (rare terms weigh more) times a
     saturating term frequency (k1 = 1.5), so covering *all* the query's terms
-    beats repeating one. Writes the score to ``into`` on a copy of each
-    record; use before :func:`rank`.
+    beats repeating one. With ``proximity`` (default on), consecutive query
+    terms co-occurring *in order* within an 80-character window earn a bonus
+    — the source a query was phrased from usually carries its terms in
+    sequence; decoys that merely mention them scattered do not. Writes the
+    score to ``into`` on a copy of each record; use before :func:`rank`.
 
     Deterministic and dependency-free by construction — and therefore
     *lexical*: synonyms and paraphrase are invisible to it. When you need
@@ -106,19 +129,29 @@ def rescore(records: Records, query: Union[str, Sequence[str]],
         " ".join(str(r.get(f, "")) for f in fields).lower() for r in records
     ]
     n = len(records)
-    idf = {}
-    for t in terms:
-        df = sum(1 for text in texts if t in text)
-        idf[t] = math.log((n - df + 0.5) / (df + 0.5) + 1.0)
+    tfs: List[Dict[str, int]] = []           # one pass: tf per term, df for free
+    df = dict.fromkeys(terms, 0)
+    for text in texts:
+        row: Dict[str, int] = {}
+        for t in terms:
+            count = text.count(t)
+            if count:
+                row[t] = count
+                df[t] += 1
+        tfs.append(row)
+    idf = {t: math.log((n - df[t] + 0.5) / (df[t] + 0.5) + 1.0) for t in terms}
 
     k1 = 1.5
     out: Records = []
-    for r, text in zip(records, texts):
-        score = 0.0
-        for t in terms:
-            tf = text.count(t)
-            if tf:
-                score += idf[t] * (tf / (tf + k1))
+    for r, text, row in zip(records, texts, tfs):
+        score = sum(idf[t] * (tf / (tf + k1)) for t, tf in row.items())
+        if proximity and len(row) > 1:
+            for t1, t2 in zip(terms, terms[1:]):
+                if t1 in row and t2 in row:
+                    i1 = text.find(t1)
+                    i2 = text.find(t2, i1 + len(t1))
+                    if i2 != -1 and i2 - i1 <= 80:
+                        score += (idf[t1] + idf[t2]) / 4
         out.append({**r, into: round(score, 6)})
     return out
 
@@ -127,6 +160,10 @@ def _truncate_text(text: str, max_tokens: int, tokenizer: Any, suffix: str) -> s
     if tokens.count(text, tokenizer) <= max_tokens:
         return text
     budget = max(1, max_tokens - tokens.count(suffix, tokenizer))
+    if tokens.is_heuristic(tokenizer):
+        # ceil(len/4) is invertible: the longest prefix within budget is
+        # exactly 4*budget chars — same result as the search, in O(1).
+        return text[: 4 * budget].rstrip() + suffix
     # Binary search the longest prefix whose token count fits the budget.
     lo, hi = 0, len(text)
     while lo < hi:
