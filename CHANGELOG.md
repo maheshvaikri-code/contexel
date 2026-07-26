@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
 `z.y.x` — Mega. Major. minor/patch — and every commit bumps the version.
 
+## [0.1.2] — 2026-07-26
+
+### Added
+- Comparative benchmark vs prior art (`python -m benchmarks.competitors` →
+  `benchmarks/COMPARISON.md`): capability matrix + timed canonical task +
+  footprint (import time, dependency closure) for toolz, langchain-core,
+  llama-index-core, and a hand-written baseline, on real CodeSearchNet
+  records fetched via the Hugging Face datasets-server
+  (`benchmarks/fetch_dataset.py`, cached and gitignored).
+- README: link the comparison; note `context-engineering-toolkit` was not on
+  PyPI as of 2026-07 (prior-art claim did not verify).
+
 ## [0.1.1] — 2026-07-26
 
 ### Added

@@ -8,6 +8,7 @@ build/
 # Test / benchmark caches
 .pytest_cache/
 .benchmarks/
+benchmarks/data/
 
 # Environments
 .venv/

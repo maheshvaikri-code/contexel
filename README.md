@@ -163,8 +163,8 @@ mechanism. The nearest neighbours, so you can pick deliberately:
   model, and results shift with model versions. **Haystack** `DocumentJoiner`
   and **LlamaIndex** node postprocessors cover similar operations, coupled to
   their frameworks' `Document`/node types. **`context-engineering-toolkit`**
-  is the closest standalone library (budget + truncation + priority), without
-  field projection, keyed dedupe, or schema `merge`.
+  has been cited as the closest standalone library (budget + truncation +
+  priority) but was not on PyPI as of 2026-07.
 - **Semantic compressors** (LLMLingua, ColBERT, cross-encoder rerankers) beat
   contexel on semantic quality, at the price of model inference and
   reproducibility. contexel is deterministic and non-semantic by design —
@@ -181,6 +181,12 @@ syntax compresses best, and `tokens.set_serializer()` keeps budgets priced in
 the encoding that actually enters context (see
 [`examples/ison_boundary.py`](examples/ison_boundary.py) and benchmark
 suite 6). TOON is the same idea, serialization only.
+
+Measured, not asserted: [`benchmarks/COMPARISON.md`](benchmarks/COMPARISON.md)
+runs the same shaping task through the nearest neighbours on real
+CodeSearchNet records (`python -m benchmarks.competitors`), and
+[`benchmarks/RESULTS.md`](benchmarks/RESULTS.md) covers contexel's own claims
+(`python -m benchmarks`).
 
 ## License
 

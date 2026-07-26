@@ -10,7 +10,7 @@ from .shaped import shaped
 from .stages import dedupe, merge, rank, select, trim_to_budget, truncate_field
 from .trace import Trace, trace
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 __all__ = [
     "select",
