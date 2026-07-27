@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
 `z.y.x` — Mega. Major. minor/patch — and every commit bumps the version.
 
-## [Unreleased]
+## [0.1.15] — 2026-07-26
 
 ### Added — toward a governed "context shaping plane" (readiness audit, gaps 2/3/4/5)
 - `@shaped` now wraps **async** tools: a coroutine function is awaited and
