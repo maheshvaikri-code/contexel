@@ -63,6 +63,20 @@ with trace() as t:
 print(t.report())    # per-stage: records in → out, tokens before → after
 context = r          # only this distilled result enters the model's context</code></pre>
 
+<h2>Audit the shaping</h2>
+<p>For a governance record — which policy version shaped this context, and
+exactly which records each stage dropped — open the trace with an id
+field:</p>
+<pre><code>with trace(id_field="url") as t:
+    context = shape(raw)          # any pipeline([...]) call
+
+record = t.audit()   # policy fingerprints, per-stage dropped ids, token movement</code></pre>
+<p>Records lacking the id field are untracked, so keep it in every
+<code>select</code> when full attribution matters. Gate untrusted sources
+before relevance logic with <code>allowlist</code> (and optionally
+<code>quarantine</code>) — see the
+<a href="stages.html#allowlist">stage reference</a>.</p>
+
 <h2>Pin the policy at the tool boundary</h2>
 <p>For a policy the model can never vary, attach it to the tool itself with
 <code>@shaped</code> — the <a href="contract.html">context contract</a>

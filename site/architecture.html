@@ -138,10 +138,14 @@ call.</p>
 <script>
 /* ---- stage explorer ---- */
 const STAGES = [
+  ["allowlist", "allowlist(records, field, allowed)",
+   "Provenance gate — the strong injection control. Keeps only records whose source field is in the approved set; missing or unhashable values are dropped (fail closed). Apply it first, so untrusted records never compete for the budget. Dropped records appear in the audit with this stage as the reason."],
+  ["quarantine", "quarantine(records, fields=..., action=\"drop\"|\"flag\")",
+   "Deterministic tripwire for literal injection markers — \"ignore all previous instructions\", role resets, system-prompt tags — over the given text fields. Drop removes (audited); flag marks and lets downstream policy decide. Honest scope: paraphrase passes; this is visibility, not a security boundary — allowlist is the stronger control."],
   ["select", "select(records, fields)",
    "Keep only the fields you need. A per-record projection onto the keep-list, order preserved — the fastest lossless cut, and it makes rows uniform (which downstream encodings like ISON reward)."],
   ["dedupe", "dedupe(records, key=...)",
-   "Drop duplicate records, first occurrence wins, order preserved. Fingerprints the key fields as type-qualified tuples — 1, 1.0, True, and \"1\" stay distinct — with a canonical-JSON fallback for unhashable values."],
+   "Drop duplicate records, first occurrence wins, order preserved. Fingerprints the key fields as type-qualified tuples — 1, 1.0, True, and \"1\" stay distinct, and equal sets fingerprint identically regardless of hash seed — with a canonical-JSON fallback for unhashable values."],
   ["rescore", "rescore(records, query=..., fields=...)",
    "Replace the tool's relevance score with one derived from evidence: BM25-style inside the batch — per-term IDF ln((N−df+0.5)/(df+0.5)+1) × saturating tf/(tf+1.5), exact word-boundary matching (value ≠ values, snake_case splits), plus a bonus when consecutive query terms appear in order within 80 chars. Lexical by design: paraphrase belongs to semantic rerankers."],
   ["truncate_field", "truncate_field(records, field, max_tokens=...)",

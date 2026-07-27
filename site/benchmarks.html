@@ -104,7 +104,7 @@ loss, not retrieval loss. Budget: 1,500 tokens.</p>
   context no window accepts. langchain-core holds the budget but, with no
   projection or dedupe, fills it with bloat and the needed record survives
   only 30% of the time.</li>
-  <li><strong>contexel's 14.9 ms/episode is the work, not overhead.</strong>
+  <li><strong>contexel's 15.5 ms/episode is the work, not overhead.</strong>
   It is the slowest budget-compliant row because it does the most: deriving
   relevance from ~1&nbsp;KB of evidence per record on top of projecting,
   deduping, clipping, ranking, and budgeting. Every faster row is faster by

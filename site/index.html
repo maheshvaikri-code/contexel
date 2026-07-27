@@ -109,6 +109,47 @@ evidence per record on top of projecting, deduping, clipping, ranking, and
 budgeting. Every faster row is faster by doing less. All rows are negligible
 next to a single model call.</div>
 
+<h2>Newly landed — toward a context shaping plane</h2>
+<p>A readiness audit set the bar: pilot-ready is not enterprise-ready.
+These closed the code-fixable gaps, each verified by tests and adversarial
+review:</p>
+<div class="cards">
+  <div class="card"><span class="k">Async</span>
+    <h3>@shaped wraps async tools</h3>
+    <p>A coroutine tool is awaited, then its records shaped — the same
+    contract, sync or async. Previously a
+    <code>TypeError: 'coroutine' object is not iterable</code>.</p></div>
+  <div class="card"><span class="k">Multi-tenant</span>
+    <h3>tokens.scoped(…)</h3>
+    <p>Context-local tokenizer/serializer overlay: each async task or
+    tenant counts with its own accounting, others untouched. Bare threads
+    fall back to the process default — stated, not hidden. Costs ~2.4 µs
+    per record on token-counting paths.</p></div>
+  <div class="card"><span class="k">Governance</span>
+    <h3>Audit-grade traces</h3>
+    <p>Every pipeline carries a stable policy fingerprint;
+    <code>trace(id_field=…)</code> records which records each stage
+    dropped; <code>t.audit()</code> emits the JSON-able governance record —
+    "did the relevant context even reach the model?" becomes answerable.</p></div>
+  <div class="card"><span class="k">Boundary controls</span>
+    <h3>allowlist + quarantine</h3>
+    <p>A fail-closed provenance gate (the strong injection control) and a
+    deterministic tripwire for literal injection markers (the visible one —
+    paraphrase passes it). Both traced; neither claims to be a semantic
+    guardrail.</p></div>
+  <div class="card"><span class="k">Supply chain</span>
+    <h3>Attested releases</h3>
+    <p>Publishing runs on PyPI Trusted Publishing (OIDC) with provenance
+    attestations, gated on a human-created tag; a dispatch is always a
+    dry-run. No long-lived tokens.</p></div>
+  <div class="card"><span class="k">Exactness</span>
+    <h3>Model-specific counting</h3>
+    <p><code>tiktoken_tokenizer(model=…)</code> for exact counts where
+    tiktoken covers the model; other providers plug their own counter.
+    Hard token limits demand exact — the built-in estimate is for soft
+    budgeting only.</p></div>
+</div>
+
 <h2>Sixty seconds of code</h2>
 <pre><code>from contexel import select, dedupe, rescore, truncate_field, rank, trim_to_budget, trace
 
