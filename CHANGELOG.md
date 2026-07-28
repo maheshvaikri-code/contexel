@@ -19,7 +19,9 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   keeps Python's int `0`. CI runs the C# suite against
   canon-regenerated vectors on Linux/Windows/macOS; the release
   pipeline gains tag-guarded `nuget-publish` + 3-OS `nuget-smoke` jobs
-  (requires the `NUGET_API_KEY` repo secret).
+  using NuGet Trusted Publishing (OIDC via `NuGet/login` — no
+  long-lived secret; all three registries are now token-free or
+  short-lived-token only).
 
 ### Fixed
 - **TS `rescore(match: "substring")` counted overlapping occurrences**

@@ -3,8 +3,9 @@
 # never decides it (.Doctrine/skills/cicd.md). One tag ships ALL THREE
 # packages: the version guards below require pyproject.toml, ts/package.json,
 # AND csharp/Contexel/Contexel.csproj to equal the tag, so the registries
-# can never drift. NuGet publish authenticates with the NUGET_API_KEY repo
-# secret (nuget.org offers no OIDC trusted publishing yet).
+# can never drift. NuGet publish uses TRUSTED PUBLISHING too: NuGet/login
+# exchanges the job's OIDC token for a short-lived API key (policy on
+# nuget.org: owner maheshvaikri, repo contexel, workflow release.yml).
 #
 # All three artifacts are platform-independent (pure Python wheel, pure-TS
 # tarball, pure-C# assembly) — "all OS" is enforced by GATES, not per-OS
@@ -181,13 +182,18 @@ jobs:
         run: npm publish --provenance --access public
 
   nuget-publish:
-    # PyPI is the canon registry (same sequencing rationale as npm-publish)
+    # PyPI is the canon registry (same sequencing rationale as npm-publish).
+    # NuGet TRUSTED PUBLISHING: the policy on nuget.org (owner maheshvaikri,
+    # repo maheshvaikri-code/contexel, workflow release.yml) lets NuGet/login
+    # exchange this job's OIDC token for a short-lived API key — no
+    # long-lived secret.
     needs: [pypi-publish, cs-test]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: nuget
     permissions:
       contents: read
+      id-token: write  # OIDC for NuGet Trusted Publishing
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
@@ -205,16 +211,20 @@ jobs:
         run: |
           dotnet test csharp/Contexel.Tests/Contexel.Tests.csproj --nologo
           dotnet pack csharp/Contexel/Contexel.csproj --nologo -c Release -o packed
+      - name: NuGet login (Trusted Publishing OIDC -> temp API key)
+        if: github.event_name == 'push' && github.ref_type == 'tag'
+        id: nuget-login
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1
+        with:
+          user: maheshvaikri
       - name: Publish to NuGet
         # only a tag PUSH publishes; workflow_dispatch is always a dry-run
         if: github.event_name == 'push' && github.ref_type == 'tag'
         run: |
           dotnet nuget push packed/*.nupkg \
-            --api-key "$NUGET_API_KEY" \
+            --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
 
   nuget-smoke:
     needs: nuget-publish
