@@ -43,6 +43,11 @@
    - `allowlist` membership uses Python equality (`True == 1 == 1.0`);
      unhashable `allowed` entries raise, unhashable record values fail
      closed — all vector-enforced.
+   - `quarantine` case-insensitivity: Python `re.IGNORECASE` Unicode-folds
+     (`ſyſtem prompt` matches `system prompt`); JS `"i"` without `"u"`
+     does not fold non-ASCII case pairs, so TS misses those evasions.
+     Adding `"u"` would reject fragments valid only without it — margin
+     stands until a folding fix; ASCII text behaves identically.
    - `round()` normalizes `-0` to `0` (Python can return `-0.0`, e.g. an
      audit `reduction` when tokens grow marginally) — same root cause as
      the int/float collapse above; visible only pre-serialization.

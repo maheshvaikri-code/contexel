@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
 `z.y.x` — Mega. Major. minor/patch — and every commit bumps the version.
 
+## [Unreleased]
+
+### Changed
+- **`quarantine(patterns=...)` now EXTENDS the built-in marker list**
+  instead of replacing it (user field report: passing domain-specific
+  markers silently disabled "ignore all previous instructions" detection —
+  the control looked configured and was weaker than the default).
+  Replacement is an explicit opt-in via `replace_patterns=True`
+  (TS: `replacePatterns`), and an empty replacement list raises instead of
+  matching nothing. Anyone relying on the old replace semantics gets
+  strictly MORE detection until they opt out — the fail-safe direction.
+  `patterns` also accepts a bare string as one pattern, and empty
+  fragments raise (an empty regex alternative silently matches EVERY
+  record). Docs gained a regex-pitfall note (`\b\.env\b` can never match;
+  use `(^|[\s"'([/])\.env\b` — the `/` covers `config/.env` paths).
+
 ## [0.1.16] — 2026-07-28
 
 ### Added — TypeScript parity package (`ts/`, npm: `contexel`)

@@ -72,7 +72,7 @@ const searchCode = shaped([
 | `select` | keep only the listed fields |
 | `dedupe` | drop duplicates by key or whole-record fingerprint (type-aware: `1`, `"1"`, `true` stay distinct) |
 | `allowlist` | fail-closed provenance gate — keep records whose field is in the allowed set (a missing field reads as `null`, kept only if `null` is explicitly allowed) |
-| `quarantine` | drop or flag records matching injection patterns ("ignore previous instructions", …) |
+| `quarantine` | drop or flag records matching injection patterns ("ignore previous instructions", …); custom `patterns` extend the built-ins — `replacePatterns: true` is the explicit opt-out |
 | `rescore` | batch BM25 relevance with word-boundary matching and in-order proximity bonus |
 | `rank` | stable sort by a field; records missing the field sort last |
 | `truncateField` | cut one field to a token budget, `…` suffix |

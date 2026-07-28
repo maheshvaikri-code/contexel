@@ -148,8 +148,9 @@ _INJECTION_PATTERNS = (
 
 @traced
 def quarantine(records: Records, fields: Fields = ("snippet",),
-               patterns: Optional[Sequence[str]] = None,
-               action: str = "drop", into: str = "quarantined") -> Records:
+               patterns: Optional[Fields] = None,
+               action: str = "drop", into: str = "quarantined",
+               replace_patterns: bool = False) -> Records:
     """Deterministic tripwire for the crudest prompt-injection markers
     ("ignore all previous instructions", role-reset phrases, system-prompt
     tags) in the given text ``fields``.
@@ -158,18 +159,49 @@ def quarantine(records: Records, fields: Fields = ("snippet",),
     ``action="flag"`` keeps every record and writes a boolean to ``into``
     so downstream policy — or the harness — decides.
 
+    ``patterns`` EXTENDS the built-in marker list — passing your own
+    domain markers must never silently disable "ignore all previous
+    instructions" detection (a configured-looking call that weakens the
+    control is the failure mode this API refuses to have). To genuinely
+    replace the built-ins, opt in explicitly with
+    ``replace_patterns=True``; an empty replacement list raises rather
+    than matching nothing (or everything).
+
     Honest scope: this is NOT a security boundary. A paraphrased attack
     passes; a benign document quoting an attack trips it. Provenance
     gating (:func:`allowlist`) is the stronger control; this one makes the
     loud, literal cases visible in the audit trail instead of letting them
-    compete for the budget silently. Caller-supplied ``patterns`` are the
-    caller's responsibility (including their regex complexity).
+    compete for the budget silently. Caller-supplied ``patterns`` are
+    regex fragments and the caller's responsibility (including their
+    complexity and dialect portability). One classic pitfall: ``\\b`` is a
+    word boundary, so ``\\b\\.env\\b`` can never match — ``.`` is not a
+    word character; screen for ``.env``-style tokens with something like
+    ``(^|[\\s"'([/])\\.env\\b`` instead (the ``/`` matters — paths like
+    ``config/.env`` are the common form).
     """
     if action not in ("drop", "flag"):
         raise ValueError(f"action must be 'drop' or 'flag', got {action!r}")
     field_list = _field_list(fields)
-    matcher = re.compile("|".join(patterns or _INJECTION_PATTERNS),
-                         re.IGNORECASE)
+    if patterns is None:
+        if replace_patterns:
+            raise ValueError(
+                "replace_patterns=True without patterns is contradictory; "
+                "pass the replacement patterns")
+        pattern_list = list(_INJECTION_PATTERNS)
+    else:
+        user_patterns = _field_list(patterns)
+        if any(not p for p in user_patterns):
+            # an empty fragment becomes an empty regex alternative, which
+            # matches EVERY record — the opposite of configuring a screen
+            raise ValueError("empty pattern fragments match everything; "
+                             "remove them")
+        pattern_list = (user_patterns if replace_patterns
+                        else list(_INJECTION_PATTERNS) + user_patterns)
+    if not pattern_list:
+        raise ValueError(
+            "replace_patterns=True with no patterns would disable the "
+            "control entirely; pass at least one pattern")
+    matcher = re.compile("|".join(pattern_list), re.IGNORECASE)
     out: Records = []
     for r in records:
         text = " ".join(str(r.get(f, "")) for f in field_list)

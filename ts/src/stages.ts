@@ -125,9 +125,10 @@ export const quarantine = traced(
     records: Records,
     params: {
       fields?: string | string[];
-      patterns?: string[];
+      patterns?: string | string[];
       action?: "drop" | "flag";
       into?: string;
+      replacePatterns?: boolean;
     } = {}
   ): Records => {
     const fields = fieldList(params.fields ?? ["snippet"]);
@@ -136,7 +137,35 @@ export const quarantine = traced(
     if (action !== "drop" && action !== "flag") {
       throw new Error(`action must be 'drop' or 'flag', got ${String(action)}`);
     }
-    const matcher = new RegExp((params.patterns ?? INJECTION_PATTERNS).join("|"), "i");
+    // custom patterns EXTEND the built-ins: passing domain markers must
+    // never silently disable "ignore all previous instructions" detection;
+    // replacePatterns is the explicit opt-out
+    let patternList: string[];
+    if (params.patterns === undefined) {
+      if (params.replacePatterns) {
+        throw new Error(
+          "replacePatterns without patterns is contradictory; pass the replacement patterns"
+        );
+      }
+      patternList = INJECTION_PATTERNS;
+    } else {
+      const userPatterns = fieldList(params.patterns);
+      if (userPatterns.some((p) => !p)) {
+        // an empty fragment becomes an empty regex alternative, which
+        // matches EVERY record — the opposite of configuring a screen
+        throw new Error("empty pattern fragments match everything; remove them");
+      }
+      patternList = params.replacePatterns
+        ? userPatterns
+        : [...INJECTION_PATTERNS, ...userPatterns];
+    }
+    if (!patternList.length) {
+      throw new Error(
+        "replacePatterns with no patterns would disable the control entirely; " +
+          "pass at least one pattern"
+      );
+    }
+    const matcher = new RegExp(patternList.join("|"), "i");
     const out: Records = [];
     for (const r of records) {
       // Python str(r.get(f, "")): None -> "None", nested containers via

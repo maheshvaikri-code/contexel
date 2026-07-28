@@ -74,13 +74,24 @@ sources you did not approve: apply this <em>first</em>, before any
 relevance logic, so untrusted records never compete for the budget.
 Dropped records appear in the trace/audit with this stage as the reason.</p>
 
-<h2 id="quarantine">quarantine(records, fields=("snippet",), patterns=None, action="drop", into="quarantined")</h2>
+<h2 id="quarantine">quarantine(records, fields=("snippet",), patterns=None, action="drop", into="quarantined", replace_patterns=False)</h2>
 <p><strong>Injection tripwire.</strong> A deterministic, case-insensitive
 pattern screen over the given text fields for the crudest prompt-injection
 markers — "ignore all previous instructions", role resets ("you are now"),
 system-prompt tags. <code>action="drop"</code> removes matches (audited);
 <code>action="flag"</code> keeps everything and writes a boolean to
 <code>into</code> so downstream policy decides.</p>
+<p>Custom <code>patterns</code> <strong>extend</strong> the built-in list —
+passing your own domain markers can never silently disable the
+"ignore all previous instructions" detection (a configured-looking call
+that weakens the control is the failure mode this API refuses to have).
+Replacing the built-ins is an explicit opt-in:
+<code>replace_patterns=True</code>, and an empty replacement raises.
+Patterns are regex fragments; one classic pitfall — <code>\b</code> before
+a non-word character never matches, so <code>\b\.env\b</code> is dead:
+screen for <code>.env</code>-style tokens with
+<code>(^|[\s"'([/])\.env\b</code> (the <code>/</code> matters — paths like
+<code>config/.env</code> are the common form).</p>
 <div class="note">Honest scope: <strong>not a security boundary.</strong> A
 paraphrased attack passes; a benign document quoting an attack trips it.
 <a href="#allowlist">allowlist</a> by provenance is the stronger control —

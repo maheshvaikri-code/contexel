@@ -75,6 +75,22 @@ test("quarantine rejects invalid action", () => {
   assert.throws(() => quarantine([{ snippet: "x" }], { action: "allow" as never }));
 });
 
+test("quarantine rejects an empty replacement pattern list", () => {
+  assert.throws(() =>
+    quarantine([{ snippet: "x" }], { patterns: [], replacePatterns: true })
+  );
+});
+
+test("quarantine rejects empty pattern fragments (they match everything)", () => {
+  for (const bad of ["", [""], ["ok", ""]] as const) {
+    assert.throws(() => quarantine([{ snippet: "x" }], { patterns: bad as string | string[] }));
+  }
+});
+
+test("quarantine rejects replacePatterns without patterns", () => {
+  assert.throws(() => quarantine([{ snippet: "x" }], { replacePatterns: true }));
+});
+
 test("nested scoped composes overlays (outer tokenizer survives inner serializer)", () => {
   const result = tokens.scoped({ tokenizer: () => 7 }, () =>
     tokens.scoped({ serializer: () => "zz" }, () => tokens.count({ a: 1 }))
