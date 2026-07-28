@@ -4,6 +4,52 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
 `z.y.x` — Mega. Major. minor/patch — and every commit bumps the version.
 
+## [Unreleased]
+
+### Added — TypeScript parity package (`ts/`, npm: `contexel`)
+- A TypeScript port of the full public surface for TS/JS agents: all eight
+  stages plus `merge`, `pipeline`/`stage` composition with policy
+  fingerprints, `shaped` (async tools awaited, then shaped), `trace`/
+  `audit`, and `tokens` with code-point counting, canonical Python-`json`
+  serialization, and `AsyncLocalStorage`-scoped per-tenant overrides.
+  Zero runtime dependencies, ESM, Node >= 18, strict TypeScript with
+  bundled declarations.
+- **Cross-language parity is enforced, not asserted:**
+  `parity/generate_vectors.py` runs every stage and a composed
+  8-stage contract through the canonical Python implementation and writes
+  `parity/vectors.json`; the TS suite asserts byte-parity against those
+  golden vectors (18 tests: per-stage outputs, contract output, audit
+  drops, serializer string equality, token counts). Deliberate boundaries
+  (JS float collapse `1.0`→`"1"`, Unicode word classes, language-local
+  fingerprints) are recorded in `docs/adr/001-typescript-parity.md`.
+- README/README_PYPI: npm install route and a "TypeScript parity" section.
+- `trim_to_budget(..., min_records=0)` (Python and TS): guards the
+  silent-failure edge where a too-small budget returns `[]`,
+  indistinguishable from "nothing matched" — the first `min_records`
+  (best-ranked) records are kept even over budget; the overrun stays
+  visible in the trace/audit. Default unchanged. (User field report.)
+- `fields` params (`select`, `quarantine`, `rescore`) now accept a bare
+  string as ONE field name, mirroring `dedupe(key=str)` — previously a
+  string was silently iterated as characters. Lists and tuples were always
+  accepted (`Sequence[str]`); JSON arrays need no coercion.
+
+### Fixed
+- `dedupe`: `{}` and `[]` no longer share a fingerprint — container
+  fingerprints are now type-tagged (`dict` vs sequence). `[1, 2]` and
+  `(1, 2)` still dedupe as the same JSON data.
+- TS parity hardening after adversarial review (all golden-vector
+  enforced): Python-`str()` replication for non-string field values in
+  `rescore`/`quarantine` (a nested injection payload is caught in both
+  languages); Python float repr thresholds in serialization (`1e-05`, not
+  `0.00001`); CPython `round()` half-to-even in audit/report/rescore;
+  stable descending sort for callable `rank` keys; nested `tokens.scoped`
+  composition; own-property semantics everywhere (`Object.hasOwn` +
+  define — a `"__proto__"` key is ordinary data, inherited properties are
+  never read); code-point match positions, key sort, and string
+  comparison; Python `rstrip()` whitespace set in `truncate_field`;
+  Python-equality `allowlist` membership (`True == 1`, missing field reads
+  as `None`, unhashable fails closed).
+
 ## [0.1.15] — 2026-07-26
 
 ### Added — toward a governed "context shaping plane" (readiness audit, gaps 2/3/4/5)

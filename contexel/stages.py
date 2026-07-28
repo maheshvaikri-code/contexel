@@ -21,6 +21,15 @@ from .trace import traced
 Record = Dict[str, Any]
 Records = List[Record]
 
+Fields = Union[str, Sequence[str]]
+
+
+def _field_list(fields: Fields) -> List[str]:
+    """A bare string means ONE field, not its characters — the common
+    JSON-boundary mistake ``fields="snippet"`` would otherwise silently
+    look up fields named "s", "n", "i", ... (mirrors ``dedupe(key=str)``)."""
+    return [fields] if isinstance(fields, str) else list(fields)
+
 
 def _fingerprint(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, default=str, sort_keys=True)
@@ -34,9 +43,12 @@ def _typed_tuple(value: Any) -> Any:
     order is not deterministic, and a fingerprint must be.
     """
     if isinstance(value, dict):
-        return tuple(sorted((k, _typed_tuple(v)) for k, v in value.items()))
+        return ("dict",
+                tuple(sorted((k, _typed_tuple(v)) for k, v in value.items())))
     if isinstance(value, (list, tuple)):
-        return tuple(_typed_tuple(v) for v in value)
+        # one sequence tag: [1, 2] and (1, 2) are the same JSON data, but
+        # {} and [] must not collide (untagged, both were the empty tuple)
+        return ("list", tuple(_typed_tuple(v) for v in value))
     if isinstance(value, (set, frozenset)):
         return (type(value).__name__,
                 tuple(sorted((_typed_tuple(v) for v in value), key=repr)))
@@ -54,9 +66,9 @@ def _dedupe_fp(value: Any) -> Any:
 
 
 @traced
-def select(records: Records, fields: Sequence[str]) -> Records:
+def select(records: Records, fields: Fields) -> Records:
     """Keep only ``fields`` on each record. The fastest way to cut tool-output bloat."""
-    keep = list(fields)
+    keep = _field_list(fields)
     return [{k: r[k] for k in keep if k in r} for r in records]
 
 
@@ -106,9 +118,10 @@ def allowlist(records: Records, field: str, allowed: Sequence[Any]) -> Records:
     ``allowed``. The strongest injection control a shaper can offer is
     refusing content from sources you did not approve — apply this FIRST,
     before any relevance logic, so untrusted records never compete for the
-    budget. Fail closed: records missing the field (or carrying an
-    unhashable value) are dropped. Deterministic; dropped records appear in
-    the trace/audit with this stage as the reason.
+    budget. Fail closed: a record carrying an unhashable value is dropped,
+    and a record missing the field reads as ``None`` — dropped unless
+    ``None`` is explicitly in ``allowed``. Deterministic; dropped records
+    appear in the trace/audit with this stage as the reason.
     """
     allowed_set = set(allowed)
     out: Records = []
@@ -134,7 +147,7 @@ _INJECTION_PATTERNS = (
 
 
 @traced
-def quarantine(records: Records, fields: Sequence[str] = ("snippet",),
+def quarantine(records: Records, fields: Fields = ("snippet",),
                patterns: Optional[Sequence[str]] = None,
                action: str = "drop", into: str = "quarantined") -> Records:
     """Deterministic tripwire for the crudest prompt-injection markers
@@ -154,11 +167,12 @@ def quarantine(records: Records, fields: Sequence[str] = ("snippet",),
     """
     if action not in ("drop", "flag"):
         raise ValueError(f"action must be 'drop' or 'flag', got {action!r}")
+    field_list = _field_list(fields)
     matcher = re.compile("|".join(patterns or _INJECTION_PATTERNS),
                          re.IGNORECASE)
     out: Records = []
     for r in records:
-        text = " ".join(str(r.get(f, "")) for f in fields)
+        text = " ".join(str(r.get(f, "")) for f in field_list)
         hit = matcher.search(text) is not None
         if action == "flag":
             out.append({**r, into: hit})
@@ -172,7 +186,7 @@ _TOKEN = re.compile(r"[^\W_]+")  # word tokens; underscores split snake_case
 
 @traced
 def rescore(records: Records, query: Union[str, Sequence[str]],
-            fields: Sequence[str] = ("snippet",), into: str = "score",
+            fields: Fields = ("snippet",), into: str = "score",
             proximity: bool = True, match: str = "word") -> Records:
     """Replace the tool's relevance score with a deterministic lexical one.
 
@@ -207,7 +221,8 @@ def rescore(records: Records, query: Union[str, Sequence[str]],
         return [{**r, into: 0.0} for r in records]
 
     texts = [
-        " ".join(str(r.get(f, "")) for f in fields).lower() for r in records
+        " ".join(str(r.get(f, "")) for f in _field_list(fields)).lower()
+        for r in records
     ]
     if match == "word":
         # one boundary-guarded alternation, scanned once per text at C speed;
@@ -289,19 +304,26 @@ def truncate_field(records: Records, field: str, max_tokens: int,
 
 
 @traced
-def trim_to_budget(records: Records, max_tokens: int, tokenizer: Any = None) -> Records:
+def trim_to_budget(records: Records, max_tokens: int, tokenizer: Any = None,
+                   min_records: int = 0) -> Records:
     """Keep records from the front until the token budget is reached; drop the rest.
 
     Assumes records are already ordered by importance (e.g. via :func:`rank`). A
     greedy prefix: a record is kept only if adding it stays within ``max_tokens``.
     If even the first record exceeds the budget, the result is empty -- run
     :func:`truncate_field` first for oversized records.
+
+    ``min_records`` guards the silent-failure edge where a too-small budget
+    returns ``[]``, indistinguishable from "nothing matched" to the caller:
+    the first ``min_records`` records (the best ones, post-:func:`rank`) are
+    kept even when they exceed the budget. The overrun is visible in the
+    trace/audit token counts.
     """
     out: Records = []
     used = 0
     for r in records:
         cost = tokens.count(r, tokenizer) + 2  # +2 approximates per-item list framing
-        if used + cost > max_tokens:
+        if used + cost > max_tokens and len(out) >= min_records:
             break
         out.append(r)
         used += cost

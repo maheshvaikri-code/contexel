@@ -52,7 +52,10 @@ outputs, and the invariants held.</p>
 keep-list order. Missing fields are simply absent (no error, no
 <code>None</code> padding). Lossless: the dropped tokens were fields you
 were never going to use. Also the stage that makes rows uniform — which
-downstream table encodings reward.</p>
+downstream table encodings reward. Everywhere a stage takes
+<code>fields</code>, a bare string names <em>one</em> field
+(<code>fields="snippet"</code> ≡ <code>fields=["snippet"]</code>) — it is
+never iterated as characters.</p>
 
 <h2 id="dedupe">dedupe(records, key=None)</h2>
 <p><strong>Drops</strong> duplicates, first occurrence wins, order
@@ -118,13 +121,16 @@ closed-form (<code>ceil(len/4)</code> is invertible: 4×budget characters);
 for custom tokenizers it binary-searches. Non-string values pass through
 untouched. Never exceeds the cap.</p>
 
-<h2 id="trim_to_budget">trim_to_budget(records, max_tokens, tokenizer=None)</h2>
+<h2 id="trim_to_budget">trim_to_budget(records, max_tokens, tokenizer=None, min_records=0)</h2>
 <p><strong>Keeps</strong> the greedy prefix that fits the budget: each
 record costs the token count of its serialized text plus 2 for list
 framing; the walk stops before the budget is crossed. Assumes records are
 already ordered by importance. If even the first record exceeds the budget
 the result is empty — run <code>truncate_field</code> first for oversized
-records.</p>
+records, or set <code>min_records</code>: the first that-many records (the
+best ones, post-<code>rank</code>) are kept even over budget, so a
+too-small budget can never return an empty list that reads as "nothing
+matched". The overrun stays visible in the trace/audit token counts.</p>
 
 <h2 id="merge">merge(*sources, schema=None, dedupe_key=None)</h2>
 <p><strong>Unifies</strong> differently-shaped tool outputs into one record

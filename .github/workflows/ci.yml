@@ -18,3 +18,28 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev]"
       - run: python -m pytest -q
+
+  # Cross-language parity (ADR-001): Python is canon. Regenerate the golden
+  # vectors, fail if the committed file is stale, then hold the TypeScript
+  # package to them byte-for-byte.
+  ts-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - run: python parity/generate_vectors.py
+      - run: git diff --exit-code parity/vectors.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ts/package-lock.json
+      - run: npm ci
+        working-directory: ts
+      - run: npm run build
+        working-directory: ts
+      - run: npm test
+        working-directory: ts

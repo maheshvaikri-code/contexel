@@ -1,0 +1,34 @@
+{
+  "name": "contexel",
+  "version": "0.1.15",
+  "description": "Deterministic, dependency-free context shaping for code-writing agents — TypeScript parity of the Python package, enforced by shared golden vectors.",
+  "keywords": ["llm", "agents", "context-engineering", "tokens", "tool-use", "rag"],
+  "license": "MIT",
+  "author": "Mahesh Vaikri",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "tsc -p tsconfig.test.json && node --test dist-test/test/parity.test.js dist-test/test/behavior.test.js",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maheshvaikri-code/contexel.git",
+    "directory": "ts"
+  },
+  "homepage": "https://maheshvaikri-code.github.io/contexel/",
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.5.0"
+  }
+}

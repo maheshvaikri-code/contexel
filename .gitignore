@@ -5,6 +5,10 @@ __pycache__/
 dist/
 build/
 
+# Node (ts/ parity package)
+node_modules/
+dist-test/
+
 # Test / benchmark caches
 .pytest_cache/
 .benchmarks/
