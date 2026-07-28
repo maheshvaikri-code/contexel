@@ -7,10 +7,23 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
+        # full interpreter matrix on Linux; oldest + newest legs prove
+        # Windows and macOS (both packages are pure — OS coverage is about
+        # behavior, not builds; the release workflow gates on all three)
+        os: [ubuntu-latest]
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        include:
+          - { os: windows-latest, python-version: "3.9" }
+          - { os: windows-latest, python-version: "3.13" }
+          - { os: macos-latest, python-version: "3.9" }
+          - { os: macos-latest, python-version: "3.13" }
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -21,9 +34,16 @@ jobs:
 
   # Cross-language parity (ADR-001): Python is canon. Regenerate the golden
   # vectors, fail if the committed file is stale, then hold the TypeScript
-  # package to them byte-for-byte.
+  # package to them byte-for-byte — on every OS we release for.
   ts-parity:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

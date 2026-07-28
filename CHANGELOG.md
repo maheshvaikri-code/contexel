@@ -23,6 +23,15 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   (JS float collapse `1.0`→`"1"`, Unicode word classes, language-local
   fingerprints) are recorded in `docs/adr/001-typescript-parity.md`.
 - README/README_PYPI: npm install route and a "TypeScript parity" section.
+- Release automation for npm: one `v*` tag now ships BOTH packages.
+  `release.yml` gates each publish on the full suites passing on Linux,
+  Windows, and macOS (both artifacts are pure/platform-independent — OS
+  coverage is enforced by test gates, not per-OS builds), requires
+  `pyproject.toml` and `ts/package.json` to equal the tag so the
+  registries cannot drift, publishes npm with provenance attestations
+  (PyPI stays on Trusted Publishing/OIDC), and smoke-tests both published
+  artifacts on all three OSes. CI gains Windows/macOS legs and runs the
+  parity job on all three OSes.
 - `trim_to_budget(..., min_records=0)` (Python and TS): guards the
   silent-failure edge where a too-small budget returns `[]`,
   indistinguishable from "nothing matched" — the first `min_records`

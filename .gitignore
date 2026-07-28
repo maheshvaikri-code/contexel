@@ -8,6 +8,7 @@ build/
 # Node (ts/ parity package)
 node_modules/
 dist-test/
+*.tgz
 
 # Test / benchmark caches
 .pytest_cache/
