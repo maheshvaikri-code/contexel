@@ -20,7 +20,7 @@ from .stages import (
 )
 from .trace import Trace, trace
 
-__version__ = "0.1.15"
+__version__ = "0.1.16"
 
 __all__ = [
     "select",

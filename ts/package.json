@@ -1,6 +1,6 @@
 {
   "name": "contexel",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "description": "Deterministic, dependency-free context shaping for code-writing agents — TypeScript parity of the Python package, enforced by shared golden vectors.",
   "keywords": ["llm", "agents", "context-engineering", "tokens", "tool-use", "rag"],
   "license": "MIT",

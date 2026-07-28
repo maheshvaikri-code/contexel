@@ -21,4 +21,4 @@ export { shaped } from "./shaped.js";
 export { trace, currentTrace, Trace, type Entry } from "./trace.js";
 export * as tokens from "./tokens.js";
 
-export const VERSION = "0.1.15";
+export const VERSION = "0.1.16";

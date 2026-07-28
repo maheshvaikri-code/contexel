@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
 `z.y.x` — Mega. Major. minor/patch — and every commit bumps the version.
 
-## [Unreleased]
+## [0.1.16] — 2026-07-28
 
 ### Added — TypeScript parity package (`ts/`, npm: `contexel`)
 - A TypeScript port of the full public surface for TS/JS agents: all eight
