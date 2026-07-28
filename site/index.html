@@ -111,7 +111,8 @@ next to a single model call.</div>
 
 <h2>Newly landed — toward a context shaping plane</h2>
 <p>A readiness audit set the bar: pilot-ready is not enterprise-ready.
-These closed the code-fixable gaps, each verified by tests and adversarial
+These closed the code-fixable gaps — and v0.1.16 extended the whole
+contract to a second language — each verified by tests and adversarial
 review:</p>
 <div class="cards">
   <div class="card"><span class="k">Async</span>
@@ -137,11 +138,20 @@ review:</p>
     deterministic tripwire for literal injection markers (the visible one —
     paraphrase passes it). Both traced; neither claims to be a semantic
     guardrail.</p></div>
+  <div class="card"><span class="k">TypeScript</span>
+    <h3>Same tool on npm</h3>
+    <p><code>npm install contexel</code> — a parity port, not a
+    re-imagining: both languages run their suites against the same
+    Python-generated golden vectors, so the same records, policy, and
+    budget shape identically in either. Async-first <code>shaped</code>,
+    <code>AsyncLocalStorage</code>-scoped accounting, zero runtime
+    dependencies.</p></div>
   <div class="card"><span class="k">Supply chain</span>
-    <h3>Attested releases</h3>
-    <p>Publishing runs on PyPI Trusted Publishing (OIDC) with provenance
-    attestations, gated on a human-created tag; a dispatch is always a
-    dry-run. No long-lived tokens.</p></div>
+    <h3>Attested dual releases</h3>
+    <p>One human-created tag ships both packages — PyPI via Trusted
+    Publishing (OIDC) and npm with provenance attestations — gated on the
+    full suites passing on Linux, Windows, and macOS, then smoke-tested
+    from both registries on all three. A dispatch is always a dry-run.</p></div>
   <div class="card"><span class="k">Exactness</span>
     <h3>Model-specific counting</h3>
     <p><code>tiktoken_tokenizer(model=…)</code> for exact counts where
