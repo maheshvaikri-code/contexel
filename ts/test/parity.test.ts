@@ -275,6 +275,17 @@ test("edge: custom patterns extend the built-ins; replacePatterns opts out", () 
   );
 });
 
+test("edge: substring mode counts non-overlapping like str.count", () => {
+  assert.deepStrictEqual(
+    rescore([{ s: "aaaa" }, { s: "ababab" }, { s: "aa ab" }], {
+      query: "aa ab",
+      fields: ["s"],
+      match: "substring",
+    }),
+    edges.rescore_substring
+  );
+});
+
 test("edge: a bare string names one field, not its characters", () => {
   assert.deepStrictEqual(
     rescore(

@@ -54,9 +54,10 @@ pip install contexel              # pure Python, zero dependencies
 pip install "contexel[accurate]"  # + tiktoken, for exact token counts
 ```
 
-Building agents in TypeScript/JavaScript instead? `npm install contexel`
-ships the same stages with golden-vector-enforced parity to this package
-([details](https://github.com/maheshvaikri-code/contexel#typescript-parity)).
+Building agents in TypeScript/JavaScript or C#/.NET instead?
+`npm install contexel` and `dotnet add package Contexel` ship the same
+stages with golden-vector-enforced parity to this package
+([details](https://github.com/maheshvaikri-code/contexel#language-parity)).
 
 ## Sixty seconds
 
@@ -140,5 +141,6 @@ plus a complete no-API-key reference agent
 - **Docs:** https://maheshvaikri-code.github.io/contexel/
 - **Source:** https://github.com/maheshvaikri-code/contexel
 - **TypeScript package:** https://www.npmjs.com/package/contexel
+- **C# package:** https://www.nuget.org/packages/Contexel
 - **Changelog:** https://github.com/maheshvaikri-code/contexel/blob/main/CHANGELOG.md
 - **License:** MIT

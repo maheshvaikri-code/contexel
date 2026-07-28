@@ -1,13 +1,16 @@
 # Registry releases (PyPI + npm) — run only when a human creates a version
 # tag (v*) or clicks Run workflow. The pipeline executes the release; it
-# never decides it (.Doctrine/skills/cicd.md). One tag ships BOTH packages:
-# the version guards below require pyproject.toml AND ts/package.json to
-# equal the tag, so the two registries can never drift.
+# never decides it (.Doctrine/skills/cicd.md). One tag ships ALL THREE
+# packages: the version guards below require pyproject.toml, ts/package.json,
+# AND csharp/Contexel/Contexel.csproj to equal the tag, so the registries
+# can never drift. NuGet publish authenticates with the NUGET_API_KEY repo
+# secret (nuget.org offers no OIDC trusted publishing yet).
 #
-# Both artifacts are platform-independent (pure Python wheel, pure-TS
-# tarball) — "all OS" is enforced by GATES, not per-OS builds: the full
-# suites must pass on Linux + Windows + macOS before either publish, and
-# the post-publish smokes install the published artifacts on all three.
+# All three artifacts are platform-independent (pure Python wheel, pure-TS
+# tarball, pure-C# assembly) — "all OS" is enforced by GATES, not per-OS
+# builds: the full suites must pass on Linux + Windows + macOS before any
+# publish, and the post-publish smokes install the published artifacts on
+# all three.
 #
 # PyPI publishing uses TRUSTED PUBLISHING (OIDC) with provenance
 # attestations — no long-lived token (publisher configured on PyPI).
@@ -75,8 +78,32 @@ jobs:
           npm run build
           npm test
 
+  cs-test:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e .
+      - run: python parity/generate_vectors.py
+      - run: git diff --exit-code parity/vectors.json
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: '8.0.x'
+      - name: Full C# suite on this exact commit
+        run: dotnet test csharp/Contexel.Tests/Contexel.Tests.csproj --nologo
+
   pypi-publish:
-    needs: [test, ts-test]
+    needs: [test, ts-test, cs-test]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: pypi
@@ -152,6 +179,103 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --provenance --access public
+
+  nuget-publish:
+    # PyPI is the canon registry (same sequencing rationale as npm-publish)
+    needs: [pypi-publish, cs-test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: nuget
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: '8.0.x'
+      - name: Version must match the tag
+        if: github.ref_type == 'tag'
+        run: |
+          V=$(sed -n 's|.*<Version>\(.*\)</Version>.*|\1|p' csharp/Contexel/Contexel.csproj)
+          if [ "v$V" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match Contexel.csproj version $V"
+            exit 1
+          fi
+      - name: Test, pack
+        run: |
+          dotnet test csharp/Contexel.Tests/Contexel.Tests.csproj --nologo
+          dotnet pack csharp/Contexel/Contexel.csproj --nologo -c Release -o packed
+      - name: Publish to NuGet
+        # only a tag PUSH publishes; workflow_dispatch is always a dry-run
+        if: github.event_name == 'push' && github.ref_type == 'tag'
+        run: |
+          dotnet nuget push packed/*.nupkg \
+            --api-key "$NUGET_API_KEY" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+
+  nuget-smoke:
+    needs: nuget-publish
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: '8.0.x'
+      - name: Install the PUBLISHED package in a clean project
+        run: |
+          V=$(sed -n 's|.*<Version>\(.*\)</Version>.*|\1|p' csharp/Contexel/Contexel.csproj)
+          mkdir -p "$RUNNER_TEMP/smoke" && cd "$RUNNER_TEMP/smoke"
+          dotnet new console -n Quickstart >/dev/null
+          cd Quickstart
+          ok=0
+          for i in $(seq 1 10); do
+            dotnet add package Contexel --version "$V" && ok=1 && break
+            echo "index not ready yet (attempt $i), retrying in 30s"; sleep 30
+          done
+          if [ "$ok" != 1 ]; then
+            echo "::error::Contexel $V never became installable from nuget.org"
+            exit 1
+          fi
+      - name: Run the quickstart against the published package
+        run: |
+          cd "$RUNNER_TEMP/smoke/Quickstart"
+          cat > Program.cs <<'CS'
+          using Contexel;
+          using Rec = System.Collections.Generic.Dictionary<string, object?>;
+          using Records = System.Collections.Generic.List<System.Collections.Generic.Dictionary<string, object?>>;
+
+          var raw = new Records();
+          for (int i = 0; i < 12; i++)
+              raw.Add(new Rec
+              {
+                  ["title"] = $"doc {i}", ["url"] = $"https://kb/{i % 4}",
+                  ["snippet"] = string.Concat(Enumerable.Repeat("retry with exponential backoff ", 10)),
+                  ["score"] = (long)(i % 7),
+              });
+
+          using var t = Trace.Begin(idField: "url");
+          var r = Stages.Select(raw, new[] { "title", "url", "snippet", "score" });
+          r = Stages.Dedupe(r, "url");
+          r = Stages.Rescore(r, "exponential backoff", new[] { "title", "snippet" });
+          r = Stages.Rank(r, "score", desc: true);
+          r = Stages.TrimToBudget(r, 400, minRecords: 1);
+          if (r.Count == 0 || r.Count > 4) throw new Exception($"unexpected: {r.Count}");
+          Console.WriteLine(t.Report());
+          Console.WriteLine($"quickstart OK: {r.Count} records");
+          CS
+          dotnet run
 
   pypi-smoke:
     needs: pypi-publish

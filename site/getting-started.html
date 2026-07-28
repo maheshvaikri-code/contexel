@@ -38,11 +38,13 @@
 <h2>Install</h2>
 <pre><code>pip install contexel              # pure Python, zero dependencies
 pip install "contexel[accurate]"  # + tiktoken, for exact token counts</code></pre>
-<p>Building agents in TypeScript/JavaScript? The same tool ships on npm
-under the same name — a parity port held to the Python implementation by
+<p>Building agents in TypeScript/JavaScript or C#/.NET? The same tool
+ships on npm and NuGet — parity ports held to the Python implementation by
 shared golden vectors, verified on Linux, Windows, and macOS
-(<a href="https://github.com/maheshvaikri-code/contexel/blob/main/docs/adr/001-typescript-parity.md">ADR-001</a>):</p>
-<pre><code>npm install contexel              # zero runtime dependencies, Node &gt;= 18, ESM</code></pre>
+(<a href="https://github.com/maheshvaikri-code/contexel/blob/main/docs/adr/001-typescript-parity.md">ADR-001</a>,
+<a href="https://github.com/maheshvaikri-code/contexel/blob/main/docs/adr/002-csharp-parity.md">ADR-002</a>):</p>
+<pre><code>npm install contexel              # zero runtime dependencies, Node &gt;= 18, ESM
+dotnet add package Contexel       # zero runtime dependencies, net8.0</code></pre>
 <p>From source (also how you get the benchmark suites):</p>
 <pre><code>git clone https://github.com/maheshvaikri-code/contexel && cd contexel
 pip install -e .                  # the library

@@ -252,7 +252,9 @@ export const rescore = traced(
           const firstIdx = idx;
           while (idx !== -1) {
             cnt++;
-            idx = text.indexOf(t, idx + 1);
+            // Python str.count is NON-overlapping: advance past the whole
+            // match ("aaaa".count("aa") === 2)
+            idx = text.indexOf(t, idx + t.length);
           }
           if (cnt) {
             row.set(t, cnt);

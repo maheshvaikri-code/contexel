@@ -6,6 +6,30 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
 
 ## [Unreleased]
 
+### Added — C# parity package (`csharp/`, NuGet: `Contexel`)
+- A C# port of the full public surface for .NET agents (net8.0, zero
+  runtime dependencies): all eight stages plus `Merge`,
+  `Pipeline`/`Stage` with policy fingerprints, `Shaped` (async tools
+  awaited, then shaped), `Trace`/`Audit`, and `Tokens` with code-point
+  counting, canonical Python-`json` serialization, and
+  `AsyncLocal`-scoped per-tenant overrides. Same golden-vector contract
+  (ADR-002); because .NET preserves the int/float distinction, the C#
+  parity envelope is *stricter* than the TS one — a JSON `1.0`
+  serializes as `"1.0"` exactly like Python, and a no-match rescore
+  keeps Python's int `0`. CI runs the C# suite against
+  canon-regenerated vectors on Linux/Windows/macOS; the release
+  pipeline gains tag-guarded `nuget-publish` + 3-OS `nuget-smoke` jobs
+  (requires the `NUGET_API_KEY` repo secret).
+
+### Fixed
+- **TS `rescore(match: "substring")` counted overlapping occurrences**
+  where Python's `str.count` is non-overlapping (`"aaaa"` contains two
+  `"aa"`, not three) — scores diverged on self-bordered terms over
+  repeated text, changing ranking. Found by the C# port's G4 review; the
+  substring path had no golden vector, which is why two prior TS reviews
+  missed it. Fixed in both ports and locked by a new
+  `rescore_substring` vector.
+
 ### Changed
 - **`quarantine(patterns=...)` now EXTENDS the built-in marker list**
   instead of replacing it (user field report: passing domain-specific

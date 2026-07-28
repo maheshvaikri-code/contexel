@@ -138,20 +138,21 @@ review:</p>
     deterministic tripwire for literal injection markers (the visible one —
     paraphrase passes it). Both traced; neither claims to be a semantic
     guardrail.</p></div>
-  <div class="card"><span class="k">TypeScript</span>
-    <h3>Same tool on npm</h3>
-    <p><code>npm install contexel</code> — a parity port, not a
-    re-imagining: both languages run their suites against the same
+  <div class="card"><span class="k">Three languages</span>
+    <h3>Same tool on npm and NuGet</h3>
+    <p><code>npm install contexel</code> ·
+    <code>dotnet add package Contexel</code> — parity ports, not
+    re-imaginings: every language runs its suite against the same
     Python-generated golden vectors, so the same records, policy, and
-    budget shape identically in either. Async-first <code>shaped</code>,
-    <code>AsyncLocalStorage</code>-scoped accounting, zero runtime
-    dependencies.</p></div>
+    budget shape identically everywhere. Async-first shaping, scoped
+    per-tenant accounting, zero runtime dependencies in all three.</p></div>
   <div class="card"><span class="k">Supply chain</span>
-    <h3>Attested dual releases</h3>
-    <p>One human-created tag ships both packages — PyPI via Trusted
-    Publishing (OIDC) and npm with provenance attestations — gated on the
-    full suites passing on Linux, Windows, and macOS, then smoke-tested
-    from both registries on all three. A dispatch is always a dry-run.</p></div>
+    <h3>Attested releases, three registries</h3>
+    <p>One human-created tag ships every package — PyPI via Trusted
+    Publishing (OIDC), npm with provenance attestations, and NuGet —
+    gated on the full suites passing on Linux, Windows, and macOS, then
+    smoke-tested from each registry on all three. A dispatch is always a
+    dry-run.</p></div>
   <div class="card"><span class="k">Exactness</span>
     <h3>Model-specific counting</h3>
     <p><code>tiktoken_tokenizer(model=…)</code> for exact counts where

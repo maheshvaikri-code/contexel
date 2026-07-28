@@ -63,3 +63,27 @@ jobs:
         working-directory: ts
       - run: npm test
         working-directory: ts
+
+  # Same contract, third language: vectors from canon, then the C# suite.
+  cs-parity:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - run: python parity/generate_vectors.py
+      - run: git diff --exit-code parity/vectors.json
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: "8.0.x"
+      - run: dotnet test csharp/Contexel.Tests/Contexel.Tests.csproj --nologo
+      - run: dotnet pack csharp/Contexel/Contexel.csproj --nologo -o /tmp/nupkg

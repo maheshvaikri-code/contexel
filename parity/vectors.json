@@ -720,6 +720,20 @@
       {
         "snippet": "clean text"
       }
+    ],
+    "rescore_substring": [
+      {
+        "s": "aaaa",
+        "score": 0.268574
+      },
+      {
+        "s": "ababab",
+        "score": 0.313336
+      },
+      {
+        "s": "aa ab",
+        "score": 0.611005
+      }
     ]
   }
 }

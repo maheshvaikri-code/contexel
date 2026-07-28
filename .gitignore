@@ -10,6 +10,11 @@ node_modules/
 dist-test/
 *.tgz
 
+# .NET (csharp/ parity package)
+bin/
+obj/
+*.nupkg
+
 # Test / benchmark caches
 .pytest_cache/
 .benchmarks/
