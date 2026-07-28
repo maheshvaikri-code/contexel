@@ -8,7 +8,7 @@
     <RootNamespace>Contexel</RootNamespace>
 
     <PackageId>Contexel</PackageId>
-    <Version>0.1.16</Version>
+    <Version>0.1.17</Version>
     <Authors>Mahesh Vaikri</Authors>
     <Description>Deterministic, dependency-free context shaping for code-writing agents — C# parity of the Python package, enforced by shared golden vectors.</Description>
     <PackageTags>llm;agents;context-engineering;tokens;tool-use;rag</PackageTags>

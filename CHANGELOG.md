@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
 `z.y.x` — Mega. Major. minor/patch — and every commit bumps the version.
 
-## [Unreleased]
+## [0.1.17] — 2026-07-28
 
 ### Added — C# parity package (`csharp/`, NuGet: `Contexel`)
 - A C# port of the full public surface for .NET agents (net8.0, zero
