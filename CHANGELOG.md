@@ -8,13 +8,16 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
 
 ### Added — test infrastructure (no library behavior change)
 - Seeded stdlib property tests for every stage (purity, determinism,
-  idempotence, subsequence, count and budget invariants), each with a
-  canary proving the harness can fail; failures print their seed.
+  idempotence, subsequence, count, input order, rank tie stability and
+  budget invariants, and each filter stage's effect), every check with a
+  canary proving it can fail; failures print their seed, including when a
+  stage raises.
 - A cross-process determinism test that sweeps `PYTHONHASHSEED` over a
   pipeline whose data contains sets, mixed types and non-ASCII text, and
   asserts that the requested seed actually took effect in each child process.
 - Golden policy-fingerprint tests pinning today's values (the compatibility
-  baseline for the audit-truthfulness work, ADR-008).
+  baseline for the audit-truthfulness work, ADR-008), including dict-valued
+  and opaque-object parameters.
 - Data-driven parity cases (ADR-007): `parity/parity_cases.py` is the single
   case table; `vectors.json` gains a `cases` array and `_meta.case_count`;
   the TypeScript and C# suites replay every case through one adapter per
@@ -22,7 +25,10 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   empty-input class in all three languages. A generator-side envelope guard
   rejects data TypeScript cannot represent (integer-valued floats, NaN/Inf,
   integers beyond 2^53), and a pinning test keeps the NFC/NFD case holding
-  two distinct keys.
+  two distinct keys. Boundary cases pin the first-present `merge`
+  candidate, code-point (not byte or UTF-16) token counting, multi-field
+  `quarantine`, the exact `trim_to_budget` cost and the 80-character
+  `rescore` proximity window; both runners fail on an empty case list.
 
 ## [0.1.17] — 2026-07-28
 
