@@ -2,6 +2,9 @@
 may never be weaker than they look."""
 import ctypes
 import threading
+from collections import OrderedDict
+from collections.abc import Mapping
+from types import MappingProxyType
 
 import pytest
 
@@ -130,6 +133,25 @@ def test_quarantine_scalars_render_as_str_so_none_is_the_word_none():
     assert quarantine(recs, fields="v", patterns="^1[.]5$", replace_patterns=True) == (
         recs[:2] + recs[3:])
     assert quarantine(recs, fields="v", patterns="x none", replace_patterns=True) == recs[:3]
+
+
+def test_quarantine_exact_scalar_leaves_scan_in_order_and_subclasses_keep_their_repr():
+    recs = [{"snippet": [None, 5, True, 1.5]}, {"snippet": "fine"}]
+    assert quarantine(recs, patterns="None 5 True 1[.]5",
+                      replace_patterns=True) == [recs[1]]
+    recs = [{"snippet": {"a": None, "b": 5}}, {"snippet": "fine"}]
+    assert quarantine(recs, patterns="a None b 5",
+                      replace_patterns=True) == [recs[1]]
+
+    class LoudInt(int):  # a subclass is not an exact int: its repr is scanned
+        def __repr__(self):
+            return MARKER
+
+        def __str__(self):
+            return "5"
+
+    assert quarantine([{"snippet": LoudInt(5)}, {"snippet": "fine"}]) == [
+        {"snippet": "fine"}]
 
 
 def run_bounded(fn, seconds=10):
@@ -279,6 +301,17 @@ def test_quarantine_a_duplicate_named_group_across_patterns_is_now_valid():
     assert out == [{"snippet": "cc"}]
 
 
+@pytest.mark.parametrize("patterns", [["aa", "bb"], ["aa", "bb", "cc"]])
+def test_quarantine_replace_patterns_uses_every_custom_pattern(patterns):
+    recs = [{"snippet": "aa"}, {"snippet": "bb"}, {"snippet": "cc"},
+            {"snippet": "dd"}]
+    out = quarantine(recs, patterns=patterns, replace_patterns=True)
+    assert out == [r for r in recs if r["snippet"] not in patterns]
+    # the first-only matcher would keep "bb"
+    assert quarantine(recs[:3], patterns=["aa", "bb"],
+                      replace_patterns=True) == [{"snippet": "cc"}]
+
+
 def test_quarantine_a_global_inline_flag_is_valid_alone_and_stays_in_its_pattern():
     recs = [{"snippet": "ZZZ"}, {"snippet": "foo"}, {"snippet": "FOO"},
             {"snippet": "a b"}, {"snippet": "fine"}]
@@ -338,6 +371,34 @@ def test_quarantine_a_non_mapping_item_always_raises(bad, action, use_strict):
         assert info.value.code == "input.not_mapping"
         assert info.value.stage == "quarantine"
         assert isinstance(info.value, TypeError)
+
+
+class _CustomMapping(Mapping):
+    def __init__(self, data):
+        self._data = dict(data)
+
+    def __getitem__(self, key):
+        return self._data[key]
+
+    def __iter__(self):
+        return iter(self._data)
+
+    def __len__(self):
+        return len(self._data)
+
+
+@pytest.mark.parametrize("make", [
+    pytest.param(MappingProxyType, id="mappingproxy"),
+    pytest.param(OrderedDict, id="ordereddict"),
+    pytest.param(_CustomMapping, id="custom-mapping"),
+])
+def test_quarantine_scans_non_dict_mappings_as_items(make):
+    bad = make({"snippet": MARKER})
+    clean = make({"snippet": "fine"})
+    assert quarantine([bad, clean]) == [clean]
+    flagged = quarantine([bad, clean], action="flag")
+    assert [(r["snippet"], r["quarantined"]) for r in flagged] == [
+        (MARKER, True), ("fine", False)]
 
 
 @pytest.mark.parametrize("use_strict", [False, True])

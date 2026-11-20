@@ -286,7 +286,8 @@ def _raw_cases() -> List[dict]:
               [{"snippet": "ok"}, None], "input.not_mapping")
     add("quarantine/backreferences_do_not_cross_patterns", "quarantine",
         {"patterns": ["(zz)q", r"(evil)-\1"]},
-        [{"snippet": "zz evil-evil"}, {"snippet": "fine"}])
+        [{"snippet": "zz evil-evil"}, {"snippet": "fine"},
+         {"snippet": "evil-x"}])
     add("quarantine/dict_keys_are_scanned_in_sorted_order", "quarantine",
         {"patterns": ["alpha None beta"]},
         [{"snippet": {"beta": None, "alpha": None}}, {"snippet": "fine"}])

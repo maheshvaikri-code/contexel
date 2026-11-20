@@ -2514,11 +2514,17 @@
         },
         {
           "snippet": "fine"
+        },
+        {
+          "snippet": "evil-x"
         }
       ],
       "expect": [
         {
           "snippet": "fine"
+        },
+        {
+          "snippet": "evil-x"
         }
       ]
     },

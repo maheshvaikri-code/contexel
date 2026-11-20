@@ -22,7 +22,7 @@ import inspect
 from collections.abc import Mapping
 from typing import Any, Callable, Dict, Union
 
-from .errors import InputShapeError
+from .errors import InputShapeError, _kind
 
 _strict: "contextvars.ContextVar[bool]" = contextvars.ContextVar(
     "contexel_strict", default=False
@@ -59,10 +59,6 @@ def strict() -> _StrictContext:
 def is_strict() -> bool:
     """Whether strict mode is active in the current context."""
     return _strict.get()
-
-
-def _kind(value: Any) -> str:
-    return type(value).__name__
 
 
 def check_records(records: Any, stage: str, mapping: bool) -> None:

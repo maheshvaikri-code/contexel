@@ -146,7 +146,8 @@ def test_every_configuration_error_carries_its_stage_name():
         assert raised(call).stage == stage_name
 
 
-@pytest.mark.parametrize("bad", [[None], [5], [{"a": "b"}], ["ok", None], None, 5])
+@pytest.mark.parametrize("bad", [[None], [5], [{"a": "b"}], ["ok", None], None, 5,
+                                 [True], ["x", False]])
 def test_rescore_query_elements_must_be_strings(bad):
     e = raised(lambda: rescore(RECS, bad, fields=["a"]))
     assert (e.code, e.stage, e.param) == ("config.invalid_value", "rescore", "query")

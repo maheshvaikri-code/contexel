@@ -20,6 +20,7 @@ from . import tokens
 from .errors import (
     ConfigError,
     InputShapeError,
+    _kind,
     check_bool,
     check_choice,
     check_fields,
@@ -29,7 +30,7 @@ from .errors import (
     invalid_value,
 )
 from .trace import traced
-from .validate import _kind, checked
+from .validate import checked
 
 Record = Dict[str, Any]
 Records = List[Record]
@@ -183,6 +184,9 @@ _INJECTION_PATTERNS = (
 # is compiled on its own so it cannot change how the built-ins are read
 _BUILTIN_MATCHER = re.compile("|".join(_INJECTION_PATTERNS), re.IGNORECASE)
 
+# exact types whose repr() equals their str(): no need to compute the repr
+_REPR_IS_STR = (int, float, bool, type(None))
+
 
 def _scan_text(value: Any) -> str:
     """The text a quarantine pattern is matched against for one field value.
@@ -220,9 +224,11 @@ def _scan_text(value: Any) -> str:
         else:
             text = str(v)
             parts.append(text)
-            rep = repr(v)
-            if rep != text:  # an object may show text in only one of the two
-                parts.append(rep)
+            # exact int/float/bool/None have repr == str: skip the second call
+            if type(v) not in _REPR_IS_STR:
+                rep = repr(v)
+                if rep != text:  # an object may show text in only one of the two
+                    parts.append(rep)
     return " ".join(parts)
 
 
