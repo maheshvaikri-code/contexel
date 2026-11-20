@@ -1,6 +1,6 @@
 # ADR-003 — Typed errors, config-vs-shape split, ambient strict mode
 
-**Date:** 2026-11-19 · **Status:** proposed (design approved by the human; written spec pending review)
+**Date:** 2026-11-19 · **Status:** accepted (implemented in Slice 2 of the foundation-hardening plan)
 **Deciders:** Chief Architect + human (public contract change, §5)
 
 ## Context

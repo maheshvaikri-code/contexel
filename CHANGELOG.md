@@ -6,6 +6,51 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
 
 ## [Unreleased]
 
+### Added — typed errors and strict mode (ADR-003, all three languages)
+- `ContexelError` with `ConfigError` (a wrong *call*) and `InputShapeError`
+  (wrong *data*), each carrying a stable `code` — `config.invalid_value`,
+  `config.empty`, `config.contradictory`, `config.invalid_pattern`,
+  `input.not_list`, `input.not_mapping`, `input.field_conflict` — the
+  cross-language contract (messages are not). Python: `ConfigError` is also a
+  `ValueError` and `InputShapeError` a `TypeError`; C#: both derive from
+  `ArgumentException`; so existing handlers keep working. The shared parity
+  vectors gain error cases that assert the code in all three languages.
+- Opt-in strict mode that validates the shape of stage input and names the
+  stage and item index: `with strict():` (Python), `strict(fn)` (TypeScript),
+  `Strict.Begin()` (C#), and `pipeline(..., strict=True)` /
+  `shaped(..., strict=True)`, which enter it inside their own run so it holds
+  on worker threads and also check that every stage (or the tool) returns a
+  list. Strict never changes a successful result and is not part of the
+  fingerprint.
+- The parity runners reject unknown option names inside a case's `args`.
+
+### Behavior changes
+Valid input with strict mode off keeps byte-identical output; these are the
+exceptions, all intentional:
+1. `allowlist` is type-strict for bool versus number: `True` no longer passes
+   `allowed=[1]` and `1` no longer passes `allowed=[True]` (`1` and `1.0` still
+   compare equal — TypeScript cannot tell them apart). The parity vector
+   `edges.allowlist_bool_int` changes from `[true, 1, 1.0]` to `[1, 1.0]`.
+2. `allowlist(allowed="github")` is one allowed value, not its characters.
+3. `quarantine` now finds a marker inside a nested dict or list value (a
+   newline in the value used to defeat the match); it scans dict keys and string
+   leaves joined by spaces, so a custom pattern written against the Python
+   `repr` punctuation of a nested value (quotes, braces) no longer matches it.
+   `fields=[]`, an invalid regex and, in flag mode, a record that already has the
+   `into` key now raise instead of silently doing nothing or overwriting.
+4. Misconfiguration raises a typed `ConfigError`: an unknown `rescore` `match`
+   (it silently ran substring matching; `match="stem"` is reserved and raises
+   until the stemmer ships), `fields=[]` for `rescore`, a `max_tokens` or
+   `min_records` that is negative or not an integer (`0` stays valid; `None` used
+   to raise a raw `TypeError` and is now a `ConfigError`, a `ValueError`), and
+   a wrong-typed `fields`, `key`, `by`, `desc`, `into`, `proximity`, `query`,
+   `allowed` or `field`. In Python `fields` must now be a string or a
+   list/tuple of strings (a set or generator is rejected).
+5. C# tests that asserted the exact exception type
+   (`Assert.Throws<ArgumentException>`) became `Assert.ThrowsAny<…>`, because
+   the typed errors derive from `ArgumentException`; a caller's
+   `catch (ArgumentException)` is unaffected.
+
 ### Added — test infrastructure (no library behavior change)
 - Seeded stdlib property tests for every stage (purity, determinism,
   idempotence, subsequence, count, input order, rank tie stability and

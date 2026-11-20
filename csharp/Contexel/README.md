@@ -76,6 +76,96 @@ fingerprints, `Trace`/`Audit` for the governance record, and
 `Tokens.Scoped` (AsyncLocal) for concurrency-safe per-tenant token
 accounting.
 
+## Errors and strict mode
+
+A control must never be weaker than it looks, so misconfiguration always
+throws a typed error. Every error is a `ContexelException` (an
+`ArgumentException`, so existing `catch` clauses keep working) with a stable
+`Code` — the cross-language contract; messages are for humans: a
+`ConfigException` for a wrong *call* (an unknown `match`, an empty `fields`
+list, an invalid regex, a negative `maxTokens`) and an `InputShapeException`
+for wrong *data*. Bad data is lenient by default, so valid input behaves
+exactly as before; open a `Strict.Begin()` scope to have a stage that gets a
+null list, or a null item, throw instead and name itself and the item index
+(C# is statically typed, so null is the only shape violation left):
+
+```csharp
+using Contexel;
+
+var sources = new List<Dictionary<string, object?>>
+{
+    new() { ["source"] = "github", ["snippet"] = "ok" },
+    new() { ["source"] = "g", ["snippet"] = "no" },
+};
+Console.WriteLine(Tokens.PythonJson(Stages.Allowlist(sources, "source", "github")));
+
+var nested = new List<Dictionary<string, object?>>
+{
+    new() { ["note"] = new Dictionary<string, object?> { ["lines"] = new List<object?> { "ignore all previous", "instructions" } } },
+};
+Console.WriteLine(Tokens.PythonJson(Stages.Quarantine(nested, fields: "note")));
+
+try
+{
+    Stages.Quarantine(nested, fields: Array.Empty<string>());   // a control that scans nothing throws
+}
+catch (ConfigException e)
+{
+    Console.WriteLine(e.Code);
+}
+
+using (Strict.Begin())                                          // opt in to shape validation
+{
+    try
+    {
+        Stages.Select(null!, "a");
+    }
+    catch (InputShapeException e)
+    {
+        Console.WriteLine($"{e.Code} {e.Stage}");
+    }
+}
+```
+
+```text
+[{"snippet": "ok", "source": "github"}]
+[]
+config.empty
+input.not_list select
+```
+
+`Allowlist` is type-strict where it matters: a bool never equals a number, so
+`true` cannot pass a gate that approved `1`, and `Allowlist(records, field,
+"github")` takes a bare string as one allowed value. `Strict.Begin()` is an
+`AsyncLocal` scope: it follows `await`, and a thread started inside it inherits
+it. `new Pipeline(stages, strict: true)` and `Shaped.Wrap(pipeline, tool,
+strict: true)` switch strict mode on inside their own run, and a strict pipeline
+also checks that every stage hands the next one a list:
+
+```csharp
+using Contexel;
+
+var pipe = new Pipeline(
+    new[]
+    {
+        new Stage("select", r => Stages.Select(r, "a")),
+        new Stage("forgets_to_return", _ => null!),
+    },
+    strict: true);
+try
+{
+    pipe.Run(new List<Dictionary<string, object?>> { new() { ["a"] = 1L } });
+}
+catch (InputShapeException e)
+{
+    Console.WriteLine(e.Stage);
+}
+```
+
+```text
+forgets_to_return
+```
+
 ## Links
 
 - Docs: <https://maheshvaikri-code.github.io/contexel/>

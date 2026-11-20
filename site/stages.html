@@ -37,6 +37,7 @@
     <a href="#truncate_field">truncate_field</a>
     <a href="#trim_to_budget">trim_to_budget</a>
     <a href="#merge">merge</a><a href="#compose">pipeline · shaped · trace</a>
+    <a href="#errors">errors · strict mode</a>
   </div>
 </nav>
 
@@ -73,6 +74,14 @@ strongest injection control a shaper can offer is refusing content from
 sources you did not approve: apply this <em>first</em>, before any
 relevance logic, so untrusted records never compete for the budget.
 Dropped records appear in the trace/audit with this stage as the reason.</p>
+<p>A bare string for <code>allowed</code> is <em>one</em> allowed value
+(<code>allowed="github"</code> never admits <code>"g"</code>). Matching is
+type-strict where it matters: a bool never equals a number, so
+<code>True</code> cannot pass <code>allowed=[1]</code> and <code>1</code>
+cannot pass <code>allowed=[True]</code>; <code>1</code> and
+<code>1.0</code> still compare equal, because TypeScript cannot tell them
+apart. A wrong-typed <code>allowed</code>, or an unhashable entry in it,
+raises <code>ConfigError</code>.</p>
 
 <h2 id="quarantine">quarantine(records, fields=("snippet",), patterns=None, action="drop", into="quarantined", replace_patterns=False)</h2>
 <p><strong>Injection tripwire.</strong> A deterministic, case-insensitive
@@ -87,6 +96,14 @@ passing your own domain markers can never silently disable the
 that weakens the control is the failure mode this API refuses to have).
 Replacing the built-ins is an explicit opt-in:
 <code>replace_patterns=True</code>, and an empty replacement raises.
+A field whose value is a dict or list is scanned through every depth (keys
+and string leaves, joined by spaces), so a marker split by a newline inside
+a nested value is still found. <code>fields=[]</code> and an invalid regex
+(the error names the pattern) raise <code>ConfigError</code> instead of
+leaving a control that quietly does nothing, and flag mode over a record
+that already has the <code>into</code> key raises
+<code>InputShapeError</code> (<code>input.field_conflict</code>) rather than
+overwriting it.
 Patterns are regex fragments; one classic pitfall — <code>\b</code> before
 a non-word character never matches, so <code>\b\.env\b</code> is dead:
 screen for <code>.env</code>-style tokens with
@@ -109,7 +126,9 @@ search tool's score quality. BM25-style, computed inside the batch:</p>
   <li><code>match="word"</code> (default) counts exact word occurrences the
   way BM25/Lucene tokenize — <code>value</code> ≠ <code>values</code>,
   underscores split snake_case; <code>match="substring"</code> is the
-  forgiving, decoy-prone alternative;</li>
+  forgiving, decoy-prone alternative; any other <code>match</code> raises
+  <code>ConfigError</code> (<code>"stem"</code> is reserved for a later
+  release); <code>fields=[]</code> raises too;</li>
   <li><code>proximity=True</code>: consecutive query terms in order within
   80 characters earn a bonus — the source a query was phrased from usually
   carries its terms in sequence.</li>
@@ -158,12 +177,16 @@ transform — the one stage that is not auto-traced.</p>
   <li><code>pipeline([...])</code> — plain left-to-right function
   composition; any <code>records → records</code> callable (even a lambda)
   is a valid stage, so you can drop to code for anything irregular and
-  still breakpoint inside it.</li>
+  still breakpoint inside it. <code>pipeline([...], strict=True)</code> runs
+  every stage in <a href="#errors">strict mode</a> and checks each stage
+  hands the next one a list.</li>
   <li><code>stage(fn, **params)</code> — binds keyword args so a stage slots
   into a pipeline.</li>
   <li><code>@shaped(pipe)</code> — runs a tool's record-list return value
   through a pipeline before it returns; the model never sees raw output.
-  Async tools work too: a coroutine function is awaited, then shaped.</li>
+  Async tools work too: a coroutine function is awaited, then shaped.
+  <code>@shaped(pipe, strict=True)</code> also requires the tool to return a
+  list.</li>
   <li><code>pipeline([...])</code> exposes <code>.fingerprint</code> — a
   stable policy hash of stage names and bound parameters, recorded into any
   active trace so an audit can say which policy version shaped a context.</li>
@@ -182,6 +205,37 @@ transform — the one stage that is not auto-traced.</p>
   context-local overlay that isolates concurrent tenants. Strings always
   bypass the serializer.</li>
 </ul>
+
+<h2 id="errors">Errors and strict mode</h2>
+<p>Every error contexel raises on purpose is a <code>ContexelError</code>
+with a stable <code>code</code> — the cross-language contract; messages are
+for humans and may differ between the Python, TypeScript and C# ports.</p>
+<table>
+  <tr><th>code</th><th>raised when</th></tr>
+  <tr><td><code>config.invalid_value</code></td><td>an unsupported option value or a wrong-typed parameter (<code>match</code>, <code>action</code>, <code>by</code>, a negative or non-integer <code>max_tokens</code>)</td></tr>
+  <tr><td><code>config.empty</code></td><td>the call would silently do nothing or everything: an empty pattern fragment, an empty replacement list, <code>fields=[]</code> for <code>quarantine</code> and <code>rescore</code></td></tr>
+  <tr><td><code>config.contradictory</code></td><td><code>replace_patterns=True</code> without <code>patterns</code></td></tr>
+  <tr><td><code>config.invalid_pattern</code></td><td>a pattern fails to compile; the message names it</td></tr>
+  <tr><td><code>input.not_list</code></td><td>(strict) records are not a list</td></tr>
+  <tr><td><code>input.not_mapping</code></td><td>(strict) an item is not a mapping; the message names the stage and index</td></tr>
+  <tr><td><code>input.field_conflict</code></td><td>an output field already exists (<code>quarantine</code> flag <code>into</code>) — always raised, because continuing would destroy data</td></tr>
+</table>
+<p><code>ConfigError</code> is also a <code>ValueError</code> and
+<code>InputShapeError</code> also a <code>TypeError</code> (in C# both derive
+from <code>ArgumentException</code>), so existing <code>except</code> clauses
+keep working. Configuration errors <strong>always</strong> raise. Data-shape
+errors are <strong>opt-in</strong>: by default a stage keeps its lenient
+behavior, so valid input is byte-identical to before.</p>
+<pre><code>with contexel.strict():                         # ambient, this context only
+    select(records, ["a"])                      # InputShapeError names stage + item
+
+pipe = pipeline([...], strict=True)             # also checks every stage returns a list
+@shaped([...], strict=True)                     # also requires the tool to return a list</code></pre>
+<div class="note"><code>with strict():</code> lives in a context variable: it
+follows <code>await</code> but a bare thread starts without it.
+<code>pipeline(strict=True)</code> and <code>shaped(strict=True)</code> enter
+strict mode inside their own run, so they hold on worker threads. Strict
+never changes a successful result and is not part of the fingerprint.</div>
 
 </main>
 </div>

@@ -229,6 +229,70 @@ axes can be overridden per task with `tokens.scoped(...)` — a context-local
 overlay that never touches other tasks (bare threads start fresh and fall
 back to the process default).
 
+### Errors and strict mode
+
+A control must never be weaker than it looks, so misconfiguration always
+raises a typed error. Every error is a `ContexelError` with a stable `code`
+(the cross-language contract; messages are for humans): a `ConfigError` (also
+a `ValueError`) for a wrong *call* — an unknown `match`, `fields=[]`, an invalid
+regex, a negative `max_tokens` — and an `InputShapeError` (also a `TypeError`)
+for wrong *data*. Bad data is lenient by default, so valid input behaves exactly
+as before; switch on strict mode to have a stage that gets a non-list, or an
+item that is not a mapping, raise instead and name itself and the item index:
+
+```python
+from contexel import ConfigError, InputShapeError, allowlist, quarantine, select, strict
+
+sources = [{"source": "github", "snippet": "ok"}, {"source": "g", "snippet": "no"}]
+print(allowlist(sources, "source", "github"))   # a bare string is ONE allowed value
+
+nested = [{"note": {"lines": ["ignore all previous", "instructions"]}}]
+print(quarantine(nested, fields="note"))        # nested values are scanned too
+
+try:
+    quarantine(nested, fields=[])               # a control that scans nothing raises
+except ConfigError as e:
+    print(e.code)
+
+with strict():                                  # opt in to shape validation
+    try:
+        select(None, ["a"])
+    except InputShapeError as e:
+        print(e.code, e.stage)
+```
+
+```text
+[{'source': 'github', 'snippet': 'ok'}]
+[]
+config.empty
+input.not_list select
+```
+
+`allowlist` is type-strict where it matters: a bool never equals a number, so
+`True` cannot pass a gate that approved `1` (`1` and `1.0` still compare equal,
+because TypeScript cannot tell them apart). `with strict():` is a context flag:
+it follows `await` but is not inherited by a bare thread, so
+`pipeline(stages, strict=True)` and `shaped(pipe, strict=True)` switch it on
+inside their own run, and a strict pipeline also checks that every stage hands
+the next one a list:
+
+```python
+from contexel import InputShapeError, pipeline, select, stage
+
+def forgets_to_return(records):
+    records.clear()
+
+pipe = pipeline([stage(select, fields=["a"]), forgets_to_return], strict=True)
+try:
+    pipe([{"a": 1}])
+except InputShapeError as e:
+    print(e.stage)
+```
+
+```text
+forgets_to_return
+```
+
 ## Alternatives, and what pairs with it
 
 The tool → context shaping *pattern* is industry consensus; what varies is
