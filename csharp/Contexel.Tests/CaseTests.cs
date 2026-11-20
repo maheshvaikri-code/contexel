@@ -83,13 +83,15 @@ public class CaseTests
     private static string Str(Rec a, string key, string dflt) =>
         a.TryGetValue(key, out var v) ? (string)v! : dflt;
 
-    // a JSON null input reaches the stage as null (not-a-list case); a null
-    // item stays a null item (not-a-mapping case)
+    // a JSON null input reaches the stage as null (not-a-list case). A
+    // Records list can only hold mappings or null, so any item that is not a
+    // JSON object (a string, a number, null...) is handed over as a null item:
+    // the one non-mapping item C# can represent (not-a-mapping case)
     private static Records Input(Rec c) => c["input"] switch
     {
         "$fixture" => Fixture,
         null => null!,
-        var v => AsRecords(v),
+        var v => AsList(v).Select(x => x as Rec).ToList()!,
     };
 
     // One adapter per record stage: JSON args -> the port's call shape.

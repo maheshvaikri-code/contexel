@@ -126,8 +126,15 @@ internal static class Check
 
     public static object Query(object? value, string stage, string param = "query")
     {
-        if (value is string || (value is IEnumerable && !IsUnordered(value)))
+        if (value is string) return value;
+        if (value is IEnumerable seq && !IsUnordered(seq))
+        {
+            // a stray number or null would be str()-ed into a term silently
+            foreach (var item in seq)
+                if (item is not string)
+                    throw InvalidValue(stage, param, $"{param} must contain only strings");
             return value;
+        }
         throw InvalidValue(stage, param,
             $"{param} must be a string or a list of strings, got {Kind(value)}");
     }

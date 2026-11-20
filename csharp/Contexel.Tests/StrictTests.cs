@@ -110,14 +110,58 @@ public class StrictTests
         Assert.False(Strict.IsActive);
     }
 
-    [Fact]
-    public void StrictCheckRunsBeforeTrace()
+    [Theory]
+    [MemberData(nameof(All))]
+    public void StrictCheckRunsBeforeTrace(string name)
     {
         using var _ = Strict.Begin();
         using var t = Trace.Begin();
         // not a raw NullReferenceException from Trace.Traced reading records.Count
-        var e = Assert.Throws<InputShapeException>(() => Stages.Select(null!, new[] { "a" }));
-        Assert.Equal("input.not_list", e.Code);
+        var e = Assert.Throws<InputShapeException>(() => Calls[name](null!));
+        Assert.Equal(("input.not_list", name), (e.Code, e.Stage));
+    }
+
+    [Fact]
+    public void PipelineStrictDoesNotLeakIntoTheCaller()
+    {
+        var pipe = new Pipeline(
+            [new Stage("select", r => Stages.Select(r, new[] { "a" }))], strict: true);
+        Assert.False(Strict.IsActive);
+        pipe.Run([A("x")]);
+        Assert.False(Strict.IsActive);   // after a successful strict run
+        Assert.Throws<InputShapeException>(() => pipe.Run(null!));
+        Assert.False(Strict.IsActive);   // after a throwing strict run
+        Assert.Throws<InputShapeException>(() => pipe.Run([A("x"), null!]));
+        Assert.False(Strict.IsActive);
+    }
+
+    [Fact]
+    public void ShapedStrictDoesNotLeakIntoTheCaller()
+    {
+        var pipe = new Pipeline(new Stage("select", r => Stages.Select(r, new[] { "a" })));
+        var ok = Shaped.Wrap(pipe, () => new Records { A("x") }, strict: true);
+        var bad = Shaped.Wrap(pipe, () => (Records)null!, strict: true);
+        Assert.False(Strict.IsActive);
+        ok();
+        Assert.False(Strict.IsActive);
+        Assert.Throws<InputShapeException>(() => bad());
+        Assert.False(Strict.IsActive);
+        // thrown from INSIDE the strict block (a null item), not before it
+        var badItem = Shaped.Wrap(pipe, () => new Records { A("x"), null! }, strict: true);
+        Assert.Throws<InputShapeException>(() => badItem());
+        Assert.False(Strict.IsActive);
+    }
+
+    [Fact]
+    public void AStaleSecondDisposeDoesNotSwitchStrictOffInsideALaterScope()
+    {
+        var s1 = Strict.Begin();
+        s1.Dispose();
+        var s2 = Strict.Begin();
+        s1.Dispose();                     // stale: must be a no-op
+        Assert.True(Strict.IsActive);
+        s2.Dispose();
+        Assert.False(Strict.IsActive);
     }
 
     [Fact]

@@ -136,6 +136,12 @@ public static class Stages
         @"</?\s*(?:system|assistant|instructions?)\s*>",
     ];
 
+    // the built-ins are trusted and compiled together, once; every caller
+    // pattern is compiled on its own so it cannot change how they are read
+    private static readonly Regex BuiltInMatcher =
+        new(string.Join("|", InjectionPatterns),
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
     /// <summary>The text a quarantine pattern is matched against for one
     /// field value (mirror of Python's <c>_scan_text</c>). A string is used
     /// as is. A container contributes its dict keys (code-point order) then
@@ -210,14 +216,14 @@ public static class Stages
             // custom patterns EXTEND the built-ins: domain markers must never
             // silently disable "ignore all previous instructions" detection;
             // replacePatterns is the explicit opt-out
-            List<string> patternList;
+            List<Regex> matchers;
             if (patterns is null)
             {
                 if (replacePatterns)
                     throw new ConfigException("config.contradictory",
                         "replacePatterns without patterns is contradictory; pass the replacement patterns",
                         "quarantine", "replacePatterns");
-                patternList = InjectionPatterns.ToList();
+                matchers = [BuiltInMatcher];
             }
             else
             {
@@ -226,11 +232,13 @@ public static class Stages
                     throw new ConfigException("config.empty",
                         "empty pattern fragments match everything; remove them",
                         "quarantine", "patterns");
+                var compiled = new List<Regex>();
                 foreach (var p in userPatterns)
                 {
-                    try // compile each alone so the error names the culprit
+                    try // each pattern alone: its options and groups stay its own
                     {
-                        _ = new Regex(p, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+                        compiled.Add(new Regex(p,
+                            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant));
                     }
                     catch (ArgumentException e)
                     {
@@ -239,33 +247,28 @@ public static class Stages
                             "quarantine", "patterns");
                     }
                 }
-                patternList = replacePatterns
-                    ? userPatterns
-                    : InjectionPatterns.Concat(userPatterns).ToList();
+                matchers = replacePatterns
+                    ? compiled
+                    : [BuiltInMatcher, .. compiled];
             }
-            if (patternList.Count == 0)
+            if (matchers.Count == 0)
                 throw new ConfigException("config.empty",
                     "replacePatterns with no patterns would disable the control entirely; pass at least one pattern",
                     "quarantine", "patterns");
-            Regex matcher;
-            try
-            {
-                matcher = new Regex(string.Join("|", patternList),
-                                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-            }
-            catch (ArgumentException e) // each fragment compiled alone, the union did not
-            {
-                throw new ConfigException("config.invalid_pattern",
-                    $"quarantine: the patterns cannot be combined: {e.Message}",
-                    "quarantine", "patterns");
-            }
             var output = new Records();
             int index = 0;
             foreach (var r in records)
             {
+                // fail closed: skipping an item this screen cannot read would
+                // KEEP it, so a non-mapping item (only null in C#) always
+                // raises, drop or flag mode, strict mode or not
+                if (r is null)
+                    throw new InputShapeException("input.not_mapping",
+                        $"quarantine: item {index} must be a mapping, got null",
+                        "quarantine");
                 string text = string.Join(" ", fieldNames.Select(f =>
                     r.TryGetValue(f, out var v) ? ScanText(v) : ""));
-                bool hit = matcher.IsMatch(text);
+                bool hit = matchers.Any(m => m.IsMatch(text));
                 if (action == "flag")
                 {
                     // continuing would silently overwrite the caller's data

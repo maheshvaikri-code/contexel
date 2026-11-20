@@ -75,6 +75,28 @@ public class ConfigTests
     }
 
     [Fact]
+    public void RescoreQueryElementsMustBeStrings()
+    {
+        // a sequence query is accepted only when EVERY element is a non-null
+        // string: str() of a stray element used to be scored silently
+        object?[][] bad =
+        [
+            [1L], [null], ["x", 2L], ["x", null], [new Rec()], [new List<object?> { "x" }],
+        ];
+        foreach (var query in bad)
+        {
+            var e = Raised(() => Stages.Rescore(Recs(), query, A));
+            Assert.Equal(("config.invalid_value", "query"), (e.Code, e.Param));
+            Assert.Contains("query must contain only strings", e.Message);
+        }
+        Assert.NotEmpty(Stages.Rescore(Recs(), new[] { "x", "y" }, A));
+        Assert.NotEmpty(Stages.Rescore(Recs(), new List<object?> { "x", "y" }, A));
+        Assert.NotEmpty(Stages.Rescore(Recs(), "x y", A));
+        // an empty sequence stays valid: it scores everything 0.0
+        Assert.All(Stages.Rescore(Recs(), Array.Empty<string>(), A), r => Assert.Equal(0.0, r["score"]));
+    }
+
+    [Fact]
     public void ConfigurationErrorsThrowEvenWithNoRecordsAndNoStrictMode()
     {
         Assert.Equal("config.invalid_value",
