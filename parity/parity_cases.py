@@ -313,6 +313,8 @@ def build_cases(fixture: List[dict]) -> List[dict]:
         assert case["id"] not in ids, f"duplicate case id {case['id']}"
         ids.add(case["id"])
         assert set(case) <= ALLOWED_KEYS, case
+        assert not ("expect" in case and "expect_error" in case), (
+            f"{case['id']}: a case carries both expect and expect_error")
         got = outcome(case, fixture)
         if "expect_error" in case:
             assert got == {"expect_error": case["expect_error"]}, (

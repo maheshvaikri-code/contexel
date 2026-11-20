@@ -171,7 +171,7 @@ def test_shaped_strict_rejects_a_none_return():
 def test_shaped_strict_holds_for_async_tools_and_on_a_worker_thread():
     @shaped([stage(select, fields=["a"])], strict=True)
     async def tool():
-        return "not a list"
+        return [{"a": 1}, 5]
 
     seen = {}
 
@@ -185,6 +185,7 @@ def test_shaped_strict_holds_for_async_tools_and_on_a_worker_thread():
     t.start()
     t.join()
     assert isinstance(seen["error"], InputShapeError)
+    assert seen["error"].code == "input.not_mapping"
 
 
 def test_shaped_with_a_prebuilt_pipeline_runs_it_in_strict_mode():

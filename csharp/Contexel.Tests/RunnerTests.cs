@@ -167,6 +167,18 @@ public class RunnerTests
     // ------------------------- strict flag and null input -------------------------
 
     [Fact]
+    public void ANonBooleanStrictIsRejectedNotCoerced()
+    {
+        foreach (var notABool in new[] { "true", "false" })
+        {
+            var c = Case("select", new Rec { ["fields"] = Items("a") }, Items(new Rec { ["a"] = 1L }),
+                         ("expect", Items(new Rec { ["a"] = 1L })), ("strict", notABool));
+            var e = Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => CaseTests.AssertCase(c));
+            Assert.Contains("strict must be a boolean", e.Message);
+        }
+    }
+
+    [Fact]
     public void AStrictCaseRunsInStrictMode()
     {
         var c = Case("select", new Rec { ["fields"] = Items("a") }, null,

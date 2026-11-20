@@ -156,6 +156,9 @@ export function runCase(c: Case, fixture: Records): unknown {
   for (const key of Object.keys(c)) {
     assert.ok(ALLOWED_KEYS.has(key), `case ${c.id} has unsupported key ${key}`);
   }
+  if (Object.hasOwn(c, "strict")) {
+    assert.strictEqual(typeof c.strict, "boolean", `case ${c.id}: strict must be a boolean`);
+  }
   validateSpec(c, `case ${c.id}`);
   return c.strict ? strict(() => execute(c, fixture)) : execute(c, fixture);
 }

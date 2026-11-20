@@ -56,6 +56,19 @@ def test_configuration_errors_raise_even_with_no_records_and_no_strict_mode():
     assert rescore(RECS, "", fields=["a"]) == [{**r, "score": 0.0} for r in RECS]
 
 
+@pytest.mark.parametrize("stage_name, call", [
+    ("select", lambda: select([], 5)),
+    ("dedupe", lambda: dedupe([], key=5)),
+    ("rank", lambda: rank([], 5)),
+    ("rescore", lambda: rescore([], None)),
+    ("truncate_field", lambda: truncate_field([], "a", None)),
+    ("trim_to_budget", lambda: trim_to_budget([], None)),
+], ids=["select", "dedupe", "rank", "rescore", "truncate_field", "trim_to_budget"])
+def test_every_configuration_stage_validates_even_on_an_empty_record_list(stage_name, call):
+    e = raised(call)
+    assert (e.code, e.stage) == ("config.invalid_value", stage_name)
+
+
 @pytest.mark.parametrize("bad", [None, -1, -100, 1.5, 10.0, "10", True, False, [10]])
 def test_max_tokens_must_be_a_non_negative_integer(bad):
     for call in (lambda: trim_to_budget(RECS, bad),

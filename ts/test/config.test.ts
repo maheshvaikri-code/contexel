@@ -206,6 +206,13 @@ for (const [options, param] of QUARANTINE_BAD) {
   });
 }
 
+test("quarantine action: null raises like Python's action=None; undefined keeps the default", () => {
+  const e = raised(() => quarantine(RECS, { fields: ["a"], action: null as never }));
+  assert.deepStrictEqual([e.code, e.stage, e.param], ["config.invalid_value", "quarantine", "action"]);
+  assert.deepStrictEqual(quarantine(RECS, { fields: ["a"] }), RECS);
+  assert.deepStrictEqual(quarantine(RECS, { fields: ["a"], action: undefined }), RECS);
+});
+
 test("every configuration error carries its stage name", () => {
   const cases: Record<string, () => unknown> = {
     select: () => select(RECS, { fields: 5 as never }),

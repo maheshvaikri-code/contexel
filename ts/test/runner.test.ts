@@ -83,6 +83,11 @@ test("a case needs exactly one of expect and expect_error", () => {
   );
 });
 
+test("an expect case whose output differs from the library's fails", () => {
+  // the comparison itself is under test: select returns [{ a: 1 }], not 999
+  assert.throws(() => checkCase(base({ expect: [{ a: 999 }] }), FIXTURE), assert.AssertionError);
+});
+
 test("an expect_error case passes on the right code", () => {
   checkCase(
     base({ input: null, strict: true, expect_error: { code: "input.not_list" } }),
@@ -111,6 +116,13 @@ test("an expect_error case fails on a non-contexel exception", () => {
     () => checkCase(base({ input: null, expect_error: { code: "input.not_list" } }), FIXTURE),
     /threw a non-contexel error/
   );
+});
+
+test("a non-boolean strict is rejected, not coerced", () => {
+  for (const bad of ["true", "false", 1, null]) {
+    const c = base({ strict: bad as never, expect: [{ a: 1 }] });
+    assert.throws(() => runCase(c, FIXTURE), /case t\/case: strict must be a boolean/);
+  }
 });
 
 test("strict: true runs the case in strict mode (and its absence does not)", () => {

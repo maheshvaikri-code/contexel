@@ -209,7 +209,7 @@ export const quarantine = checked(
         replacePatterns?: boolean;
       } = {}
     ): Records => {
-      const action = params.action ?? "drop";
+      const action = params.action === undefined ? "drop" : params.action;
       if (action !== "drop" && action !== "flag") {
         throw new ConfigError(
           "config.invalid_value",

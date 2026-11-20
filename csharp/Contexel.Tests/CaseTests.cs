@@ -176,6 +176,8 @@ public class CaseTests
         var id = (string)c["id"]!;
         foreach (var key in c.Keys)
             Assert.True(AllowedKeys.Contains(key), $"case {id} has unsupported key {key}");
+        if (c.TryGetValue("strict", out var strictValue))
+            Assert.True(strictValue is bool, $"case {id}: strict must be a boolean");
         bool hasExpect = c.ContainsKey("expect"), hasError = c.ContainsKey("expect_error");
         Assert.True(hasExpect != hasError, $"case {id} needs exactly one of expect / expect_error");
         if (hasExpect)

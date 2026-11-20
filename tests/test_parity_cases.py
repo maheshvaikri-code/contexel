@@ -57,6 +57,15 @@ def test_build_cases_checks_that_the_canon_really_raises_the_declared_code(
         parity_cases.build_cases(VECTORS["fixture"])
 
 
+def test_build_cases_rejects_a_case_declaring_both_expect_and_expect_error(monkeypatch):
+    case = {"id": "bad/both", "stage": "select", "args": {"fields": ["a"]},
+            "input": None, "strict": True, "expect": [{"a": 1}],
+            "expect_error": {"code": "input.not_list"}}
+    monkeypatch.setattr(parity_cases, "_raw_cases", lambda: [case])
+    with pytest.raises(AssertionError, match=r"bad/both.*both expect and expect_error"):
+        parity_cases.build_cases(VECTORS["fixture"])
+
+
 def test_unicode_normalization_case_has_two_distinct_keys():
     case = next(c for c in VECTORS["cases"] if c["id"] == "dedupe/nfc_and_nfd_stay_distinct")
     keys = {r["k"] for r in case["input"]}
