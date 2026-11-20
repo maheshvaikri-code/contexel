@@ -50,3 +50,27 @@ def test_envelope_guard_rejects_values_ports_cannot_represent(bad):
 @pytest.mark.parametrize("ok", [0.5, 3, -7, "s", None, True, [1, 2.5], {"a": {"b": [0.25]}}])
 def test_envelope_guard_accepts_representable_values(ok):
     parity_cases.assert_in_envelope(ok, "t")
+
+
+# An integer-valued float reaching each part of a case: only the input
+# (select drops it), only the args (an empty input), only the expectation
+# (rescore with no query terms scores 0.0).
+@pytest.mark.parametrize("part, case", [
+    ("input", {"id": "bad/in", "stage": "select", "args": {"fields": ["b"]},
+               "input": [{"a": 2.0, "b": 1}]}),
+    ("args", {"id": "bad/in", "stage": "trim_to_budget", "args": {"max_tokens": 10.0},
+              "input": []}),
+    ("expect", {"id": "bad/in", "stage": "rescore", "args": {"query": "", "fields": ["a"]},
+                "input": [{"a": "x"}]}),
+])
+def test_build_cases_runs_the_envelope_guard_on_every_part(monkeypatch, part, case):
+    monkeypatch.setattr(parity_cases, "_raw_cases", lambda: [case])
+    with pytest.raises(AssertionError, match=rf"bad/in\.{part}.*integer-valued float"):
+        parity_cases.build_cases(VECTORS["fixture"])
+
+
+def test_committed_cases_equal_what_the_case_table_builds_today():
+    built = parity_cases.build_cases(VECTORS["fixture"])
+    assert json.dumps(built, sort_keys=True, ensure_ascii=False) == json.dumps(
+        VECTORS["cases"], sort_keys=True, ensure_ascii=False), \
+        "parity_cases.py changed: run PYTHONPATH=. python parity/generate_vectors.py"
