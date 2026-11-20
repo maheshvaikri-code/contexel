@@ -26,9 +26,35 @@ def test_case_count_matches_meta_and_ids_are_unique():
 @pytest.mark.parametrize("case", VECTORS["cases"], ids=lambda c: c["id"])
 def test_committed_case_matches_canon(case):
     assert set(case) <= parity_cases.ALLOWED_KEYS
-    actual = parity_cases.run_case(case, VECTORS["fixture"])
+    actual = parity_cases.outcome(case, VECTORS["fixture"])
+    committed = {k: case[k] for k in ("expect", "expect_error") if k in case}
+    assert len(committed) == 1, "a case has exactly one of expect / expect_error"
     assert json.dumps(actual, sort_keys=True, ensure_ascii=False) == json.dumps(
-        case["expect"], sort_keys=True, ensure_ascii=False)
+        committed, sort_keys=True, ensure_ascii=False)
+
+
+def test_error_cases_use_only_documented_codes_and_strict_is_true_or_absent():
+    from contexel import errors
+    error_cases = [c for c in VECTORS["cases"] if "expect_error" in c]
+    assert error_cases, "no error case: expect_error would be untested"
+    assert {c["expect_error"]["code"] for c in error_cases} == set(errors.CODES)
+    for c in VECTORS["cases"]:
+        assert c.get("strict", True) is True
+
+
+@pytest.mark.parametrize("case, fragment", [
+    ({"id": "bad/code", "stage": "select", "args": {"fields": ["a"]}, "input": None,
+      "expect_error": {"code": "config.empty"}, "strict": True}, "the canon did"),
+    ({"id": "bad/ok", "stage": "select", "args": {"fields": ["a"]}, "input": [{"a": 1}],
+      "expect_error": {"code": "input.not_list"}}, "the canon did"),
+    ({"id": "bad/undeclared", "stage": "select", "args": {"fields": ["a"]},
+      "input": None, "strict": True}, "unexpected error"),
+])
+def test_build_cases_checks_that_the_canon_really_raises_the_declared_code(
+        monkeypatch, case, fragment):
+    monkeypatch.setattr(parity_cases, "_raw_cases", lambda: [case])
+    with pytest.raises(AssertionError, match=fragment):
+        parity_cases.build_cases(VECTORS["fixture"])
 
 
 def test_unicode_normalization_case_has_two_distinct_keys():
