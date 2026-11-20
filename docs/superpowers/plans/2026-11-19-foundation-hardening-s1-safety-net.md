@@ -27,7 +27,7 @@
 Failure modes the spec implies but a straightforward implementation would not test; each is pinned by a test in the owning task:
 
 1. **A runner that silently skips cases** (a typo in a key, a short loop) and reports green → `_meta.case_count` must equal the array length, ids unique, unknown keys rejected — Task 5 (TypeScript) and Task 6 (C#), proven by a tamper negative control.
-2. **A hash-seed sweep that is vacuous** (the flag drops the env var, or the data has no hash-order hazard) → Task 2 canaries: the child must really see the seed, and a known hash-dependent child must produce more than one output.
+2. **A hash-seed sweep that is vacuous** (the flag drops the env var, or the data has no hash-order hazard) → Task 2 guards: the seed must demonstrably take effect (seed 0 gives `hash_randomization == 0`, the same seed gives the same `hash()` twice, a different seed changes it, and with the variable removed the flag reads 1 as a control), and a known hash-dependent child must be stable per seed yet produce more than one output across seeds. Negative control: forcing the child through `python -I` makes both guards fail.
 3. **Property tests that cannot fail** → Task 1 canaries: a mutating stage, a non-deterministic stage and a non-idempotent stage must each be caught by the checkers.
 4. **Expected data TypeScript cannot represent** (an integer-valued float such as `2.0`, NaN, a huge integer) silently passing in one language and failing in another → Task 4 envelope guard, with accept/reject tests.
 5. **Regeneration drift** (CRLF on Windows, a different key order, non-UTF-8 read) making `git diff --exit-code parity/vectors.json` flaky in CI → Task 4 asserts byte-stable, LF-only regeneration and that legacy sections are unchanged.
@@ -418,14 +418,24 @@ print(hashlib.sha256(payload.encode("utf-8")).hexdigest())
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repo root when placed in tests/
 
 
-def run_with_seed(seed: str) -> str:
-    env = dict(os.environ, PYTHONHASHSEED=seed)
+def _probe(code: str, seed, flags=()) -> str:
+    """Run ``code`` in a child with PYTHONHASHSEED=seed (variable removed when
+    seed is None) and return its stripped stdout."""
+    env = dict(os.environ)
+    if seed is None:
+        env.pop("PYTHONHASHSEED", None)
+    else:
+        env["PYTHONHASHSEED"] = seed
     proc = subprocess.run(
-        [sys.executable, "-c", CHILD.format(root=ROOT)],
+        [sys.executable, *flags, "-c", code],
         env=env, capture_output=True, text=True, timeout=120, check=False,
     )
     assert proc.returncode == 0, proc.stderr
     return proc.stdout.strip()
+
+
+def run_with_seed(seed: str) -> str:
+    return _probe(CHILD.format(root=ROOT), seed)
 
 
 def test_same_output_across_hash_seeds():
@@ -435,15 +445,16 @@ def test_same_output_across_hash_seeds():
 
 
 def test_child_really_sees_the_requested_hash_seed():
-    # Guards against the vacuous-test failure mode (a flag that drops the env).
-    code = "import sys; print(sys.flags.hash_randomization, hash('contexel'))"
-    outs = set()
-    for seed in ("0", "1"):
-        env = dict(os.environ, PYTHONHASHSEED=seed)
-        r = subprocess.run([sys.executable, "-c", code], env=env,
-                           capture_output=True, text=True, check=True)
-        outs.add(r.stdout.strip())
-    assert len(outs) == 2, "different PYTHONHASHSEED values must change hash()"
+    # Guards against the vacuous-test failure mode (a flag that drops the env):
+    # assert the seed TOOK EFFECT, not merely that outputs differ.
+    flag = "import sys; print(sys.flags.hash_randomization)"
+    h = "print(hash('contexel'))"
+    assert _probe(flag, "0") == "0", "PYTHONHASHSEED=0 must disable randomization"
+    first, again = _probe(h, "1"), _probe(h, "1")
+    assert first == again, "the same PYTHONHASHSEED must give the same hash()"
+    assert _probe(h, "0") != first, "different PYTHONHASHSEED values must change hash()"
+    # control: with the variable absent, randomization is on, so the flag discriminates
+    assert _probe(flag, None) == "1"
 
 
 def test_canary_a_hash_dependent_child_is_detected():
@@ -451,10 +462,9 @@ def test_canary_a_hash_dependent_child_is_detected():
     code = "print(','.join({'alpha', 'beta', 'gamma', 'delta', 'epsilon'}))"
     outs = set()
     for seed in ("0", "1", "2", "4242"):
-        env = dict(os.environ, PYTHONHASHSEED=seed)
-        r = subprocess.run([sys.executable, "-c", code], env=env,
-                           capture_output=True, text=True, check=True)
-        outs.add(r.stdout.strip())
+        first, again = _probe(code, seed), _probe(code, seed)
+        assert first == again, f"seed {seed} was not honoured (set order varied between runs)"
+        outs.add(first)
     assert len(outs) > 1, "set order never varied; the sweep could not detect a hazard"
 ```
 
