@@ -311,8 +311,17 @@ differ):
 
 - **Regex dialect.** `quarantine` compiles patterns with each language's own
   engine, so whether a pattern is invalid (`config.invalid_pattern`) is per port:
-  `(?P<a>x)` is valid in Python and invalid in TypeScript and C#; `(?i)x` is
-  invalid in Python (3.11+) and TypeScript and valid in C#.
+  `(?P<a>x)` is valid in Python and invalid in TypeScript and C#. A global
+  inline flag such as `(?i)x` is a known limitation of custom patterns, which
+  are joined into one regex with the built-in markers: on Python 3.11+ it raises
+  `config.invalid_pattern` unless it is in the first fragment of the combined
+  pattern (so, in the default extend mode, always); on Python before 3.11 it is
+  accepted with a `DeprecationWarning` and applies to the whole combined
+  pattern, built-in markers included (`patterns=["(?a)zzz"]` stops the built-in
+  "ignore all previous instructions" matching when its words are separated by
+  non-breaking spaces); TypeScript always rejects it and C# accepts the flags
+  .NET supports (such as `(?i)`). Avoid global inline flags in custom patterns;
+  a follow-up is planned.
 - **Integral floats.** `max_tokens=1000.0` is rejected in Python and accepted in
   TypeScript, which has one number type.
 - **`null` as a default.** TypeScript raises for `fields: null`, as Python does

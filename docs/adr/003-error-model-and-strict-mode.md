@@ -39,11 +39,15 @@ result and is not part of the fingerprint.
   `ThrowsAny`; a few raw `TypeError`s become `ConfigError` (a `ValueError`), so
   an `except TypeError` no longer catches those configuration mistakes, and a bad
   `quarantine` regex raises `ConfigError` instead of `re.error` (in C#, a handler
-  for `RegexParseException` no longer sees it).
+  for `RegexParseException` no longer sees it; in TypeScript, a bad regex used to
+  throw a `SyntaxError` and a wrong-typed or `null` argument a raw `TypeError`,
+  and `ConfigError` extends only `Error`, so `instanceof SyntaxError` and
+  `instanceof TypeError` no longer match: catch `ContexelError` or
+  `ConfigError`).
 - Known per-language difference: C# `fields: null` (`quarantine`, `rescore`)
   still means "use the default fields", because C# cannot tell an omitted
   optional argument from an explicit `null` without changing the public API to
-  overloads, which the maintainers chose not to do; Python and TypeScript raise
-  `config.invalid_value`.
+  overloads, and it is left as is to avoid changing the public API; Python and
+  TypeScript raise `config.invalid_value`.
 - Invalidation triggers: a language where subclassing the platform's error type
   is impossible; evidence that users want strict-by-default.

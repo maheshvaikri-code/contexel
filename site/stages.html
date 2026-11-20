@@ -240,7 +240,10 @@ mode is on. Strict mode covers the eight record stages and the pipeline or
     select(records, ["a"])                      # InputShapeError names stage + item
 
 pipe = pipeline([...], strict=True)             # also checks every stage returns a list
-@shaped([...], strict=True)                     # also requires the tool to return a list</code></pre>
+
+@shaped([...], strict=True)                     # also requires the tool to return a list
+def search(query):
+    return repo.search(query)</code></pre>
 <div class="note"><code>with strict():</code> lives in a context variable: it
 follows <code>await</code> but a bare thread starts without it.
 <code>pipeline(strict=True)</code> and <code>shaped(strict=True)</code> enter

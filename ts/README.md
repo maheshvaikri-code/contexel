@@ -164,18 +164,31 @@ not). `fields: []` throws `config.empty` for `quarantine` and `rescore` only;
 
 Only `undefined` means "use the default" for an option (`fields` of
 `quarantine` and `rescore`, `into`, `proximity`, `match`, `desc`, `suffix`,
-`minRecords`, `action`); `null` throws `config.invalid_value`. The exceptions are
+`minRecords`, `action`); `null` throws `config.invalid_value`, and so does
+`replacePatterns: null` (it used to be treated as false). The exceptions are
 `key` (`dedupe`) and `tokenizer`, where `null` still means "default", and
 `patterns: null`, which means "no extra patterns". Before this release `null` was
 treated like `undefined` for the options above.
+
+If you catch errors by class: a bad `quarantine` regex used to throw a
+`SyntaxError` (from `new RegExp`) and a wrong-typed or `null` argument a raw
+`TypeError`. Both are now a `ConfigError`, which extends only `Error`, so
+`e instanceof SyntaxError` and `e instanceof TypeError` no longer match; catch
+`ContexelError` or `ConfigError` instead.
 
 Differences between the languages (the codes are the contract, the rest can
 differ):
 
 - **Regex dialect.** `quarantine` compiles patterns with each language's own
   engine, so whether a pattern is invalid (`config.invalid_pattern`) is per port:
-  `(?P<a>x)` is valid in Python and invalid here and in C#; `(?i)x` is invalid
-  here and in Python (3.11+) and valid in C#.
+  `(?P<a>x)` is valid in Python and invalid here and in C#. A global inline
+  flag such as `(?i)x` is a known limitation of custom patterns, which are
+  joined into one regex with the built-in markers: it is always rejected here
+  (`config.invalid_pattern`); on Python 3.11+ it raises unless it is in the first
+  fragment of the combined pattern (so, in the default extend mode, always); on
+  Python before 3.11 it is accepted and applies to the whole combined pattern,
+  built-in markers included; C# accepts the flags .NET supports (such as
+  `(?i)`). Avoid global inline flags in custom patterns; a follow-up is planned.
 - **Integral floats.** `maxTokens: 1000.0` is accepted here, because JavaScript
   has one number type; Python rejects `1000.0`.
 - **`null` as a default.** `fields: null` throws here (as `fields=None` does in

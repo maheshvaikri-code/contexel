@@ -18,9 +18,14 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   `TypeError` (`select(r, None)`, `dedupe(r, key=5)`, `max_tokens=None`, ...)
   now raises a `ConfigError`, which is a `ValueError`, so an `except TypeError`
   no longer catches it (catch `ValueError` or `ContexelError`); a bad
-  `quarantine` regex raises `ConfigError`, not `re.error`; and in C#
+  `quarantine` regex raises `ConfigError`, not `re.error`; in C#
   `catch (ArgumentException)` still works but a handler for the framework's
-  `RegexParseException` no longer sees a bad `quarantine` pattern. The shared
+  `RegexParseException` no longer sees a bad `quarantine` pattern; and in
+  TypeScript a bad `quarantine` regex used to throw a `SyntaxError` and a
+  wrong-typed or `null` argument a raw `TypeError`, and both are now a
+  `ConfigError`, which extends only `Error`, so `e instanceof SyntaxError` and
+  `e instanceof TypeError` no longer match (catch `ContexelError` or
+  `ConfigError`). The shared
   parity vectors gain error cases that assert the code in all three languages.
 - Opt-in strict mode that validates the shape of stage input and names the
   stage and item index: `with strict():` (Python), `strict(fn)` (TypeScript),
@@ -46,7 +51,8 @@ exceptions, all intentional:
    text), so a custom pattern written against the Python `repr` punctuation of
    a nested value (quotes, braces) no longer matches it, and a phrase can now
    match across adjacent items: `[{"snippet": ["system", "prompt"]}]` and
-   `["ignore", "all previous instructions"]` are now dropped (they were kept).
+   `[{"snippet": ["ignore", "all previous instructions"]}]` are now dropped
+   (they were kept).
    `fields=[]` now raises instead of silently doing nothing, and an invalid
    regex raises a `ConfigError` (see item 4 and the handlers note above). In
    flag mode, a record that already has the `into` key raises
@@ -73,13 +79,37 @@ exceptions, all intentional:
    omitted option and `null` alike (`??`); now only `undefined` selects the
    default, for `fields` (`quarantine`, `rescore`), `into`, `proximity`,
    `match`, `desc`, `suffix`, `minRecords` and `action`, and `null` raises
-   `config.invalid_value`. `key: null` (`dedupe`) and `tokenizer: null` still
-   mean "default", as `None` does in Python, and `patterns: null` now means "no
-   extra patterns" (it used to crash with a raw `TypeError`). C# is different
-   on purpose: `fields: null` (`quarantine`, `rescore`) still means "use the
-   default `snippet` field", because C# cannot tell an omitted optional argument
-   from an explicit `null` without changing the public API to overloads, which
-   the maintainers chose not to do.
+   `config.invalid_value`; so does `replacePatterns: null` (it used to be
+   falsy and was treated as false). `key: null` (`dedupe`) and
+   `tokenizer: null` still mean "default", as `None` does in Python, and
+   `patterns: null` now means "no extra patterns" (it used to crash with a raw
+   `TypeError`). C# is different on purpose: `fields: null` (`quarantine`,
+   `rescore`) still means "use the default `snippet` field": C# cannot tell an
+   omitted optional argument from an explicit `null` without changing the
+   public API to overloads, and it is left as is to avoid changing the public
+   API.
+
+### Compatibility
+C#: the `Shaped.Wrap` overloads gained an optional `strict` parameter. That is
+source-compatible, but a caller compiled against the previous release must be
+recompiled (the method signatures changed).
+
+### Known limitation (not new in this slice)
+`quarantine` joins custom `patterns` with the built-in markers into one regex,
+so a global inline flag in a custom pattern (`(?i)`, `(?a)`, ...) is not safe:
+- Python 3.11+: it raises `config.invalid_pattern` unless it is in the first
+  fragment of the combined pattern. The default (extend) mode puts the built-in
+  markers first, so it raises there; with `replace_patterns=True` and the flag
+  in the first fragment it is accepted.
+- Python before 3.11 (the package supports 3.9+): it is accepted with a
+  `DeprecationWarning` and applies to the WHOLE combined pattern, built-in
+  markers included. For example `patterns=["(?a)zzz"]` makes the built-in
+  "ignore all previous instructions" stop matching when the words are separated
+  by non-breaking spaces.
+- TypeScript always rejects such a flag; C# accepts the flags .NET supports
+  (for example `(?i)`).
+
+Avoid global inline flags in custom patterns; a follow-up is planned.
 
 ### Tests
 C# tests that asserted the exact exception type

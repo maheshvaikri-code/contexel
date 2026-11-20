@@ -178,6 +178,10 @@ does not check its sources. An empty `fields` list throws `config.empty` for
 `Quarantine` and `Rescore` only; `Select(records, Array.Empty<string>())` still
 returns an empty record for each input record.
 
+The `Shaped.Wrap` overloads gained an optional `strict` parameter. That is
+source-compatible, but a caller compiled against the previous release must be
+recompiled (the method signatures changed).
+
 `fields: null` is the default, not an error, for `Quarantine` and `Rescore` (it
 means the `snippet` field): C# cannot tell an omitted optional argument from an
 explicit `null` without changing the public API to overloads, so the two are
@@ -188,9 +192,15 @@ differ):
 
 - **Regex dialect.** `Quarantine` compiles patterns with .NET's regex engine, so
   whether a pattern is invalid (`config.invalid_pattern`) is per port: `(?P<a>x)`
-  is valid in Python and invalid here and in TypeScript; `(?i)x` is valid here
-  and invalid in Python (3.11+) and TypeScript. A bad pattern now surfaces as a
-  `ConfigException` (an `ArgumentException`), not the framework's
+  is valid in Python and invalid here and in TypeScript. A global inline flag
+  such as `(?i)x` is a known limitation of custom patterns, which are joined
+  into one regex with the built-in markers: .NET accepts the flags it supports
+  (such as `(?i)`), TypeScript always rejects them, and on Python 3.11+ they
+  raise unless they are in the first fragment of the combined pattern (so, in
+  the default extend mode, always); on Python before 3.11 they are accepted and
+  apply to the whole combined pattern, built-in markers included. Avoid global
+  inline flags in custom patterns; a follow-up is planned. A bad pattern now
+  surfaces as a `ConfigException` (an `ArgumentException`), not the framework's
   `RegexParseException`.
 - **Integral floats.** Token budgets are `int`, so there is no `1000.0` to
   accept; Python rejects it and TypeScript accepts it.
