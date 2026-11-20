@@ -15,8 +15,11 @@ jobs:
         # Windows and macOS (both packages are pure — OS coverage is about
         # behavior, not builds; the release workflow gates on all three)
         os: [ubuntu-latest]
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
         include:
+          # 3.9 is pinned to ubuntu-24.04: ubuntu-latest is now 26.04, for
+          # which actions/setup-python publishes no 3.9 build
+          - { os: ubuntu-24.04, python-version: "3.9" }
           - { os: windows-latest, python-version: "3.9" }
           - { os: windows-latest, python-version: "3.13" }
           - { os: macos-latest, python-version: "3.9" }
