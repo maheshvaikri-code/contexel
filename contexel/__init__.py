@@ -5,6 +5,7 @@ agents: reshape, dedupe, rank, and trim tool output to fit a token budget before
 it ever reaches the model's context window.
 """
 from . import tokens
+from .errors import ConfigError, ContexelError, InputShapeError
 from .pipeline import pipeline, stage
 from .shaped import shaped
 from .stages import (
@@ -19,10 +20,15 @@ from .stages import (
     truncate_field,
 )
 from .trace import Trace, trace
+from .validate import strict
 
 __version__ = "0.1.17"
 
 __all__ = [
+    "ContexelError",
+    "ConfigError",
+    "InputShapeError",
+    "strict",
     "select",
     "dedupe",
     "allowlist",
