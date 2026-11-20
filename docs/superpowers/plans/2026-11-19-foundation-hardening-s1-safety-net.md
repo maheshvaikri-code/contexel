@@ -1278,7 +1278,7 @@ git add CHANGELOG.md docs/adr/007-vector-format-v2-and-differential-fuzz.md
 git commit -m "docs: changelog and ADR-007 status for the safety-net slice"
 git log --oneline main..HEAD
 ```
-Expected: seven commits (one each for Tasks 1–6 and this one), none pushed.
+Expected: the log lists one commit per task plus the review-fix commits, none pushed.
 
 - [ ] **Step 6: Hand off to review (do not merge)**
 
@@ -1293,4 +1293,4 @@ Dispatch the `code-reviewer` agent (fresh context; G4) on `git diff main...HEAD`
 3. **Type consistency.** `build_cases`, `run_case`, `assert_in_envelope`, `ALLOWED_KEYS` are defined in Task 4 and used by `tests/test_parity_cases.py` with the same names. The case keys `id, stage, args, input, expect` are identical in the Python table, the TypeScript runner and the C# runner. Counts: 22 cases + 1 completeness test = 23 in each runner.
 4. **Review Focus.** Items 1–5 each map to a named test or negative control above.
 
-**Verified before writing (2026-11-19, scratch copies, not the repo):** the property and process tests (38 passed, canaries included), the golden fingerprints (10 passed under `PYTHONHASHSEED` 0/1/2), the Python replay and envelope guard (39 passed), the generator edit (legacy sections identical; regeneration byte-stable; LF only), the TypeScript runner (23/23 pass), the C# runner (23/23 pass), and the tamper negative control in both languages (3 failures each).
+**Verified before writing (2026-11-19, scratch copies, not the repo):** the property and process tests (38 passed, canaries included), the golden fingerprints (10 passed under `PYTHONHASHSEED` 0/1/2), the Python replay and envelope guard (38 passed in scratch; the repository suite has 39 after the Task 4 review added a pinning test), the generator edit (legacy sections identical; regeneration byte-stable; LF only), the TypeScript runner (23/23 pass), the C# runner (23/23 pass), and the tamper negative control in both languages (3 failures each).
