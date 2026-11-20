@@ -34,7 +34,7 @@ export function pyNumber(value: number): string {
   return pyFloat(value);
 }
 
-function pyTypeName(value: unknown): string {
+export function pyTypeName(value: unknown): string {
   if (value === null || value === undefined) return "NoneType";
   if (Array.isArray(value)) return "list";
   if (value instanceof Set) return "set";
@@ -156,11 +156,14 @@ export function pyCompare(a: unknown, b: unknown): number {
   );
 }
 
-/** Membership key with Python hash/eq semantics: True == 1 == 1.0, None is
- * its own class; dict/list/set raise TypeError (unhashable) like set(). */
-export function pyEqKey(value: unknown): string {
+/** Allowlist membership key (ADR-004), the mirror of Python `(isinstance(v,
+ * bool), v)`: a bool never equals a number (so `true` cannot pass a gate that
+ * approved `1`), while int and float still compare by value (TypeScript
+ * cannot tell them apart). None/missing is its own class; objects and arrays
+ * raise TypeError (unhashable) like a Python set would. */
+export function allowKey(value: unknown): string {
   if (value === undefined || value === null) return "None";
-  if (typeof value === "boolean") return "num:" + (value ? 1 : 0);
+  if (typeof value === "boolean") return "bool:" + value;
   if (typeof value === "number") return "num:" + value;
   if (typeof value === "string") return "str:" + value;
   throw new TypeError(`unhashable type: '${pyTypeName(value)}'`);

@@ -170,7 +170,7 @@ test("edge: allowlist — missing field reads as null; unhashable fails closed",
   );
 });
 
-test("edge: allowlist uses Python equality (true == 1 == 1.0)", () => {
+test("edge: allowlist never lets a bool equal a number (1 == 1.0 still holds)", () => {
   assert.deepStrictEqual(
     allowlist([{ v: true }, { v: 1 }, { v: 0 }, { v: "1" }, { v: 1.0 }], {
       field: "v",

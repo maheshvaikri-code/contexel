@@ -8,21 +8,31 @@
 import * as tokens from "./tokens.js";
 import { traced } from "./trace.js";
 import {
+  ConfigError,
+  InputShapeError,
+  checkBool,
+  checkChoice,
+  checkFields,
+  checkNonNegativeInt,
+  checkQuery,
+  checkStr,
+  invalidValue,
+} from "./errors.js";
+import { checked } from "./validate.js";
+import {
+  allowKey,
   codePointIndexer,
+  compareCodePoints,
   pyCompare,
-  pyEqKey,
+  pyRepr,
   pyRound,
   pyRstrip,
   pyStr,
+  pyTypeName,
 } from "./py.js";
 
 export type Rec = Record<string, unknown>;
 export type Records = Rec[];
-
-/** A bare string means ONE field, not its characters (parity with Python). */
-function fieldList(fields: string | string[]): string[] {
-  return typeof fields === "string" ? [fields] : fields;
-}
 
 /** Own-property write that cannot hit setters or the "__proto__" trap —
  * a key named "__proto__" becomes an ordinary data property, as in Python. */
@@ -60,54 +70,81 @@ function typedKey(value: unknown): string {
 
 /* -------------------------------- stages --------------------------------- */
 
-export const select = traced(
+export const select = checked(
   "select",
-  (records: Records, params: { fields: string | string[] }): Records => {
-    const keep = fieldList(params.fields);
-    return records.map((r) => {
-      const out: Rec = {};
-      for (const k of keep) if (Object.hasOwn(r, k)) defineField(out, k, r[k]);
-      return out;
-    });
-  }
-);
-
-export const dedupe = traced(
-  "dedupe",
-  (records: Records, params: { key?: string | string[] | null } = {}): Records => {
-    const key = params.key ?? null;
-    const keys = key === null ? null : Array.isArray(key) ? key : [key];
-    const seen = new Set<string>();
-    const out: Records = [];
-    for (const r of records) {
-      const basis =
-        keys === null ? r : keys.map((k) => (Object.hasOwn(r, k) ? r[k] : null));
-      const fp = typedKey(basis);
-      if (seen.has(fp)) continue;
-      seen.add(fp);
-      out.push(r);
+  true,
+  traced(
+    "select",
+    (records: Records, params: { fields: string | string[] }): Records => {
+      const keep = checkFields(params.fields, "select");
+      return records.map((r) => {
+        const out: Rec = {};
+        for (const k of keep) if (Object.hasOwn(r, k)) defineField(out, k, r[k]);
+        return out;
+      });
     }
-    return out;
-  }
+  )
 );
 
-export const allowlist = traced(
-  "allowlist",
-  (records: Records, params: { field: string; allowed: unknown[] | Set<unknown> }): Records => {
-    // Python builds set(allowed) up front: an unhashable entry raises.
-    const allowed = new Set<string>();
-    for (const a of params.allowed) allowed.add(pyEqKey(a));
-    return records.filter((r) => {
-      // Python r.get(field): a missing field reads as None, and None can
-      // legitimately be allowed; unhashable values fail closed.
-      const v = Object.hasOwn(r, params.field) ? r[params.field] : null;
-      try {
-        return allowed.has(pyEqKey(v));
-      } catch {
-        return false;
+export const dedupe = checked(
+  "dedupe",
+  // a key indexes the item; without one the whole item is hashed
+  (params?: { key?: string | string[] | null }) => params?.key != null,
+  traced(
+    "dedupe",
+    (records: Records, params: { key?: string | string[] | null } = {}): Records => {
+      const key = params.key ?? null;
+      const keys = key === null ? null : checkFields(key, "dedupe", "key");
+      const seen = new Set<string>();
+      const out: Records = [];
+      for (const r of records) {
+        const basis =
+          keys === null ? r : keys.map((k) => (Object.hasOwn(r, k) ? r[k] : null));
+        const fp = typedKey(basis);
+        if (seen.has(fp)) continue;
+        seen.add(fp);
+        out.push(r);
       }
-    });
-  }
+      return out;
+    }
+  )
+);
+
+export const allowlist = checked(
+  "allowlist",
+  true,
+  traced(
+    "allowlist",
+    (records: Records, params: { field: string; allowed: string | unknown[] | Set<unknown> }): Records => {
+      checkStr(params.field, "allowlist", "field");
+      // a bare string is ONE allowed value, never its characters
+      const values = typeof params.allowed === "string" ? [params.allowed] : params.allowed;
+      if (!Array.isArray(values) && !(values instanceof Set)) {
+        throw invalidValue(
+          "allowlist",
+          "allowed",
+          `allowed must be a string or a list of values, got ${pyTypeName(params.allowed)}`
+        );
+      }
+      const allowed = new Set<string>();
+      try {
+        for (const a of values) allowed.add(allowKey(a));
+      } catch {
+        throw invalidValue("allowlist", "allowed", "allowed contains an unhashable value");
+      }
+      const field = params.field;
+      return records.filter((r) => {
+        // Python r.get(field): a missing field reads as None, and None can
+        // legitimately be allowed; an unhashable value fails closed.
+        const v = Object.hasOwn(r, field) ? r[field] : null;
+        try {
+          return allowed.has(allowKey(v));
+        } catch {
+          return false;
+        }
+      });
+    }
+  )
 );
 
 const INJECTION_PATTERNS = [
@@ -119,73 +156,162 @@ const INJECTION_PATTERNS = [
   "</?\\s*(?:system|assistant|instructions?)\\s*>",
 ];
 
-export const quarantine = traced(
-  "quarantine",
-  (
-    records: Records,
-    params: {
-      fields?: string | string[];
-      patterns?: string | string[];
-      action?: "drop" | "flag";
-      into?: string;
-      replacePatterns?: boolean;
-    } = {}
-  ): Records => {
-    const fields = fieldList(params.fields ?? ["snippet"]);
-    const action = params.action ?? "drop";
-    const into = params.into ?? "quarantined";
-    if (action !== "drop" && action !== "flag") {
-      throw new Error(`action must be 'drop' or 'flag', got ${String(action)}`);
+/** The text a quarantine pattern is matched against for one field value.
+ *
+ * A string is used as is. A container contributes its object keys (code-point
+ * order) and its leaves, each as text, joined by a single space — so a marker
+ * split by a newline or a quote inside a nested value is still found (a
+ * repr-style rendering would show the newline as a backslash and an `n`).
+ * Scalars render with Python's `str()` (`null` is "None", `true` is "True").
+ * Iterative, and each container is expanded once, so neither a deeply nested
+ * nor a self-referencing value can exhaust the stack or loop. */
+function scanText(value: unknown): string {
+  const parts: string[] = [];
+  const stack: unknown[] = [value];
+  const seen = new Set<object>();
+  while (stack.length) {
+    const v = stack.pop();
+    if (typeof v === "string") {
+      parts.push(v);
+    } else if (Array.isArray(v)) {
+      if (seen.has(v)) continue;
+      seen.add(v);
+      for (let i = v.length - 1; i >= 0; i--) stack.push(v[i]);
+    } else if (v !== null && typeof v === "object" && !(v instanceof Set)) {
+      if (seen.has(v)) continue;
+      seen.add(v);
+      const obj = v as Rec;
+      const keys = Object.keys(obj).sort(compareCodePoints);
+      // pushed in reverse so each key pops just before its value, in order
+      for (let i = keys.length - 1; i >= 0; i--) {
+        stack.push(obj[keys[i]]);
+        stack.push(keys[i]);
+      }
+    } else {
+      parts.push(pyStr(v));
     }
-    // custom patterns EXTEND the built-ins: passing domain markers must
-    // never silently disable "ignore all previous instructions" detection;
-    // replacePatterns is the explicit opt-out
-    let patternList: string[];
-    if (params.patterns === undefined) {
-      if (params.replacePatterns) {
-        throw new Error(
-          "replacePatterns without patterns is contradictory; pass the replacement patterns"
+  }
+  return parts.join(" ");
+}
+
+export const quarantine = checked(
+  "quarantine",
+  true,
+  traced(
+    "quarantine",
+    (
+      records: Records,
+      params: {
+        fields?: string | string[];
+        patterns?: string | string[] | null;
+        action?: "drop" | "flag";
+        into?: string;
+        replacePatterns?: boolean;
+      } = {}
+    ): Records => {
+      const action = params.action ?? "drop";
+      if (action !== "drop" && action !== "flag") {
+        throw new ConfigError(
+          "config.invalid_value",
+          `action must be 'drop' or 'flag', got ${String(action)}`,
+          { stage: "quarantine", param: "action" }
         );
       }
-      patternList = INJECTION_PATTERNS;
-    } else {
-      const userPatterns = fieldList(params.patterns);
-      if (userPatterns.some((p) => !p)) {
-        // an empty fragment becomes an empty regex alternative, which
-        // matches EVERY record — the opposite of configuring a screen
-        throw new Error("empty pattern fragments match everything; remove them");
+      // fields=[] would scan nothing: a configured-looking control that does
+      // nothing is exactly what this stage refuses to be
+      const fields = checkFields(params.fields === undefined ? ["snippet"] : params.fields, "quarantine", "fields", false);
+      const into = params.into === undefined ? "quarantined" : params.into;
+      checkStr(into, "quarantine", "into");
+      const replacePatterns = params.replacePatterns === undefined ? false : params.replacePatterns;
+      checkBool(replacePatterns, "quarantine", "replacePatterns");
+      // custom patterns EXTEND the built-ins: passing domain markers must
+      // never silently disable "ignore all previous instructions" detection;
+      // replacePatterns is the explicit opt-out
+      let patternList: string[];
+      if (params.patterns === undefined || params.patterns === null) {
+        if (replacePatterns) {
+          throw new ConfigError(
+            "config.contradictory",
+            "replacePatterns without patterns is contradictory; pass the replacement patterns",
+            { stage: "quarantine", param: "replacePatterns" }
+          );
+        }
+        patternList = INJECTION_PATTERNS;
+      } else {
+        const userPatterns = checkFields(params.patterns, "quarantine", "patterns");
+        if (userPatterns.some((p) => !p)) {
+          // an empty fragment becomes an empty regex alternative, which
+          // matches EVERY record — the opposite of configuring a screen
+          throw new ConfigError(
+            "config.empty",
+            "empty pattern fragments match everything; remove them",
+            { stage: "quarantine", param: "patterns" }
+          );
+        }
+        for (const p of userPatterns) {
+          try {
+            // compile each alone so the error names the culprit
+            new RegExp(p, "i");
+          } catch (e) {
+            throw new ConfigError(
+              "config.invalid_pattern",
+              `quarantine: invalid pattern ${pyRepr(p)}: ${(e as Error).message}`,
+              { stage: "quarantine", param: "patterns" }
+            );
+          }
+        }
+        patternList = replacePatterns ? userPatterns : [...INJECTION_PATTERNS, ...userPatterns];
       }
-      patternList = params.replacePatterns
-        ? userPatterns
-        : [...INJECTION_PATTERNS, ...userPatterns];
+      if (!patternList.length) {
+        throw new ConfigError(
+          "config.empty",
+          "replacePatterns with no patterns would disable the control entirely; " +
+            "pass at least one pattern",
+          { stage: "quarantine", param: "patterns" }
+        );
+      }
+      let matcher: RegExp;
+      try {
+        matcher = new RegExp(patternList.join("|"), "i");
+      } catch (e) {
+        // each fragment compiled alone, the union did not
+        throw new ConfigError(
+          "config.invalid_pattern",
+          `quarantine: the patterns cannot be combined: ${(e as Error).message}`,
+          { stage: "quarantine", param: "patterns" }
+        );
+      }
+      const out: Records = [];
+      for (let i = 0; i < records.length; i++) {
+        const r = records[i];
+        // a missing field reads as ""; containers are scanned leaf by leaf
+        const text = fields
+          .map((f) => (Object.hasOwn(r, f) ? scanText(r[f]) : ""))
+          .join(" ");
+        const hit = matcher.test(text);
+        if (action === "flag") {
+          if (Object.hasOwn(r, into)) {
+            throw new InputShapeError(
+              "input.field_conflict",
+              `quarantine: record ${i} already has a ${pyRepr(into)} field; pass a different into`,
+              { stage: "quarantine", param: "into" }
+            );
+          }
+          out.push({ ...r, [into]: hit });
+        } else if (!hit) {
+          out.push(r);
+        }
+      }
+      return out;
     }
-    if (!patternList.length) {
-      throw new Error(
-        "replacePatterns with no patterns would disable the control entirely; " +
-          "pass at least one pattern"
-      );
-    }
-    const matcher = new RegExp(patternList.join("|"), "i");
-    const out: Records = [];
-    for (const r of records) {
-      // Python str(r.get(f, "")): None -> "None", nested containers via
-      // repr — a payload inside a dict or list still hits the matcher.
-      const text = fields
-        .map((f) => (Object.hasOwn(r, f) ? pyStr(r[f]) : ""))
-        .join(" ");
-      const hit = matcher.test(text);
-      if (action === "flag") out.push({ ...r, [into]: hit });
-      else if (!hit) out.push(r);
-    }
-    return out;
-  }
+  )
 );
 
 /* Word matching: identical to Python's [^\W_] on ASCII (all parity
    vectors); exotic Unicode word classes may differ at the margin. */
 const WORD = /[\p{L}\p{N}]+/gu;
 
-export const rescore = traced(
+const rescoreStage = traced(
   "rescore",
   (
     records: Records,
@@ -197,15 +323,28 @@ export const rescore = traced(
       match?: "word" | "substring";
     }
   ): Records => {
-    const fields = fieldList(params.fields ?? ["snippet"]);
-    const into = params.into ?? "score";
-    const proximity = params.proximity ?? true;
-    const match = params.match ?? "word";
+    const query = checkQuery(params.query, "rescore");
+    const fields = checkFields(params.fields === undefined ? ["snippet"] : params.fields, "rescore", "fields", false);
+    const into = params.into === undefined ? "score" : params.into;
+    checkStr(into, "rescore", "into");
+    const proximity = params.proximity === undefined ? true : params.proximity;
+    checkBool(proximity, "rescore", "proximity");
+    const match = params.match === undefined ? "word" : params.match;
+    if ((match as unknown) === "stem") {
+      // reserved for the English stemmer (ADR-006); until it ships, running
+      // it as substring matching would be a silent downgrade
+      throw invalidValue(
+        "rescore",
+        "match",
+        "match 'stem' is not available yet; use 'word' or 'substring'"
+      );
+    }
+    checkChoice(match, "rescore", "match", ["word", "substring"]);
 
     const rawTerms =
-      typeof params.query === "string"
-        ? params.query.toLowerCase().match(WORD) ?? []
-        : params.query.flatMap((p) => String(p).toLowerCase().match(WORD) ?? []);
+      typeof query === "string"
+        ? query.toLowerCase().match(WORD) ?? []
+        : query.flatMap((p) => String(p).toLowerCase().match(WORD) ?? []);
     const terms = [...new Set(rawTerms)];
     if (!terms.length || !records.length) {
       return records.map((r) => ({ ...r, [into]: 0.0 }));
@@ -294,14 +433,24 @@ export const rescore = traced(
   }
 );
 
-export const rank = traced(
+export const rescore = checked("rescore", true, rescoreStage);
+
+const rankStage = traced(
   "rank",
   (
     records: Records,
     params: { by: string | ((r: Rec) => unknown); desc?: boolean }
   ): Records => {
-    const desc = params.desc ?? true;
     const by = params.by;
+    if (typeof by !== "string" && typeof by !== "function") {
+      throw invalidValue(
+        "rank",
+        "by",
+        `by must be a field name or a key function, got ${pyTypeName(by)}`
+      );
+    }
+    const desc = params.desc === undefined ? true : params.desc;
+    checkBool(desc, "rank", "desc");
     const dir = desc ? -1 : 1;
     // decorate-sort-undecorate like Python sorted(key=...): the key is
     // computed once per record, the sort is stable, and reverse=desc keeps
@@ -343,7 +492,14 @@ function truncateText(
   return pyRstrip(cps.slice(0, lo).join("")) + suffix;
 }
 
-export const truncateField = traced(
+export const rank = checked(
+  "rank",
+  // a field name indexes each item; a key function takes anything
+  (params?: { by?: unknown }) => typeof params?.by === "string",
+  rankStage
+);
+
+const truncateFieldStage = traced(
   "truncate_field",
   (
     records: Records,
@@ -354,7 +510,10 @@ export const truncateField = traced(
       suffix?: string;
     }
   ): Records => {
-    const suffix = params.suffix ?? "…";
+    checkStr(params.field, "truncate_field", "field");
+    checkNonNegativeInt(params.maxTokens, "truncate_field", "maxTokens");
+    const suffix = params.suffix === undefined ? "…" : params.suffix;
+    checkStr(suffix, "truncate_field", "suffix");
     return records.map((r) => {
       const value = r[params.field];
       if (typeof value !== "string") return r;
@@ -366,7 +525,9 @@ export const truncateField = traced(
   }
 );
 
-export const trimToBudget = traced(
+export const truncateField = checked("truncate_field", true, truncateFieldStage);
+
+const trimToBudgetStage = traced(
   "trim_to_budget",
   (
     records: Records,
@@ -375,7 +536,9 @@ export const trimToBudget = traced(
     // minRecords guards the silent-failure edge: a too-small budget would
     // return [], indistinguishable from "nothing matched" — keep the first
     // (best-ranked) records anyway; the overrun shows in the audit.
-    const minRecords = params.minRecords ?? 0;
+    checkNonNegativeInt(params.maxTokens, "trim_to_budget", "maxTokens");
+    const minRecords = params.minRecords === undefined ? 0 : params.minRecords;
+    checkNonNegativeInt(minRecords, "trim_to_budget", "minRecords");
     const out: Records = [];
     let used = 0;
     for (const r of records) {
@@ -387,6 +550,9 @@ export const trimToBudget = traced(
     return out;
   }
 );
+
+// trim_to_budget never indexes an item as a mapping: strict checks only the list
+export const trimToBudget = checked("trim_to_budget", false, trimToBudgetStage);
 
 /** Combiner (not auto-traced, matching Python): normalize and concatenate
  * record lists from different tools; `schema` maps unified name -> source

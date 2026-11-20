@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  ConfigError,
   allowlist,
   dedupe,
   pipeline,
@@ -121,9 +122,9 @@ test("rank raises TypeError on incomparable values like Python", () => {
   );
 });
 
-test("allowlist raises TypeError for unhashable allowed entries", () => {
+test("allowlist raises ConfigError for unhashable allowed entries", () => {
   assert.throws(
     () => allowlist([{ v: 1 }], { field: "v", allowed: [{ nested: true }] }),
-    TypeError
+    ConfigError
   );
 });
