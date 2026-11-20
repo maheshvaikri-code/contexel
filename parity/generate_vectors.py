@@ -20,6 +20,7 @@ from contexel import (
     allowlist, dedupe, pipeline, quarantine, rank, rescore, select, stage,
     tokens, trace, trim_to_budget, truncate_field,
 )
+from parity_cases import build_cases
 
 FIXTURE = [
     {"path": "src/retry.py", "line": 38, "source": "repo",
@@ -66,12 +67,14 @@ def main() -> None:
         contract_out = contract()(FIXTURE)
     audit = t.audit()
     audit.pop("policies")  # fingerprints are language-local in v1 (ADR-001)
+    cases = build_cases(FIXTURE)  # data-driven cases (ADR-007)
 
     vectors = {
         "_meta": {
             "generated_by": "python contexel (canon)",
             "adr": "docs/adr/001-typescript-parity.md",
             "fixture_records": len(FIXTURE),
+            "case_count": len(cases),
         },
         "fixture": FIXTURE,
         "query": QUERY,
@@ -196,6 +199,7 @@ def main() -> None:
                 [{"s": "aaaa"}, {"s": "ababab"}, {"s": "aa ab"}],
                 query="aa ab", fields=("s",), match="substring"),
         },
+        "cases": cases,
     }
     out = Path(__file__).resolve().parent / "vectors.json"
     # newline="\n": byte-identical output on every OS, so CI can regenerate

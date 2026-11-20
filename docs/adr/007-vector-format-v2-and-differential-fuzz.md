@@ -1,6 +1,6 @@
 # ADR-007 — Parity vectors v2 and cross-language differential fuzz
 
-**Date:** 2026-11-19 · **Status:** proposed · **Amends:** ADR-001 §2, ADR-002 §2
+**Date:** 2026-11-19 · **Status:** accepted (cases format implemented in Slice 1; differential fuzz pending Slice 7) · **Amends:** ADR-001 §2, ADR-002 §2
 **Deciders:** Chief Architect + human (fuzz slice approved 2026-11-19)
 
 ## Context
