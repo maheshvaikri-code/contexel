@@ -234,7 +234,7 @@ test("every configuration error carries its stage name", () => {
 test("rescore query: a string or a list of strings is accepted, any other element raises", () => {
   assert.ok(rescore(RECS, { query: "x", fields: ["a"] }));
   assert.ok(rescore(RECS, { query: ["x", "y"], fields: ["a"] }));
-  for (const bad of [[null], ["x", null], [1], ["x", 2], [{}], [["x"]]]) {
+  for (const bad of [[null], ["x", null], [1], ["x", 2], [{}], [["x"]], [true], ["x", false]]) {
     const e = raised(() => rescore(RECS, { query: bad as never, fields: ["a"] }));
     assert.deepStrictEqual(
       [e.code, e.stage, e.param],

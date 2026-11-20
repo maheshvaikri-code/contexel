@@ -286,6 +286,71 @@ test("quarantine a non-mapping item always raises input.not_mapping", () => {
   expectNotMapping(() => quarantine(mixed, { action: "flag" }), "mixed flag");
 });
 
+test("quarantine rejects exotic object items (Map, String, Date, ...) in drop and flag, strict or not", () => {
+  const exotic: Array<[string, unknown]> = [
+    ["Map", new Map([["snippet", MARKER]])],
+    ["Set", new Set([MARKER])],
+    ["Date", new Date(0)],
+    ["RegExp", /x/],
+    ["Uint8Array", new Uint8Array(2)],
+    ["String", new String(MARKER)],
+    ["Number", new Number(1)],
+    ["Boolean", new Boolean(false)],
+  ];
+  for (const [kind, item] of exotic) {
+    for (const action of ["drop", "flag"] as const) {
+      for (const list of [[item], [{ snippet: "ok" }, item]] as unknown as Records[]) {
+        for (const useStrict of [false, true]) {
+          const label = `${kind} ${action} strict=${useStrict}`;
+          const run = () =>
+            useStrict ? strict(() => quarantine(list, { action })) : quarantine(list, { action });
+          assert.throws(
+            run,
+            (e: unknown) => {
+              assert.ok(e instanceof InputShapeError, `${label}: ${String(e)}`);
+              assert.strictEqual(e.code, "input.not_mapping", label);
+              assert.strictEqual(e.stage, "quarantine", label);
+              assert.ok(e.message.includes(`got ${kind}`), `${label}: ${e.message}`);
+              return true;
+            },
+            label
+          );
+        }
+      }
+    }
+  }
+});
+
+test("quarantine still scans class instances and null-prototype objects", () => {
+  class Doc {
+    snippet: string;
+    constructor(snippet: string) {
+      this.snippet = snippet;
+    }
+  }
+  const bad = new Doc(MARKER);
+  const clean = new Doc("fine");
+  assert.deepStrictEqual(quarantine([bad, clean] as unknown as Records), [clean]);
+  const bare = (snippet: string) => Object.assign(Object.create(null), { snippet });
+  const bareBad = bare(MARKER);
+  const bareClean = bare("fine");
+  assert.deepStrictEqual(quarantine([bareBad, bareClean]), [bareClean]);
+  const flagged = quarantine([bareBad, bareClean], { action: "flag" });
+  assert.deepStrictEqual(
+    flagged.map((r) => r.quarantined),
+    [true, false]
+  );
+});
+
+test("quarantine user patterns are not stateful (no g or y flag)", () => {
+  // a global regex keeps lastIndex between test() calls and would skip the
+  // second record's match
+  const recs = [{ snippet: "xxxx evil" }, { snippet: "evil" }, { snippet: "fine" }];
+  assert.deepStrictEqual(quarantine(recs, { patterns: ["evil"], replacePatterns: true }), [
+    { snippet: "fine" },
+  ]);
+});
+
 test("quarantine flag existing into raises field_conflict", () => {
   for (const [options, rec] of [
     [{}, { snippet: "x", quarantined: false }],

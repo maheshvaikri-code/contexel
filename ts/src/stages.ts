@@ -295,11 +295,16 @@ export const quarantine = checked(
       for (let i = 0; i < records.length; i++) {
         const r = records[i];
         // fail closed: a non-mapping item would otherwise look like "no field
-        // present" and be KEPT (and, in flag mode, spread into the output)
-        if (!isMapping(r)) {
+        // present" and be KEPT (and, in flag mode, spread into the output).
+        // isMapping lets any non-array object through, so a Map, Set, Date,
+        // RegExp, typed array or boxed primitive is refused here too: only a
+        // plain object, a class instance or a null-prototype object is scanned
+        const tag = Object.prototype.toString.call(r);
+        if (!isMapping(r) || tag !== "[object Object]") {
+          const kind = isMapping(r) ? tag.slice(8, -1) : pyTypeName(r);
           throw new InputShapeError(
             "input.not_mapping",
-            `quarantine: item ${i} must be a mapping, got ${pyTypeName(r)}`,
+            `quarantine: item ${i} must be a mapping, got ${kind}`,
             { stage: "quarantine" }
           );
         }
