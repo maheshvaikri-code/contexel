@@ -16,14 +16,6 @@ using Records = List<Dictionary<string, object?>>;
 /// </summary>
 public static class Stages
 {
-    /// <summary>A bare string names ONE field, never its characters.</summary>
-    private static List<string> FieldList(object fields) => fields switch
-    {
-        string s => [s],
-        IEnumerable<string> seq => seq.ToList(),
-        _ => throw new ArgumentException("fields must be a string or a sequence of strings"),
-    };
-
     /* ---------------------------- fingerprints --------------------------- */
 
     /// <summary>Type-qualified fingerprint (1, 1.0, "1", and true all
@@ -50,10 +42,16 @@ public static class Stages
 
     /* ------------------------------- stages ------------------------------ */
 
-    public static Records Select(Records records, object fields) =>
-        Trace.Traced("select", records, () =>
+    // Order in every record stage (ADR-003): the strict shape check runs
+    // FIRST, before Trace.Traced reads records.Count; configuration
+    // validation runs inside the stage body.
+
+    public static Records Select(Records records, object fields)
+    {
+        Strict.CheckRecords(records, "select", mapping: true);
+        return Trace.Traced("select", records, () =>
         {
-            var keep = FieldList(fields);
+            var keep = Check.Fields(fields, "select");
             return records.Select(r =>
             {
                 var output = new Rec();
@@ -62,11 +60,15 @@ public static class Stages
                 return output;
             }).ToList();
         });
+    }
 
-    public static Records Dedupe(Records records, object? key = null) =>
-        Trace.Traced("dedupe", records, () =>
+    public static Records Dedupe(Records records, object? key = null)
+    {
+        // a key indexes the item; without one the whole item is hashed
+        Strict.CheckRecords(records, "dedupe", mapping: key is not null);
+        return Trace.Traced("dedupe", records, () =>
         {
-            List<string>? keys = key is null ? null : FieldList(key);
+            List<string>? keys = key is null ? null : Check.Fields(key, "dedupe", "key");
             var seen = new HashSet<string>();
             var output = new Records();
             foreach (var r in records)
@@ -79,21 +81,50 @@ public static class Stages
             }
             return output;
         });
+    }
 
+    /// <summary>Provenance gate. A bare string for <c>allowed</c> is ONE
+    /// value (this overload); see the list overload for the rest.</summary>
+    public static Records Allowlist(Records records, string field, string allowed) =>
+        AllowlistCore(records, field, allowed is null ? null : [allowed]);
+
+    /// <summary>Provenance gate: keep only records whose <c>field</c> value
+    /// is in <c>allowed</c>. A bool never equals a number (<c>true</c> does
+    /// not pass <c>allowed=[1]</c>); int and float compare by value. Fail
+    /// closed: a record carrying an unhashable value (a dict or list) is
+    /// dropped; a missing field reads as null — dropped unless null is
+    /// explicitly allowed. An unhashable entry in <c>allowed</c> throws
+    /// <see cref="ConfigException"/> (<c>config.invalid_value</c>).</summary>
     public static Records Allowlist(Records records, string field, IEnumerable<object?> allowed) =>
-        Trace.Traced("allowlist", records, () =>
+        AllowlistCore(records, field, allowed);
+
+    private static Records AllowlistCore(Records records, string field, IEnumerable<object?>? allowed)
+    {
+        Strict.CheckRecords(records, "allowlist", mapping: true);
+        return Trace.Traced("allowlist", records, () =>
         {
-            // Python builds set(allowed) up front: unhashable entries raise
-            var allowedKeys = new HashSet<string>(allowed.Select(PyCompat.PyEqKey));
+            Check.Str(field, "allowlist", "field");
+            if (allowed is null)
+                throw Check.InvalidValue("allowlist", "allowed",
+                    "allowed must be a string or a list of values, got null");
+            // Python builds the set up front: unhashable entries raise
+            HashSet<string> allowedKeys;
+            try { allowedKeys = new HashSet<string>(allowed.Select(PyCompat.AllowKey)); }
+            catch (ArgumentException)
+            {
+                throw Check.InvalidValue("allowlist", "allowed",
+                    "allowed contains an unhashable value");
+            }
             return records.Where(r =>
             {
                 // r.get(field): missing reads as None, which may be allowed;
                 // unhashable record values fail closed
                 var v = r.TryGetValue(field, out var x) ? x : null;
-                try { return allowedKeys.Contains(PyCompat.PyEqKey(v)); }
+                try { return allowedKeys.Contains(PyCompat.AllowKey(v)); }
                 catch (ArgumentException) { return false; }
             }).ToList();
         });
+    }
 
     internal static readonly string[] InjectionPatterns =
     [
@@ -105,15 +136,77 @@ public static class Stages
         @"</?\s*(?:system|assistant|instructions?)\s*>",
     ];
 
+    /// <summary>The text a quarantine pattern is matched against for one
+    /// field value (mirror of Python's <c>_scan_text</c>). A string is used
+    /// as is. A container contributes its dict keys (code-point order) then
+    /// values, and list items in order; every leaf as text, joined by ONE
+    /// space — so a marker split by a newline or a quote inside a nested
+    /// value is still found. Scalars render like Python <c>str()</c> (null is
+    /// "None", true is "True"). Iterative, and each container is expanded at
+    /// most once (reference identity), so neither a deeply nested nor a
+    /// self-referencing value can exhaust the stack or loop.</summary>
+    internal static string ScanText(object? value)
+    {
+        var parts = new List<string>();
+        var stack = new Stack<object?>();
+        stack.Push(value);
+        var seen = new HashSet<object>(ReferenceEqualityComparer.Instance);
+        while (stack.Count > 0)
+        {
+            var v = stack.Pop();
+            switch (v)
+            {
+                case string s:
+                    parts.Add(s);
+                    break;
+                case System.Collections.IDictionary dict:
+                {
+                    if (!seen.Add(dict)) break;
+                    var keys = dict.Keys.Cast<object>()
+                        .Select(k => (Text: k as string ?? PyCompat.PyStr(k), Key: k))
+                        .ToList();
+                    // ascending by code point, popped in that order: each key
+                    // text, then its value
+                    keys.Sort((a, b) => PyCompat.CompareCodePoints(a.Text, b.Text));
+                    for (int i = keys.Count - 1; i >= 0; i--)
+                    {
+                        stack.Push(dict[keys[i].Key]);
+                        stack.Push(keys[i].Text);
+                    }
+                    break;
+                }
+                case System.Collections.IEnumerable seq:
+                {
+                    if (!seen.Add(seq)) break;
+                    var items = seq.Cast<object?>().ToList();
+                    for (int i = items.Count - 1; i >= 0; i--) stack.Push(items[i]);
+                    break;
+                }
+                default:
+                    parts.Add(PyCompat.PyStr(v));
+                    break;
+            }
+        }
+        return string.Join(" ", parts);
+    }
+
     public static Records Quarantine(Records records, object? fields = null,
                                      object? patterns = null, string action = "drop",
                                      string into = "quarantined",
-                                     bool replacePatterns = false) =>
-        Trace.Traced("quarantine", records, () =>
+                                     bool replacePatterns = false)
+    {
+        Strict.CheckRecords(records, "quarantine", mapping: true);
+        return Trace.Traced("quarantine", records, () =>
         {
             if (action is not ("drop" or "flag"))
-                throw new ArgumentException($"action must be 'drop' or 'flag', got '{action}'");
-            var fieldNames = FieldList(fields ?? new[] { "snippet" });
+                throw new ConfigException("config.invalid_value",
+                    $"action must be 'drop' or 'flag', got '{action}'",
+                    "quarantine", "action");
+            // fields=[] would scan nothing: a configured-looking control that
+            // does nothing is exactly what this stage refuses to be
+            var fieldNames = Check.Fields(fields ?? new[] { "snippet" }, "quarantine",
+                                          allowEmpty: false);
+            Check.Str(into, "quarantine", "into");
             // custom patterns EXTEND the built-ins: domain markers must never
             // silently disable "ignore all previous instructions" detection;
             // replacePatterns is the explicit opt-out
@@ -121,41 +214,73 @@ public static class Stages
             if (patterns is null)
             {
                 if (replacePatterns)
-                    throw new ArgumentException(
-                        "replacePatterns without patterns is contradictory; pass the replacement patterns");
+                    throw new ConfigException("config.contradictory",
+                        "replacePatterns without patterns is contradictory; pass the replacement patterns",
+                        "quarantine", "replacePatterns");
                 patternList = InjectionPatterns.ToList();
             }
             else
             {
-                var userPatterns = FieldList(patterns);
+                var userPatterns = Check.Fields(patterns, "quarantine", "patterns");
                 if (userPatterns.Any(string.IsNullOrEmpty))
-                    throw new ArgumentException("empty pattern fragments match everything; remove them");
+                    throw new ConfigException("config.empty",
+                        "empty pattern fragments match everything; remove them",
+                        "quarantine", "patterns");
+                foreach (var p in userPatterns)
+                {
+                    try // compile each alone so the error names the culprit
+                    {
+                        _ = new Regex(p, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+                    }
+                    catch (ArgumentException e)
+                    {
+                        throw new ConfigException("config.invalid_pattern",
+                            $"quarantine: invalid pattern {PyCompat.PyRepr(p)}: {e.Message}",
+                            "quarantine", "patterns");
+                    }
+                }
                 patternList = replacePatterns
                     ? userPatterns
                     : InjectionPatterns.Concat(userPatterns).ToList();
             }
             if (patternList.Count == 0)
-                throw new ArgumentException(
-                    "replacePatterns with no patterns would disable the control entirely; pass at least one pattern");
-            var matcher = new Regex(string.Join("|", patternList),
+                throw new ConfigException("config.empty",
+                    "replacePatterns with no patterns would disable the control entirely; pass at least one pattern",
+                    "quarantine", "patterns");
+            Regex matcher;
+            try
+            {
+                matcher = new Regex(string.Join("|", patternList),
                                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            }
+            catch (ArgumentException e) // each fragment compiled alone, the union did not
+            {
+                throw new ConfigException("config.invalid_pattern",
+                    $"quarantine: the patterns cannot be combined: {e.Message}",
+                    "quarantine", "patterns");
+            }
             var output = new Records();
+            int index = 0;
             foreach (var r in records)
             {
-                // Python str(r.get(f, "")): None -> "None", containers via
-                // repr — a payload nested in a dict or list still matches
                 string text = string.Join(" ", fieldNames.Select(f =>
-                    r.TryGetValue(f, out var v) ? PyCompat.PyStr(v) : ""));
+                    r.TryGetValue(f, out var v) ? ScanText(v) : ""));
                 bool hit = matcher.IsMatch(text);
                 if (action == "flag")
                 {
-                    var flagged = new Rec(r) { [into] = hit };
-                    output.Add(flagged);
+                    // continuing would silently overwrite the caller's data
+                    if (r.ContainsKey(into))
+                        throw new InputShapeException("input.field_conflict",
+                            $"quarantine: record {index} already has a {PyCompat.PyRepr(into)} field; pass a different into",
+                            "quarantine", "into");
+                    output.Add(new Rec(r) { [into] = hit });
                 }
                 else if (!hit) output.Add(r);
+                index++;
             }
             return output;
         });
+    }
 
     // Python's [^\W_] on ASCII; exotic Unicode word classes are a margin
     private static readonly Regex Word =
@@ -163,16 +288,36 @@ public static class Stages
 
     public static Records Rescore(Records records, object query, object? fields = null,
                                   string into = "score", bool proximity = true,
-                                  string match = "word") =>
+                                  string match = "word")
+    {
+        Strict.CheckRecords(records, "rescore", mapping: true);
+        return RescoreBody(records, query, fields, into, proximity, match);
+    }
+
+    private static Records RescoreBody(Records records, object query, object? fields,
+                                       string into, bool proximity, string match) =>
         Trace.Traced("rescore", records, () =>
         {
-            var fieldNames = FieldList(fields ?? new[] { "snippet" });
+            Check.Query(query, "rescore");
+            var fieldNames = Check.Fields(fields ?? new[] { "snippet" }, "rescore",
+                                          allowEmpty: false);
+            Check.Str(into, "rescore", "into");
+            if (match == "stem")
+            {
+                // reserved for the English stemmer (ADR-006); until it ships,
+                // running it as substring matching would be a silent downgrade
+                throw Check.InvalidValue("rescore", "match",
+                    "match 'stem' is not available yet; use 'word' or 'substring'");
+            }
+            Check.Choice(match, "rescore", "match", "word", "substring");
             var rawTerms = (query switch
             {
                 string q => Word.Matches(q.ToLowerInvariant()).Select(m => m.Value),
-                IEnumerable<string> qs => qs.SelectMany(p =>
-                    Word.Matches(p.ToLowerInvariant()).Select(m => m.Value)),
-                _ => throw new ArgumentException("query must be a string or a sequence of strings"),
+                // Python: str(part) for each element of the list
+                System.Collections.IEnumerable qs => qs.Cast<object?>().SelectMany(p =>
+                    Word.Matches(PyCompat.PyStr(p).ToLowerInvariant()).Select(m => m.Value)),
+                _ => throw Check.InvalidValue("rescore", "query",
+                    "query must be a string or a list of strings"),
             }).ToList();
             var terms = rawTerms.Distinct().ToList();
             if (terms.Count == 0 || records.Count == 0)
@@ -264,16 +409,32 @@ public static class Stages
             }).ToList();
         });
 
-    public static Records Rank(Records records, string by, bool desc = true) =>
-        Trace.Traced("rank", records, () =>
+    public static Records Rank(Records records, string by, bool desc = true)
+    {
+        // a field name indexes every item (a key function takes anything)
+        Strict.CheckRecords(records, "rank", mapping: true);
+        return Trace.Traced("rank", records, () =>
         {
+            if (by is null)
+                throw Check.InvalidValue("rank", "by",
+                    "by must be a field name or a key function, got null");
             var present = records.Where(r => r.ContainsKey(by)).ToList();
             var missing = records.Where(r => !r.ContainsKey(by)).ToList();
             return StableSort(present, r => r[by], desc).Concat(missing).ToList();
         });
+    }
 
-    public static Records Rank(Records records, Func<Rec, object?> by, bool desc = true) =>
-        Trace.Traced("rank", records, () => StableSort(records, by, desc));
+    public static Records Rank(Records records, Func<Rec, object?> by, bool desc = true)
+    {
+        Strict.CheckRecords(records, "rank", mapping: false);
+        return Trace.Traced("rank", records, () =>
+        {
+            if (by is null)
+                throw Check.InvalidValue("rank", "by",
+                    "by must be a field name or a key function, got null");
+            return StableSort(records, by, desc);
+        });
+    }
 
     // LINQ OrderBy is stable (List.Sort is NOT); a directional comparator
     // with a stable sort keeps ties in original order like Python
@@ -317,19 +478,36 @@ public static class Stages
 
     public static Records TruncateField(Records records, string field, int maxTokens,
                                         Func<string, int>? tokenizer = null,
-                                        string suffix = "…") =>
-        Trace.Traced("truncate_field", records, () =>
-            records.Select(r =>
+                                        string suffix = "…")
+    {
+        Strict.CheckRecords(records, "truncate_field", mapping: true);
+        return Trace.Traced("truncate_field", records, () =>
+        {
+            Check.Str(field, "truncate_field", "field");
+            Check.NonNegativeInt(maxTokens, "truncate_field", "maxTokens");
+            Check.Str(suffix, "truncate_field", "suffix");
+            return records.Select(r =>
             {
                 if (!r.TryGetValue(field, out var v) || v is not string s) return r;
                 return new Rec(r) { [field] = TruncateText(s, maxTokens, tokenizer, suffix) };
-            }).ToList());
+            }).ToList();
+        });
+    }
 
     public static Records TrimToBudget(Records records, int maxTokens,
                                        Func<string, int>? tokenizer = null,
-                                       int minRecords = 0) =>
+                                       int minRecords = 0)
+    {
+        Strict.CheckRecords(records, "trim_to_budget", mapping: false);
+        return TrimBody(records, maxTokens, tokenizer, minRecords);
+    }
+
+    private static Records TrimBody(Records records, int maxTokens,
+                                    Func<string, int>? tokenizer, int minRecords) =>
         Trace.Traced("trim_to_budget", records, () =>
         {
+            Check.NonNegativeInt(maxTokens, "trim_to_budget", "maxTokens");
+            Check.NonNegativeInt(minRecords, "trim_to_budget", "minRecords");
             // minRecords guards the silent-failure edge: a too-small budget
             // would return [], indistinguishable from "nothing matched"
             var output = new Records();

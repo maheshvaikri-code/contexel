@@ -23,8 +23,24 @@ public sealed class Pipeline
     private readonly List<Stage> _stages;
     public string Fingerprint { get; }
 
-    public Pipeline(params Stage[] stages)
+    private readonly bool _strict;
+
+    /// <summary>True when this pipeline runs every stage in strict mode.</summary>
+    public bool IsStrict => _strict;
+
+    public Pipeline(params Stage[] stages) : this((IEnumerable<Stage>)stages) { }
+
+    /// <summary>
+    /// <paramref name="strict"/> runs every stage in strict mode (see
+    /// <see cref="Strict"/>) and checks that each stage hands the next one a
+    /// list, so a custom stage that returns null throws an
+    /// <see cref="InputShapeException"/> naming it. Entered inside this
+    /// pipeline's own run. It does not check the pipeline's input, never
+    /// changes a successful result, and is NOT part of the fingerprint.
+    /// </summary>
+    public Pipeline(IEnumerable<Stage> stages, bool strict = false)
     {
+        _strict = strict;
         _stages = stages.ToList();
         var repr = new StringBuilder();
         foreach (var s in _stages)
@@ -52,7 +68,19 @@ public sealed class Pipeline
         if (tr is not null && !tr.Policies.Contains(Fingerprint))
             tr.Policies.Add(Fingerprint);
         var current = records;
-        foreach (var s in _stages) current = s.Fn(current);
+        if (!_strict)
+        {
+            foreach (var s in _stages) current = s.Fn(current);
+            return current;
+        }
+        using (Strict.Begin())
+        {
+            for (int i = 0; i < _stages.Count; i++)
+            {
+                current = _stages[i].Fn(current);
+                Strict.CheckStageOutput(current, _stages[i].Name, i);
+            }
+        }
         return current;
     }
 }
