@@ -125,7 +125,8 @@ def _raw_cases() -> List[dict]:
         {"stages": [{"stage": "select", "args": {"fields": ["a"]}}]}, [])
 
     # Boundary cases: each one changes its expectation under a specific
-    # plausible port bug (the arithmetic is in the Slice 1 fix-wave report).
+    # plausible port bug (arithmetic: section 2 of
+    # docs/reviews/foundation-hardening-s1-fix-wave-report.md).
     add("merge/two_candidates_first_in_schema_order_wins", "merge",
         {"schema": {"title": ["title", "name", "headline"],
                     "url": ["url", "link", "href"]}},

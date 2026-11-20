@@ -1028,7 +1028,8 @@ def _raw_cases() -> List[dict]:
         {"stages": [{"stage": "select", "args": {"fields": ["a"]}}]}, [])
 
     # Boundary cases: each one changes its expectation under a specific
-    # plausible port bug (the arithmetic is in the Slice 1 fix-wave report).
+    # plausible port bug (arithmetic: section 2 of
+    # docs/reviews/foundation-hardening-s1-fix-wave-report.md).
     add("merge/two_candidates_first_in_schema_order_wins", "merge",
         {"schema": {"title": ["title", "name", "headline"],
                     "url": ["url", "link", "href"]}},
@@ -1057,6 +1058,22 @@ def _raw_cases() -> List[dict]:
     add("rescore/proximity_window_is_80_characters", "rescore",
         {"query": "alpha beta", "fields": ["s"]},
         [{"s": "alpha " + "z" * (gap - 7) + " beta", "gap": gap} for gap in (79, 80, 81)])
+
+    # Close-out cases (each arithmetic is in the comment above it).
+    # Three tied scores whose input path order (b, a, c) is neither ascending
+    # nor descending: any tie-break on "path" reorders them.
+    add("rank/ties_keep_input_order", "rank", {"by": "s"},
+        [{"s": 1, "path": "b"}, {"s": 1, "path": "a"}, {"s": 2, "path": "d"},
+         {"s": 1, "path": "c"}, {"s": 0, "path": "e"}])
+    # a missing field reads as None, and None is allowed here
+    add("allowlist/missing_field_reads_as_none_which_may_be_allowed", "allowlist",
+        {"field": "src", "allowed": ["a", None]},
+        [{"src": "a", "n": 1}, {"n": 2}, {"src": "b", "n": 3}, {"src": None, "n": 4}])
+    # 19 chars -> ceil(19/4) = 5 tokens > 4; budget 4 - 1 (suffix) = 3 tokens
+    # = 12 chars, and the 12-char cut "abcdefghi   " ends in spaces: rstrip
+    add("truncate_field/cut_landing_in_whitespace_is_stripped_before_the_suffix",
+        "truncate_field", {"field": "s", "max_tokens": 4},
+        [{"s": "abcdefghi" + " " * 3 + "jklmnop"}])
     return cases
 
 
@@ -1160,8 +1177,8 @@ Expected: the `OK:` line. Any assertion failure means stop and diagnose (do not 
 - [ ] **Step 7: Run the Python replay and the whole Python suite**
 
 ```bash
-python -m pytest tests/test_parity_cases.py -q -p no:cacheprovider      # expect: 49 passed (39 before the fix wave)
-python -m pytest -q -p no:cacheprovider --ignore-glob="tests/test_doctrine_*"   # expect: 197 passed (72 + 61 + 3 + 12 + 49)
+python -m pytest tests/test_parity_cases.py -q -p no:cacheprovider      # expect: 52 passed (39 before the fix wave, 49 before the close-out)
+python -m pytest -q -p no:cacheprovider --ignore-glob="tests/test_doctrine_*"   # expect: 200 passed (72 + 61 + 3 + 12 + 52)
 ```
 
 - [ ] **Step 8: Commit**
@@ -1312,7 +1329,7 @@ with
 - [ ] **Step 3: Run the whole TypeScript suite**
 
 Run: `cd ts && npm test`
-Expected: `ℹ tests 70`, `ℹ pass 70`, `ℹ fail 0` (41 existing + 29 new: 28 cases + the completeness check; 64 with 22 cases before the G4/G5 fix wave).
+Expected: `ℹ tests 73`, `ℹ pass 73`, `ℹ fail 0` (41 existing + 32 new: 31 cases + the completeness check; 64 with 22 cases before the G4/G5 fix wave, 70 with 28 before the close-out).
 
 - [ ] **Step 4: Negative control — prove the runner can fail**
 
@@ -1482,12 +1499,12 @@ public class CaseTests
 - [ ] **Step 2: Run only the new tests**
 
 Run: `dotnet test csharp/Contexel.Tests/Contexel.Tests.csproj --nologo -v q --filter "FullyQualifiedName~CaseTests"`
-Expected: `Passed!  - Failed: 0, Passed: 29` (28 cases + the completeness check; 23 before the G4/G5 fix wave).
+Expected: `Passed!  - Failed: 0, Passed: 32` (31 cases + the completeness check; 23 before the G4/G5 fix wave, 29 before the close-out).
 
 - [ ] **Step 3: Run the whole C# suite**
 
 Run: `dotnet test csharp/Contexel.Tests/Contexel.Tests.csproj --nologo -v q`
-Expected: `Passed!  - Failed: 0, Passed: 68` (39 existing + 29 new).
+Expected: `Passed!  - Failed: 0, Passed: 71` (39 existing + 32 new).
 
 - [ ] **Step 4: Negative control**
 
@@ -1538,8 +1555,10 @@ Insert immediately above the line `## [0.1.17] — 2026-07-28`:
   integers beyond 2^53), and a pinning test keeps the NFC/NFD case holding
   two distinct keys. Boundary cases pin the first-present `merge`
   candidate, code-point (not byte or UTF-16) token counting, multi-field
-  `quarantine`, the exact `trim_to_budget` cost and the 80-character
-  `rescore` proximity window; both runners fail on an empty case list.
+  `quarantine`, the exact `trim_to_budget` cost, the 80-character
+  `rescore` proximity window, `rank` ties kept in input order, a missing
+  `allowlist` field read as `None`, and whitespace stripped before the
+  truncation suffix; both runners fail on an empty case list.
 ```
 
 - [ ] **Step 2: Mark ADR-007's status**
@@ -1549,10 +1568,10 @@ In `docs/adr/007-vector-format-v2-and-differential-fuzz.md` change `**Status:** 
 - [ ] **Step 3: Full verification — all three languages, regenerate-and-diff**
 
 ```bash
-python -m pytest -q -p no:cacheprovider --ignore-glob="tests/test_doctrine_*"       # expect: 197 passed
+python -m pytest -q -p no:cacheprovider --ignore-glob="tests/test_doctrine_*"       # expect: 200 passed
 PYTHONPATH=. python parity/generate_vectors.py && git diff --exit-code parity/vectors.json && echo "vectors fresh"
-(cd ts && npm test 2>&1 | grep -E "^ℹ (tests|pass|fail)")                           # expect: 70 / 70 / 0
-dotnet test csharp/Contexel.Tests/Contexel.Tests.csproj --nologo -v q 2>&1 | tail -2 # expect: Passed: 68
+(cd ts && npm test 2>&1 | grep -E "^ℹ (tests|pass|fail)")                           # expect: 73 / 73 / 0
+dotnet test csharp/Contexel.Tests/Contexel.Tests.csproj --nologo -v q 2>&1 | tail -2 # expect: Passed: 71
 git status --short                                                                   # expect: only CHANGELOG.md and the ADR modified
 ```
 
@@ -1580,9 +1599,11 @@ Dispatch the `code-reviewer` agent (fresh context; G4) on `git diff main...HEAD`
 
 1. **Spec coverage.** §8 *Hash-seed test* → Task 2. *Generative property tests with canaries* → Task 1. *Vectors v2 (`cases`, one adapter per stage, `_meta.case_count`)* → Tasks 4–6. *`merge`, `shaped`, `trace.report` cases and the empty-input class (AC 22)* → Task 4's case table, replayed in Tasks 5–6. *AC 29 baseline* → Task 3. *`expect_error`* is deliberately **not** in this slice: runners reject unknown keys, and Slice 2 adds `expect_error` support together with the first error cases. No gaps.
 2. **Placeholder scan.** No unfinished-work markers; every code step has complete code inlined from files that were executed during planning.
-3. **Type consistency.** `build_cases`, `run_case`, `assert_in_envelope`, `ALLOWED_KEYS` are defined in Task 4 and used by `tests/test_parity_cases.py` with the same names. The case keys `id, stage, args, input, expect` are identical in the Python table, the TypeScript runner and the C# runner. Counts: 22 cases + 1 completeness test = 23 in each runner when written; 28 + 1 = 29 after the G4/G5 fix wave.
+3. **Type consistency.** `build_cases`, `run_case`, `assert_in_envelope`, `ALLOWED_KEYS` are defined in Task 4 and used by `tests/test_parity_cases.py` with the same names. The case keys `id, stage, args, input, expect` are identical in the Python table, the TypeScript runner and the C# runner. Counts: 22 cases + 1 completeness test = 23 in each runner when written; 28 + 1 = 29 after the G4/G5 fix wave; 31 + 1 = 32 after the close-out round.
 4. **Review Focus.** Items 1–5 each map to a named test or negative control above.
 
 **Verified before writing (2026-11-19, scratch copies, not the repo):** the property and process tests (38 passed, canaries included), the golden fingerprints (10 passed under `PYTHONHASHSEED` 0/1/2), the Python replay and envelope guard (38 passed in scratch; the repository suite has 39 after the Task 4 review added a pinning test), the generator edit (legacy sections identical; regeneration byte-stable; LF only), the TypeScript runner (23/23 pass), the C# runner (23/23 pass), and the tamper negative control in both languages (3 failures each).
 
-**G4/G5 fix wave (2026-11-19, after the whole-branch review and the G5 QA; scratch copies from `git archive`, never the repo):** the code blocks above for `tests/_gen.py`, `tests/test_properties.py`, `tests/test_fingerprint_golden.py`, `tests/test_parity_cases.py`, `parity/parity_cases.py`, `ts/test/cases.test.ts`, `csharp/Contexel.Tests/CaseTests.cs` and the `CHANGELOG.md` section were replaced by the fixed files (byte-identical). Repository totals: Python 197 passed, TypeScript 70 pass, C# 68 passed, 28 cases. All 17 QA mutations that had survived (rows 1, 7, 15, 17, 18, 19, 22, 29, 30, 32, 33, 36, 37, 39, 41, 42, 47) now fail at least one test, rows 6, 14 and 27 are still caught, the tamper negative control still fails 3 tests in each runner, and `cases: []` with `case_count: 0` now fails both runners. Evidence: `.superpowers/sdd/2026-11-19-foundation-hardening-s1-safety-net/fix-wave-report.md`.
+**G4/G5 fix wave (2026-11-19, after the whole-branch review and the G5 QA; scratch copies from `git archive`, never the repo):** the code blocks above for `tests/_gen.py`, `tests/test_properties.py`, `tests/test_fingerprint_golden.py`, `tests/test_parity_cases.py`, `parity/parity_cases.py`, `ts/test/cases.test.ts`, `csharp/Contexel.Tests/CaseTests.cs` and the `CHANGELOG.md` section were replaced by the fixed files (byte-identical). Repository totals: Python 197 passed, TypeScript 70 pass, C# 68 passed, 28 cases. All 17 QA mutations that had survived (rows 1, 7, 15, 17, 18, 19, 22, 29, 30, 32, 33, 36, 37, 39, 41, 42, 47) now fail at least one test, rows 6, 14 and 27 are still caught, the tamper negative control still fails 3 tests in each runner, and `cases: []` with `case_count: 0` now fails both runners. Evidence: `docs/reviews/foundation-hardening-s1-fix-wave-report.md` (findings: `docs/reviews/foundation-hardening-s1-fix-wave-findings.md`; the first QA pass: `docs/qa/foundation-hardening-s1-qa-pass-1.md`).
+
+**Close-out round (2026-11-20, after the opus re-review and the second QA pass, `docs/qa/foundation-hardening-s1-qa-pass-2.md`):** three cases appended after the existing 28 in `parity/parity_cases.py`, because only the Python case table could pin these survivors: `rank/ties_keep_input_order` (a tie-break on `path` in Python, TypeScript or C# rank), `allowlist/missing_field_reads_as_none_which_may_be_allowed` (QA-2 P7) and `truncate_field/cut_landing_in_whitespace_is_stripped_before_the_suffix` (QA-2 P5). All five mutants survived at `f44d006` and fail at `d5439d2` (fresh scratch copy per mutant, `python -B`). Totals: Python 200 passed, TypeScript 73 pass, C# 71 passed, 31 cases. The `parity/parity_cases.py` block above was re-synced (byte-identical), and the QA and review reports were filed, sanitized, under `docs/qa/` and `docs/reviews/`.

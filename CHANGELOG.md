@@ -27,8 +27,10 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   integers beyond 2^53), and a pinning test keeps the NFC/NFD case holding
   two distinct keys. Boundary cases pin the first-present `merge`
   candidate, code-point (not byte or UTF-16) token counting, multi-field
-  `quarantine`, the exact `trim_to_budget` cost and the 80-character
-  `rescore` proximity window; both runners fail on an empty case list.
+  `quarantine`, the exact `trim_to_budget` cost, the 80-character
+  `rescore` proximity window, `rank` ties kept in input order, a missing
+  `allowlist` field read as `None`, and whitespace stripped before the
+  truncation suffix; both runners fail on an empty case list.
 
 ## [0.1.17] — 2026-07-28
 
