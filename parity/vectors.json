@@ -2,7 +2,8 @@
   "_meta": {
     "generated_by": "python contexel (canon)",
     "adr": "docs/adr/001-typescript-parity.md",
-    "fixture_records": 6
+    "fixture_records": 6,
+    "case_count": 22
   },
   "fixture": [
     {
@@ -735,5 +736,578 @@
         "score": 0.611005
       }
     ]
-  }
+  },
+  "cases": [
+    {
+      "id": "select/empty_input",
+      "stage": "select",
+      "args": {
+        "fields": [
+          "a"
+        ]
+      },
+      "input": [],
+      "expect": []
+    },
+    {
+      "id": "dedupe/empty_input",
+      "stage": "dedupe",
+      "args": {
+        "key": [
+          "a"
+        ]
+      },
+      "input": [],
+      "expect": []
+    },
+    {
+      "id": "allowlist/empty_input",
+      "stage": "allowlist",
+      "args": {
+        "field": "a",
+        "allowed": [
+          "x"
+        ]
+      },
+      "input": [],
+      "expect": []
+    },
+    {
+      "id": "quarantine/empty_input",
+      "stage": "quarantine",
+      "args": {
+        "fields": [
+          "a"
+        ]
+      },
+      "input": [],
+      "expect": []
+    },
+    {
+      "id": "rescore/empty_input",
+      "stage": "rescore",
+      "args": {
+        "query": "x",
+        "fields": [
+          "a"
+        ]
+      },
+      "input": [],
+      "expect": []
+    },
+    {
+      "id": "rank/empty_input",
+      "stage": "rank",
+      "args": {
+        "by": "a"
+      },
+      "input": [],
+      "expect": []
+    },
+    {
+      "id": "truncate_field/empty_input",
+      "stage": "truncate_field",
+      "args": {
+        "field": "a",
+        "max_tokens": 3
+      },
+      "input": [],
+      "expect": []
+    },
+    {
+      "id": "trim_to_budget/empty_input",
+      "stage": "trim_to_budget",
+      "args": {
+        "max_tokens": 10
+      },
+      "input": [],
+      "expect": []
+    },
+    {
+      "id": "merge/empty_sources",
+      "stage": "merge",
+      "args": {},
+      "input": [],
+      "expect": []
+    },
+    {
+      "id": "pipeline/empty_input",
+      "stage": "pipeline",
+      "args": {
+        "stages": [
+          {
+            "stage": "select",
+            "args": {
+              "fields": [
+                "a"
+              ]
+            }
+          },
+          {
+            "stage": "trim_to_budget",
+            "args": {
+              "max_tokens": 10
+            }
+          }
+        ]
+      },
+      "input": [],
+      "expect": []
+    },
+    {
+      "id": "merge/concat_without_schema",
+      "stage": "merge",
+      "args": {},
+      "input": [
+        [
+          {
+            "a": 1
+          },
+          {
+            "a": 2
+          }
+        ],
+        [
+          {
+            "a": 3
+          }
+        ]
+      ],
+      "expect": [
+        {
+          "a": 1
+        },
+        {
+          "a": 2
+        },
+        {
+          "a": 3
+        }
+      ]
+    },
+    {
+      "id": "merge/schema_first_present_wins_and_dedupes",
+      "stage": "merge",
+      "args": {
+        "schema": {
+          "title": [
+            "title",
+            "name",
+            "headline"
+          ],
+          "url": [
+            "url",
+            "link",
+            "href"
+          ]
+        },
+        "dedupe_key": "url"
+      },
+      "input": [
+        [
+          {
+            "title": "A",
+            "url": "u1",
+            "junk": 1
+          },
+          {
+            "name": "B",
+            "link": "u2"
+          }
+        ],
+        [
+          {
+            "headline": "C",
+            "href": "u1"
+          },
+          {
+            "title": "D",
+            "url": "u3"
+          }
+        ]
+      ],
+      "expect": [
+        {
+          "title": "A",
+          "url": "u1"
+        },
+        {
+          "title": "B",
+          "url": "u2"
+        },
+        {
+          "title": "D",
+          "url": "u3"
+        }
+      ]
+    },
+    {
+      "id": "merge/schema_unmatched_record_becomes_empty",
+      "stage": "merge",
+      "args": {
+        "schema": {
+          "title": [
+            "title"
+          ]
+        }
+      },
+      "input": [
+        [
+          {
+            "other": 1
+          },
+          {
+            "title": "T"
+          }
+        ]
+      ],
+      "expect": [
+        {},
+        {
+          "title": "T"
+        }
+      ]
+    },
+    {
+      "id": "rank/missing_field_goes_last_desc",
+      "stage": "rank",
+      "args": {
+        "by": "a"
+      },
+      "input": [
+        {
+          "a": 2
+        },
+        {
+          "b": 1
+        },
+        {
+          "a": 3
+        },
+        {
+          "a": 2,
+          "t": "second"
+        }
+      ],
+      "expect": [
+        {
+          "a": 3
+        },
+        {
+          "a": 2
+        },
+        {
+          "a": 2,
+          "t": "second"
+        },
+        {
+          "b": 1
+        }
+      ]
+    },
+    {
+      "id": "rank/missing_field_goes_last_asc",
+      "stage": "rank",
+      "args": {
+        "by": "a",
+        "desc": false
+      },
+      "input": [
+        {
+          "a": 2
+        },
+        {
+          "b": 1
+        },
+        {
+          "a": 3
+        },
+        {
+          "a": 2,
+          "t": "second"
+        }
+      ],
+      "expect": [
+        {
+          "a": 2
+        },
+        {
+          "a": 2,
+          "t": "second"
+        },
+        {
+          "a": 3
+        },
+        {
+          "b": 1
+        }
+      ]
+    },
+    {
+      "id": "dedupe/nfc_and_nfd_stay_distinct",
+      "stage": "dedupe",
+      "args": {
+        "key": "k"
+      },
+      "input": [
+        {
+          "k": "café"
+        },
+        {
+          "k": "café"
+        },
+        {
+          "k": "café"
+        }
+      ],
+      "expect": [
+        {
+          "k": "café"
+        }
+      ]
+    },
+    {
+      "id": "truncate_field/counts_code_points_not_bytes",
+      "stage": "truncate_field",
+      "args": {
+        "field": "s",
+        "max_tokens": 4
+      },
+      "input": [
+        {
+          "s": "日本語日本語日本語日本語日本語日本語日本語日本語日本語日本語"
+        },
+        {
+          "s": "emoji😀emoji😀emoji😀emoji😀emoji😀emoji😀"
+        }
+      ],
+      "expect": [
+        {
+          "s": "日本語日本語日本語日本語…"
+        },
+        {
+          "s": "emoji😀emoji😀…"
+        }
+      ]
+    },
+    {
+      "id": "select/missing_and_nested_fields",
+      "stage": "select",
+      "args": {
+        "fields": [
+          "a",
+          "n",
+          "zz"
+        ]
+      },
+      "input": [
+        {
+          "a": 1,
+          "n": {
+            "x": [
+              1,
+              2
+            ]
+          },
+          "drop": true
+        },
+        {
+          "zz": null
+        }
+      ],
+      "expect": [
+        {
+          "a": 1,
+          "n": {
+            "x": [
+              1,
+              2
+            ]
+          }
+        },
+        {
+          "zz": null
+        }
+      ]
+    },
+    {
+      "id": "shaped/select_then_dedupe_on_fixture",
+      "stage": "shaped",
+      "args": {
+        "stages": [
+          {
+            "stage": "select",
+            "args": {
+              "fields": [
+                "path",
+                "line"
+              ]
+            }
+          },
+          {
+            "stage": "dedupe",
+            "args": {
+              "key": [
+                "path",
+                "line"
+              ]
+            }
+          }
+        ]
+      },
+      "input": "$fixture",
+      "expect": [
+        {
+          "path": "src/retry.py",
+          "line": 38
+        },
+        {
+          "path": "src/config.py",
+          "line": 3
+        },
+        {
+          "path": "docs/guide.md",
+          "line": 120
+        },
+        {
+          "path": "web/scrape.txt",
+          "line": 1
+        },
+        {
+          "path": "tests/test_retry.py",
+          "line": 12
+        }
+      ]
+    },
+    {
+      "id": "pipeline/allowlist_then_trim_on_fixture",
+      "stage": "pipeline",
+      "args": {
+        "stages": [
+          {
+            "stage": "allowlist",
+            "args": {
+              "field": "source",
+              "allowed": [
+                "repo"
+              ]
+            }
+          },
+          {
+            "stage": "trim_to_budget",
+            "args": {
+              "max_tokens": 60
+            }
+          }
+        ]
+      },
+      "input": "$fixture",
+      "expect": [
+        {
+          "path": "src/retry.py",
+          "line": 38,
+          "source": "repo",
+          "snippet": "def retry_backoff applies exponential backoff with jitter",
+          "hits": 3
+        }
+      ]
+    },
+    {
+      "id": "trace_report/contract_on_fixture",
+      "stage": "trace_report",
+      "args": {
+        "id_field": "path",
+        "stages": [
+          {
+            "stage": "allowlist",
+            "args": {
+              "field": "source",
+              "allowed": [
+                "repo",
+                "docs"
+              ]
+            }
+          },
+          {
+            "stage": "quarantine",
+            "args": {
+              "fields": [
+                "snippet"
+              ]
+            }
+          },
+          {
+            "stage": "select",
+            "args": {
+              "fields": [
+                "path",
+                "line",
+                "source",
+                "snippet"
+              ]
+            }
+          },
+          {
+            "stage": "dedupe",
+            "args": {
+              "key": [
+                "path",
+                "line"
+              ]
+            }
+          },
+          {
+            "stage": "rescore",
+            "args": {
+              "query": "exponential backoff jitter",
+              "fields": [
+                "snippet",
+                "path"
+              ]
+            }
+          },
+          {
+            "stage": "truncate_field",
+            "args": {
+              "field": "snippet",
+              "max_tokens": 12
+            }
+          },
+          {
+            "stage": "rank",
+            "args": {
+              "by": "score",
+              "desc": true
+            }
+          },
+          {
+            "stage": "trim_to_budget",
+            "args": {
+              "max_tokens": 150
+            }
+          }
+        ]
+      },
+      "input": "$fixture",
+      "expect": "allowlist            6 -> 5         238 -> 193     tokens\nquarantine           5 -> 5         193 -> 193     tokens\nselect               5 -> 5         193 -> 179     tokens\ndedupe               5 -> 4         179 -> 147     tokens\nrescore              4 -> 4         147 -> 166     tokens\ntruncate_field       4 -> 4         166 -> 137     tokens\nrank                 4 -> 4         137 -> 137     tokens\ntrim_to_budget       4 -> 4         137 -> 137     tokens\n--------------------------------------------------------\ntotal                               238 -> 137     tokens  (42% reduction)"
+    },
+    {
+      "id": "trace_report/empty_pipeline_input",
+      "stage": "trace_report",
+      "args": {
+        "stages": [
+          {
+            "stage": "select",
+            "args": {
+              "fields": [
+                "a"
+              ]
+            }
+          }
+        ]
+      },
+      "input": [],
+      "expect": "select               0 -> 0           1 -> 1       tokens\n--------------------------------------------------------\ntotal                                 1 -> 1       tokens  (0% reduction)"
+    }
+  ]
 }
