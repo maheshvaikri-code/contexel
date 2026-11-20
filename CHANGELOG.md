@@ -4,6 +4,26 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
 `z.y.x` — Mega. Major. minor/patch — and every commit bumps the version.
 
+## [Unreleased]
+
+### Added — test infrastructure (no library behavior change)
+- Seeded stdlib property tests for every stage (purity, determinism,
+  idempotence, subsequence, count and budget invariants), each with a
+  canary proving the harness can fail; failures print their seed.
+- A cross-process determinism test that sweeps `PYTHONHASHSEED` over a
+  pipeline whose data contains sets, mixed types and non-ASCII text, and
+  asserts that the requested seed actually took effect in each child process.
+- Golden policy-fingerprint tests pinning today's values (the compatibility
+  baseline for the audit-truthfulness work, ADR-008).
+- Data-driven parity cases (ADR-007): `parity/parity_cases.py` is the single
+  case table; `vectors.json` gains a `cases` array and `_meta.case_count`;
+  the TypeScript and C# suites replay every case through one adapter per
+  stage. First coverage of `merge`, `shaped`, `trace.report()` and the
+  empty-input class in all three languages. A generator-side envelope guard
+  rejects data TypeScript cannot represent (integer-valued floats, NaN/Inf,
+  integers beyond 2^53), and a pinning test keeps the NFC/NFD case holding
+  two distinct keys.
+
 ## [0.1.17] — 2026-07-28
 
 ### Added — C# parity package (`csharp/`, NuGet: `Contexel`)
