@@ -92,7 +92,7 @@ def _raw_cases() -> List[dict]:
     add("rank/missing_field_goes_last_asc", "rank", {"by": "a", "desc": False},
         [{"a": 2}, {"b": 1}, {"a": 3}, {"a": 2, "t": "second"}])
     add("dedupe/nfc_and_nfd_stay_distinct", "dedupe", {"key": "k"},
-        [{"k": "café"}, {"k": "café"}, {"k": "café"}])
+        [{"k": "caf\u00e9"}, {"k": "cafe\u0301"}, {"k": "caf\u00e9"}])
     add("truncate_field/counts_code_points_not_bytes", "truncate_field",
         {"field": "s", "max_tokens": 4},
         [{"s": "日本語" * 10}, {"s": "emoji\U0001F600" * 6}])

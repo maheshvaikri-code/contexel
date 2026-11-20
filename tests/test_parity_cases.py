@@ -4,6 +4,7 @@ and the generator must reject data outside the documented parity envelope."""
 import json
 import os
 import sys
+import unicodedata
 
 import pytest
 
@@ -28,6 +29,16 @@ def test_committed_case_matches_canon(case):
     actual = parity_cases.run_case(case, VECTORS["fixture"])
     assert json.dumps(actual, sort_keys=True, ensure_ascii=False) == json.dumps(
         case["expect"], sort_keys=True, ensure_ascii=False)
+
+
+def test_unicode_normalization_case_has_two_distinct_keys():
+    case = next(c for c in VECTORS["cases"] if c["id"] == "dedupe/nfc_and_nfd_stay_distinct")
+    keys = {r["k"] for r in case["input"]}
+    assert len(keys) == 2
+    a, b = sorted(keys)
+    assert a != b
+    assert unicodedata.normalize("NFC", a) == unicodedata.normalize("NFC", b)
+    assert len(case["expect"]) == 2
 
 
 @pytest.mark.parametrize("bad", [1.0, float("nan"), float("inf"), 2 ** 60, {1: "x"}, (1, {"a": 2.0}), b"x"])
