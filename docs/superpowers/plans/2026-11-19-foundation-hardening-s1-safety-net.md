@@ -16,6 +16,7 @@
 - **No `hypothesis`** and no other new dependency: property tests use stdlib `random` (brief AC 20).
 - **This slice changes no library behavior:** no edits under `contexel/`, `ts/src/`, or `csharp/Contexel/`.
 - **Every existing section of `parity/vectors.json` stays byte-identical;** only `_meta.case_count` and the new `cases` key are added.
+- Never store an invisible or combining character literally in source: write it as an explicit `\u` escape.
 - Case data must stay inside the parity envelope: JSON only, **no integer-valued floats, NaN/Inf, or integers beyond 2^53** (TypeScript cannot tell `1.0` from `1`).
 - **Never run the hash-seed child with `python -I`:** `-I` implies `-E`, which discards `PYTHONHASHSEED` and makes the test vacuous.
 - Test code must run on Python 3.9 (no `match` statements, no `X | Y` annotations) and on Windows, macOS and Linux (read/write JSON as UTF-8, LF newlines).
@@ -595,6 +596,7 @@ and the generator must reject data outside the documented parity envelope."""
 import json
 import os
 import sys
+import unicodedata
 
 import pytest
 
@@ -619,6 +621,16 @@ def test_committed_case_matches_canon(case):
     actual = parity_cases.run_case(case, VECTORS["fixture"])
     assert json.dumps(actual, sort_keys=True, ensure_ascii=False) == json.dumps(
         case["expect"], sort_keys=True, ensure_ascii=False)
+
+
+def test_unicode_normalization_case_has_two_distinct_keys():
+    case = next(c for c in VECTORS["cases"] if c["id"] == "dedupe/nfc_and_nfd_stay_distinct")
+    keys = {r["k"] for r in case["input"]}
+    assert len(keys) == 2
+    a, b = sorted(keys)
+    assert a != b
+    assert unicodedata.normalize("NFC", a) == unicodedata.normalize("NFC", b)
+    assert len(case["expect"]) == 2
 
 
 @pytest.mark.parametrize("bad", [1.0, float("nan"), float("inf"), 2 ** 60, {1: "x"}, (1, {"a": 2.0}), b"x"])
@@ -734,7 +746,7 @@ def _raw_cases() -> List[dict]:
     add("rank/missing_field_goes_last_asc", "rank", {"by": "a", "desc": False},
         [{"a": 2}, {"b": 1}, {"a": 3}, {"a": 2, "t": "second"}])
     add("dedupe/nfc_and_nfd_stay_distinct", "dedupe", {"key": "k"},
-        [{"k": "café"}, {"k": "café"}, {"k": "café"}])
+        [{"k": "caf\u00e9"}, {"k": "cafe\u0301"}, {"k": "caf\u00e9"}])
     add("truncate_field/counts_code_points_not_bytes", "truncate_field",
         {"field": "s", "max_tokens": 4},
         [{"s": "日本語" * 10}, {"s": "emoji\U0001F600" * 6}])
@@ -868,8 +880,8 @@ Expected: the `OK:` line. Any assertion failure means stop and diagnose (do not 
 - [ ] **Step 7: Run the Python replay and the whole Python suite**
 
 ```bash
-python -m pytest tests/test_parity_cases.py -q -p no:cacheprovider      # expect: 38 passed
-python -m pytest -q -p no:cacheprovider --ignore-glob="tests/test_doctrine_*"   # expect: 158 passed (72 + 35 + 3 + 10 + 38)
+python -m pytest tests/test_parity_cases.py -q -p no:cacheprovider      # expect: 39 passed
+python -m pytest -q -p no:cacheprovider --ignore-glob="tests/test_doctrine_*"   # expect: 159 passed (72 + 35 + 3 + 10 + 39)
 ```
 
 - [ ] **Step 8: Commit**
@@ -1247,7 +1259,7 @@ In `docs/adr/007-vector-format-v2-and-differential-fuzz.md` change `**Status:** 
 - [ ] **Step 3: Full verification — all three languages, regenerate-and-diff**
 
 ```bash
-python -m pytest -q -p no:cacheprovider --ignore-glob="tests/test_doctrine_*"       # expect: 158 passed
+python -m pytest -q -p no:cacheprovider --ignore-glob="tests/test_doctrine_*"       # expect: 159 passed
 python parity/generate_vectors.py && git diff --exit-code parity/vectors.json && echo "vectors fresh"
 (cd ts && npm test 2>&1 | grep -E "^ℹ (tests|pass|fail)")                           # expect: 64 / 64 / 0
 dotnet test csharp/Contexel.Tests/Contexel.Tests.csproj --nologo -v q 2>&1 | tail -2 # expect: Passed: 62
@@ -1281,4 +1293,4 @@ Dispatch the `code-reviewer` agent (fresh context; G4) on `git diff main...HEAD`
 3. **Type consistency.** `build_cases`, `run_case`, `assert_in_envelope`, `ALLOWED_KEYS` are defined in Task 4 and used by `tests/test_parity_cases.py` with the same names. The case keys `id, stage, args, input, expect` are identical in the Python table, the TypeScript runner and the C# runner. Counts: 22 cases + 1 completeness test = 23 in each runner.
 4. **Review Focus.** Items 1–5 each map to a named test or negative control above.
 
-**Verified before writing (2026-11-19, scratch copies, not the repo):** the property and process tests (38 passed, canaries included), the golden fingerprints (10 passed under `PYTHONHASHSEED` 0/1/2), the Python replay and envelope guard (38 passed), the generator edit (legacy sections identical; regeneration byte-stable; LF only), the TypeScript runner (23/23 pass), the C# runner (23/23 pass), and the tamper negative control in both languages (3 failures each).
+**Verified before writing (2026-11-19, scratch copies, not the repo):** the property and process tests (38 passed, canaries included), the golden fingerprints (10 passed under `PYTHONHASHSEED` 0/1/2), the Python replay and envelope guard (39 passed), the generator edit (legacy sections identical; regeneration byte-stable; LF only), the TypeScript runner (23/23 pass), the C# runner (23/23 pass), and the tamper negative control in both languages (3 failures each).
