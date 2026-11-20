@@ -17,6 +17,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 from . import tokens
 from .trace import traced
+from .validate import checked
 
 Record = Dict[str, Any]
 Records = List[Record]
@@ -65,6 +66,7 @@ def _dedupe_fp(value: Any) -> Any:
         return _fingerprint(value)
 
 
+@checked(mapping=True)
 @traced
 def select(records: Records, fields: Fields) -> Records:
     """Keep only ``fields`` on each record. The fastest way to cut tool-output bloat."""
@@ -72,6 +74,7 @@ def select(records: Records, fields: Fields) -> Records:
     return [{k: r[k] for k in keep if k in r} for r in records]
 
 
+@checked(mapping=lambda args: args.get("key") is not None)
 @traced
 def dedupe(records: Records, key: Optional[Union[str, Sequence[str]]] = None) -> Records:
     """Drop duplicate records, keeping the first occurrence and preserving order.
@@ -97,6 +100,7 @@ def dedupe(records: Records, key: Optional[Union[str, Sequence[str]]] = None) ->
     return out
 
 
+@checked(mapping=lambda args: isinstance(args.get("by"), str))
 @traced
 def rank(records: Records, by: Union[str, Callable[[Record], Any]], desc: bool = True) -> Records:
     """Sort records by a field name or key function. Records missing the field go last.
@@ -112,6 +116,7 @@ def rank(records: Records, by: Union[str, Callable[[Record], Any]], desc: bool =
     return present + missing
 
 
+@checked(mapping=True)
 @traced
 def allowlist(records: Records, field: str, allowed: Sequence[Any]) -> Records:
     """Provenance gate: keep only records whose ``field`` value is in
@@ -146,6 +151,7 @@ _INJECTION_PATTERNS = (
 )
 
 
+@checked(mapping=True)
 @traced
 def quarantine(records: Records, fields: Fields = ("snippet",),
                patterns: Optional[Fields] = None,
@@ -216,6 +222,7 @@ def quarantine(records: Records, fields: Fields = ("snippet",),
 _TOKEN = re.compile(r"[^\W_]+")  # word tokens; underscores split snake_case
 
 
+@checked(mapping=True)
 @traced
 def rescore(records: Records, query: Union[str, Sequence[str]],
             fields: Fields = ("snippet",), into: str = "score",
@@ -319,6 +326,7 @@ def _truncate_text(text: str, max_tokens: int, tokenizer: Any, suffix: str) -> s
     return text[:lo].rstrip() + suffix
 
 
+@checked(mapping=True)
 @traced
 def truncate_field(records: Records, field: str, max_tokens: int,
                    tokenizer: Any = None, suffix: str = "\u2026") -> Records:
@@ -335,6 +343,7 @@ def truncate_field(records: Records, field: str, max_tokens: int,
     return out
 
 
+@checked(mapping=False)
 @traced
 def trim_to_budget(records: Records, max_tokens: int, tokenizer: Any = None,
                    min_records: int = 0) -> Records:
