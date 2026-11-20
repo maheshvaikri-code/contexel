@@ -26,14 +26,21 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   `ConfigError`, which extends only `Error`, so `e instanceof SyntaxError` and
   `e instanceof TypeError` no longer match (catch `ContexelError` or
   `ConfigError`). The shared
-  parity vectors gain error cases that assert the code in all three languages.
+  parity vectors gain error cases that assert the code in all three languages
+  (70 cases in all, 31 of them error cases).
 - Opt-in strict mode that validates the shape of stage input and names the
   stage and item index: `with strict():` (Python), `strict(fn)` (TypeScript),
   `Strict.Begin()` (C#), and `pipeline(..., strict=True)` /
   `shaped(..., strict=True)`, which enter it inside their own run so it holds
   on worker threads and also check that every stage (or the tool) returns a
   list. Strict never changes a successful result and is not part of the
-  fingerprint.
+  fingerprint. Two shape errors are raised without it: `input.field_conflict`
+  and `quarantine`'s `input.not_mapping` (see Behavior changes, item 3).
+- Public surface, each exposed as the code has it: TypeScript exports
+  `isStrict`, `ERROR_CODES` and the `ErrorCode` type; C# has `Strict.IsActive`,
+  `ContexelException.Codes` and `Pipeline.IsStrict`; Python keeps `is_strict`
+  and `CODES` out of `__all__` (import them from `contexel.validate` and
+  `contexel.errors`).
 - The parity runners reject unknown option names inside a case's `args`.
 
 ### Behavior changes
@@ -59,6 +66,26 @@ exceptions, all intentional:
    `input.field_conflict` instead of being silently overwritten; this is raised
    whether or not strict mode is on and whether or not the record is clean, so
    re-running a flag pipeline on its own output raises (pass a different `into`).
+   An item that is not a mapping (a string, list, tuple, number, boolean or
+   null) always raises `input.not_mapping`, in drop and flag mode, strict mode
+   or not, because a screen that skips what it cannot read would keep the
+   attack. Before, Python raised a raw `AttributeError`; during this slice a
+   string, list or tuple was silently kept in drop mode, and TypeScript in flag
+   mode spread a string into per-character keys; C# threw a
+   `NullReferenceException` for a null item. This is the one other exception
+   (besides `input.field_conflict`) to "shape errors only in strict mode";
+   `allowlist` does not share it (see Known limitations).
+   The built-in markers are compiled once and each custom pattern is compiled
+   and matched on its own; a record is dropped or flagged when any of them
+   matches (they used to be joined into one regex). So a global inline flag in
+   a custom pattern (`(?a)zzz`, `(?i)foo`) is valid on its own where the
+   engine supports it and affects only that pattern (on Python 3.9 and 3.10
+   `patterns=["(?a)zzz"]` no longer weakens the built-in markers), numbered
+   backreferences and named groups stay inside their pattern
+   (`["(zz)q", "(evil)-\1"]` drops `"zz evil-evil"`), a .NET option such as
+   `(?-i)` no longer leaks into later patterns, and the "cannot be combined"
+   error no longer exists: an invalid pattern is always named,
+   `config.invalid_pattern`.
 4. Misconfiguration raises a typed `ConfigError`: an unknown `rescore` `match`
    (it silently ran substring matching; `match="stem"` is reserved and raises
    until the stemmer ships), `fields=[]` for `rescore`, a `max_tokens` or
@@ -89,27 +116,79 @@ exceptions, all intentional:
    public API to overloads, and it is left as is to avoid changing the public
    API.
 
+6. Other changes: `rescore` `query` elements must be strings in all three
+   languages (`rescore(r, [None])` was accepted and searched for the term
+   "none"); `pipeline(..., strict=...)` and `shaped(..., strict=...)` must be a
+   bool (`strict="no"` used to turn strict mode ON in Python, TypeScript tested
+   `=== true`); Python `quarantine` scans the `repr()` as well as the `str()`
+   of an in-process object leaf when they differ (an object may show text in
+   only one of them); the Python `strict()` context object can be re-entered
+   (nested or sequential reuse restores the previous state correctly).
+7. C#: a `HashSet` or `SortedSet` passed as `fields`, `key`, `patterns` or
+   `query` used to be accepted and now throws `ConfigException`
+   (`config.invalid_value`; the message says "got list" for a set). Python and
+   TypeScript reject sets there as well.
+
 ### Compatibility
 C#: the `Shaped.Wrap` overloads gained an optional `strict` parameter. That is
 source-compatible, but a caller compiled against the previous release must be
-recompiled (the method signatures changed).
+recompiled (the method signatures changed). The new
+`Allowlist(records, field, string allowed)` overload makes a call with a
+literal `null` third argument, `Stages.Allowlist(r, "f", null)`, ambiguous
+(compile error CS0121) where it compiled before; cast it
+(`(IEnumerable<object?>)null`) or pass a real list.
 
-### Known limitation (not new in this slice)
-`quarantine` joins custom `patterns` with the built-in markers into one regex,
-so a global inline flag in a custom pattern (`(?i)`, `(?a)`, ...) is not safe:
-- Python 3.11+: it raises `config.invalid_pattern` unless it is in the first
-  fragment of the combined pattern. The default (extend) mode puts the built-in
-  markers first, so it raises there; with `replace_patterns=True` and the flag
-  in the first fragment it is accepted.
-- Python before 3.11 (the package supports 3.9+): it is accepted with a
-  `DeprecationWarning` and applies to the WHOLE combined pattern, built-in
-  markers included. For example `patterns=["(?a)zzz"]` makes the built-in
-  "ignore all previous instructions" stop matching when the words are separated
-  by non-breaking spaces.
-- TypeScript always rejects such a flag; C# accepts the flags .NET supports
-  (for example `(?i)`).
-
-Avoid global inline flags in custom patterns; a follow-up is planned.
+### Known limitations
+Documented, not fixed in this slice. `quarantine` is a tripwire for literal
+markers, not a security boundary, and the three ports do not catch exactly the
+same obfuscations.
+- C# `JsonElement` and `JsonNode`: `quarantine` and `allowlist` do not read
+  `System.Text.Json` values (what `JsonSerializer.Deserialize<Dictionary<string,
+  object?>>` produces by default). A marker split by a newline inside a nested
+  `JsonElement` or `JsonNode` is kept, and `Allowlist` drops a `"github"`
+  `JsonElement`. Records must hold ordinary CLR values (`Dictionary`, `List`,
+  `string`, numbers, `bool`, `null`); convert first. An `ExpandoObject` holding
+  a nested dictionary is not scanned either.
+- The built-in markers differ per engine: U+0085 is caught by Python and C#
+  and kept by TypeScript; U+001C to U+001F are caught by Python only; U+FEFF by
+  TypeScript only; dotless i and dotted I (U+0131, U+0130) and long s (U+017F,
+  in "system prompt") by Python only. In custom patterns `\Z` is a literal
+  `Z` in TypeScript and an end anchor in Python and C#, and the Kelvin sign
+  (U+212A) is folded to `k` by Python and C# but not by TypeScript.
+- None of the ports catches: zero-width characters (U+200B, U+2060), RLM and
+  RLO marks, a soft hyphen (U+00AD), combining marks, homoglyphs (Cyrillic
+  U+0430 for `a`), fullwidth forms, `&nbsp;`, a marker split across two
+  sibling dict values (the key sits between them), `< /system >`.
+- A misspelled field name in `fields` (`"snipet"`) scans nothing and keeps
+  everything, strict mode or not, in all three languages; so does `fields=""`.
+  Check the field names against your records.
+- `allowlist`: a `None`/`null`/`undefined` entry in `allowed` admits records
+  that lack the field (a trap with `os.environ.get(...)` or an unset config
+  value; TypeScript sparse array literals too). `NaN` in `allowed` matches
+  `NaN` in TypeScript and C#, and in Python only the same object. `allowlist`
+  does not raise `input.not_mapping` for a non-mapping item: Python raises a
+  raw `AttributeError`, C# a `NullReferenceException` for a null item, and
+  TypeScript drops it (a string reads as a missing
+  field), except when `allowed` contains `null`, where it keeps it
+  (`allowlist(["text"], { field: "a", allowed: [null] })`). A follow-up is
+  planned.
+- Custom patterns run against attacker-controlled text and no port sets a
+  match timeout: a pattern with nested quantifiers such as `(a+)+$` is
+  exponential on crafted input (the built-ins are linear). Do not accept
+  patterns from untrusted sources.
+- A shared in-process container is expanded once, so a marker that needs the
+  same list twice is not found (JSON-decoded input never shares structure).
+  In Python a `set`, `frozenset`, `deque` or dict view is not expanded (it is
+  scanned as its `str()` text, so a newline-split marker inside one is kept);
+  in TypeScript `Set`, `Map` and `Date` are not scanned; C# enumerates any
+  `IEnumerable`.
+- `dedupe(key=[])` and `dedupe(key="")` keep only the first record in all three
+  languages. A very deep value under an active `trace()` raises `RecursionError`
+  in Python and `RangeError` in TypeScript (both catchable) and overflows the
+  stack, which ends the process, in C#. A custom pattern that matches the empty
+  string (`a*`) drops every record. TypeScript ignores unknown option keys (a
+  typo such as `{ field: "body" }` is silently ignored; the compile-time
+  excess-property check only covers object literals).
 
 ### Tests
 C# tests that asserted the exact exception type

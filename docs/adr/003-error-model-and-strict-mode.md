@@ -20,7 +20,10 @@ raise; data-shape errors raise only in an opt-in strict mode for legacy
 stages, and always for the new stages.** Strict is an ambient context flag, also
 settable via `pipeline(strict=True)` / `shaped(strict=True)`, which enter it
 inside their own run so it holds on threads. Strict never alters a successful
-result and is not part of the fingerprint.
+result and is not part of the fingerprint. Two shape errors are always raised,
+strict mode or not: `input.field_conflict` (carrying on would destroy data) and
+`quarantine`'s `input.not_mapping` (a screen that skips an item it cannot read
+would keep the attack).
 
 ## Alternatives considered
 | Option | Pros | Cons | Why not |

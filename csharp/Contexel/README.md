@@ -85,14 +85,16 @@ with a stable `Code` — the cross-language contract; messages are for humans: a
 `ConfigException` for a wrong *call* (an unknown `match`, an empty `fields`
 list, an invalid regex, a negative `maxTokens`) and an `InputShapeException`
 for wrong *data*. Bad data is lenient by default, so valid input behaves
-exactly as before, with one exception that is never lenient: `Quarantine(...,
+exactly as before, with two exceptions that are never lenient. `Quarantine(...,
 action: "flag")` over a record that already has the `into` key always throws
 `input.field_conflict`, inside a `Strict.Begin()` scope or not and clean record
 or not, because carrying on would overwrite your data (so re-running a flag
-pipeline on its own output throws; pass a different `into`). Open a
-`Strict.Begin()` scope to have a stage that gets a null list, or a null item,
-throw instead and name itself and the item index (C# is statically typed, so
-null is the only shape violation left):
+pipeline on its own output throws; pass a different `into`). And `Quarantine`
+always throws `input.not_mapping` for a null item, in drop and flag mode,
+because a screen that skips what it cannot read would keep the attack. Open a
+`Strict.Begin()` scope to have any other stage that gets a null list, or a null
+item, throw instead and name itself and the item index (C# is statically typed,
+so null is the only shape violation left):
 
 ```csharp
 using Contexel;
@@ -180,7 +182,14 @@ returns an empty record for each input record.
 
 The `Shaped.Wrap` overloads gained an optional `strict` parameter. That is
 source-compatible, but a caller compiled against the previous release must be
-recompiled (the method signatures changed).
+recompiled (the method signatures changed). The new `Allowlist(records, field,
+string allowed)` overload makes a call with a literal `null` third argument,
+`Stages.Allowlist(r, "f", null)`, ambiguous (compile error CS0121) where it
+compiled before; cast it (`(IEnumerable<object?>)null`) or pass a real list.
+
+A `HashSet` or `SortedSet` passed as `fields`, `key`, `patterns` or `query` used
+to be accepted and now throws `ConfigException` (the message says "got list");
+Python and TypeScript reject sets as well.
 
 `fields: null` is the default, not an error, for `Quarantine` and `Rescore` (it
 means the `snippet` field): C# cannot tell an omitted optional argument from an
@@ -190,24 +199,63 @@ treated alike. Python and TypeScript raise for it.
 Differences between the languages (the codes are the contract, the rest can
 differ):
 
-- **Regex dialect.** `Quarantine` compiles patterns with .NET's regex engine, so
-  whether a pattern is invalid (`config.invalid_pattern`) is per port: `(?P<a>x)`
-  is valid in Python and invalid here and in TypeScript. A global inline flag
-  such as `(?i)x` is a known limitation of custom patterns, which are joined
-  into one regex with the built-in markers: .NET accepts the flags it supports
-  (such as `(?i)`), TypeScript always rejects them, and on Python 3.11+ they
-  raise unless they are in the first fragment of the combined pattern (so, in
-  the default extend mode, always); on Python before 3.11 they are accepted and
-  apply to the whole combined pattern, built-in markers included. Avoid global
-  inline flags in custom patterns; a follow-up is planned. A bad pattern now
-  surfaces as a `ConfigException` (an `ArgumentException`), not the framework's
-  `RegexParseException`.
+- **Regex dialect.** `Quarantine` compiles the built-in markers once and each
+  custom pattern on its own, with .NET's regex engine, and drops or flags a
+  record when any of them matches. Whether a pattern is invalid
+  (`config.invalid_pattern`; the message names the pattern) is per port:
+  `(?P<a>x)` is valid in Python only and `(?<a>x)` here and in TypeScript only;
+  TypeScript has no inline flags, so `(?i)x` is invalid there, while .NET and
+  Python accept the flags their engines support, each affecting only its own
+  pattern (an option such as `(?-i)` no longer leaks into later patterns);
+  `\Z` is a literal `Z` in TypeScript and an end anchor here and in Python; the
+  Kelvin sign U+212A is folded to `k` here and in Python but not by TypeScript.
+  A bad pattern surfaces as a `ConfigException` (an `ArgumentException`), not the
+  framework's `RegexParseException`.
 - **Integral floats.** Token budgets are `int`, so there is no `1000.0` to
   accept; Python rejects it and TypeScript accepts it.
 - **Messages.** They differ between ports and are not part of the contract (the
-  TypeScript ones say `NoneType` and `None`, for instance). A single bad pattern
-  is named in the message; when the patterns only fail once combined, the message
-  says they "cannot be combined" and does not name one.
+  TypeScript ones say `NoneType` and `None`, for instance).
+
+Also public: `Strict.IsActive` (is a strict scope active), `ContexelException.Codes`
+(the stable codes) and `Pipeline.IsStrict`.
+
+Known limitations (documented, not fixed in this release). `Quarantine` is a
+tripwire for literal markers, not a security boundary, and the three ports do
+not catch exactly the same obfuscations:
+
+- **`System.Text.Json` values are not read.** `Quarantine` and `Allowlist` do not
+  read `JsonElement` or `JsonNode` values (what
+  `JsonSerializer.Deserialize<Dictionary<string, object?>>` produces by default):
+  a marker split by a newline inside a nested `JsonElement` is kept, and
+  `Allowlist` drops a `"github"` `JsonElement`. Records must hold ordinary CLR
+  values (`Dictionary`, `List`, `string`, numbers, `bool`, `null`); convert
+  `JsonElement` first. An `ExpandoObject` holding a nested dictionary is not
+  scanned either.
+- The built-in markers differ per engine: U+0085 is caught here and by Python and
+  kept by TypeScript; U+001C to U+001F are caught by Python only; U+FEFF by
+  TypeScript only; dotless i and dotted I (U+0131, U+0130) and long s (U+017F, in
+  "system prompt") by Python only.
+- None of the ports catches zero-width characters (U+200B, U+2060), RLM and RLO
+  marks, a soft hyphen (U+00AD), combining marks, homoglyphs (Cyrillic U+0430 for
+  `a`), fullwidth forms, `&nbsp;`, a marker split across two sibling dictionary
+  values (the key sits between them) or `< /system >`.
+- A misspelled name in `fields` (`"snipet"`) scans nothing and keeps everything,
+  strict scope or not, in all three languages. Check field names against your
+  records.
+- A custom pattern runs on attacker-controlled text and no port sets a match
+  timeout: `(a+)+$` is exponential on crafted input (the built-ins are linear).
+  Do not accept patterns from untrusted sources. A pattern that matches the empty
+  string (`a*`) drops every record.
+- A shared in-process container is expanded once, so a marker that needs the same
+  list twice is not found (JSON-decoded input never shares structure); any
+  `IEnumerable` is enumerated.
+- `Allowlist`: a `null` entry in `allowed` admits records that lack the field;
+  `double.NaN` in `allowed` matches `NaN`; and, unlike `Quarantine`, a null item
+  makes `Allowlist` throw a raw `NullReferenceException` rather than
+  `input.not_mapping` (a follow-up is planned).
+- `Dedupe(records, key: Array.Empty<string>())` and `key: ""` keep only the first
+  record. A very deep value under an active `Trace.Begin()` overflows the stack,
+  which ends the process.
 
 ## Links
 

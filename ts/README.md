@@ -90,12 +90,15 @@ throws a typed error. Every error is a `ContexelError` with a stable `code`
 (the cross-language contract; messages are for humans): a `ConfigError` for a
 wrong *call* — an unknown `match`, `fields: []`, an invalid regex, a negative
 `maxTokens` — and an `InputShapeError` for wrong *data*. Bad data is lenient by
-default, so valid input behaves exactly as before, with one exception that is
-never lenient: `quarantine(records, { action: "flag" })` over a record that
+default, so valid input behaves exactly as before, with two exceptions that are
+never lenient. `quarantine(records, { action: "flag" })` over a record that
 already has the `into` key always throws `input.field_conflict`, inside
 `strict(...)` or not and clean record or not, because carrying on would
 overwrite your data (so re-running a flag pipeline on its own output throws; pass
-a different `into`). Wrap calls in `strict(...)` to have a stage that gets a
+a different `into`). And `quarantine` always throws `input.not_mapping` for an
+item that is not an object (a string, array, number, boolean or `null`), in drop
+and flag mode, because a screen that skips what it cannot read would keep the
+attack. Wrap calls in `strict(...)` to have any other stage that gets a
 non-array, or an item that is not an object, throw instead and name itself and
 the item index:
 
@@ -179,25 +182,62 @@ If you catch errors by class: a bad `quarantine` regex used to throw a
 Differences between the languages (the codes are the contract, the rest can
 differ):
 
-- **Regex dialect.** `quarantine` compiles patterns with each language's own
-  engine, so whether a pattern is invalid (`config.invalid_pattern`) is per port:
-  `(?P<a>x)` is valid in Python and invalid here and in C#. A global inline
-  flag such as `(?i)x` is a known limitation of custom patterns, which are
-  joined into one regex with the built-in markers: it is always rejected here
-  (`config.invalid_pattern`); on Python 3.11+ it raises unless it is in the first
-  fragment of the combined pattern (so, in the default extend mode, always); on
-  Python before 3.11 it is accepted and applies to the whole combined pattern,
-  built-in markers included; C# accepts the flags .NET supports (such as
-  `(?i)`). Avoid global inline flags in custom patterns; a follow-up is planned.
+- **Regex dialect.** `quarantine` compiles the built-in markers once and each
+  custom pattern on its own, with each language's own regex engine, and drops
+  or flags a record when any of them matches. Whether a pattern is invalid
+  (`config.invalid_pattern`; the message names the pattern) is per port:
+  `(?P<a>x)` is valid in Python only and `(?<a>x)` here and in C# only;
+  JavaScript has no inline flags, so `(?i)x` is invalid here (matching is
+  already case-insensitive), while Python and C# accept the flags their engines
+  support, each affecting only its own pattern; `\Z` is a literal `Z` here and
+  an end anchor in Python and C#; the Kelvin sign U+212A is folded to `k` by
+  Python and C# but not by this port.
 - **Integral floats.** `maxTokens: 1000.0` is accepted here, because JavaScript
   has one number type; Python rejects `1000.0`.
 - **`null` as a default.** `fields: null` throws here (as `fields=None` does in
   Python); C# treats `fields: null` as "use the default fields" for `quarantine`
   and `rescore`.
 - **Messages.** They differ between ports and are not part of the contract (the
-  TypeScript ones say `NoneType` and `None`, for instance). A single bad pattern
-  is named in the message; when the patterns only fail once combined, the message
-  says they "cannot be combined" and does not name one.
+  TypeScript ones say `NoneType` and `None`, for instance).
+
+Also exported: `isStrict()` (is strict mode active here), `ERROR_CODES` (the
+stable codes) and the `ErrorCode` type.
+
+Known limitations (documented, not fixed in this release). `quarantine` is a
+tripwire for literal markers, not a security boundary, and the three ports do
+not catch exactly the same obfuscations:
+
+- The built-in markers differ per engine: U+0085 is caught by Python and C# and
+  kept here; U+001C to U+001F are caught by Python only; U+FEFF by this port only;
+  dotless i and dotted I (U+0131, U+0130) and long s (U+017F, in "system prompt")
+  by Python only.
+- None of the ports catches zero-width characters (U+200B, U+2060), RLM and RLO
+  marks, a soft hyphen (U+00AD), combining marks, homoglyphs (Cyrillic U+0430 for
+  `a`), fullwidth forms, `&nbsp;`, a marker split across two sibling object
+  values (the key sits between them) or `< /system >`.
+- A misspelled name in `fields` (`"snipet"`) scans nothing and keeps everything,
+  inside `strict(...)` or not, in all three languages; so does `fields: ""`. Check
+  field names against your records.
+- TypeScript ignores unknown option keys: `{ field: "body" }` instead of
+  `{ fields: "body" }` is silently ignored (the compile-time excess-property check
+  only covers object literals).
+- A custom pattern runs on attacker-controlled text and no port sets a match
+  timeout: `(a+)+$` is exponential on crafted input (the built-ins are linear).
+  Do not accept patterns from untrusted sources. A pattern that matches the empty
+  string (`a*`) drops every record.
+- A shared in-process container is expanded once, so a marker that needs the same
+  array twice is not found (JSON-decoded input never shares structure). `Set`,
+  `Map` and `Date` values are not scanned.
+- `allowlist`: a `null` or `undefined` entry in `allowed` admits records that lack
+  the field (sparse array literals too); `NaN` in `allowed` matches `NaN`; and,
+  unlike `quarantine`, a non-object item does not raise `input.not_mapping`: it is
+  dropped (a string reads as a missing field), except when `allowed` contains
+  `null`, where it is kept (`allowlist(["text"], { field: "a", allowed: [null] })`).
+  A follow-up is planned.
+- `dedupe(records, { key: [] })` and `{ key: "" }` keep only the first record. A
+  very deep value under an active `trace()` throws a `RangeError`.
+- In C#, `System.Text.Json` `JsonElement` and `JsonNode` values are not read by
+  `quarantine` or `allowlist`; see the C# README.
 
 ## Parity, precisely
 
