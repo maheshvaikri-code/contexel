@@ -17,6 +17,8 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 from . import tokens
 from .errors import (
+    ConfigError,
+    InputShapeError,
     check_bool,
     check_choice,
     check_fields,
@@ -32,13 +34,6 @@ Record = Dict[str, Any]
 Records = List[Record]
 
 Fields = Union[str, Sequence[str]]
-
-
-def _field_list(fields: Fields) -> List[str]:
-    """A bare string means ONE field, not its characters — the common
-    JSON-boundary mistake ``fields="snippet"`` would otherwise silently
-    look up fields named "s", "n", "i", ... (mirrors ``dedupe(key=str)``)."""
-    return [fields] if isinstance(fields, str) else list(fields)
 
 
 def _fingerprint(value: Any) -> str:
@@ -128,25 +123,46 @@ def rank(records: Records, by: Union[str, Callable[[Record], Any]], desc: bool =
     return present + missing
 
 
+def _allow_key(value: Any) -> Any:
+    """Membership key for :func:`allowlist` (ADR-004): a bool never equals a
+    number, so ``True`` cannot pass a gate that approved ``1``. ``int`` and
+    ``float`` still compare by value (``1 == 1.0``) because TypeScript cannot
+    tell them apart."""
+    return (isinstance(value, bool), value)
+
+
 @checked(mapping=True)
 @traced
-def allowlist(records: Records, field: str, allowed: Sequence[Any]) -> Records:
+def allowlist(records: Records, field: str, allowed: Union[Any, Sequence[Any]]) -> Records:
     """Provenance gate: keep only records whose ``field`` value is in
     ``allowed``. The strongest injection control a shaper can offer is
     refusing content from sources you did not approve — apply this FIRST,
     before any relevance logic, so untrusted records never compete for the
-    budget. Fail closed: a record carrying an unhashable value is dropped,
-    and a record missing the field reads as ``None`` — dropped unless
-    ``None`` is explicitly in ``allowed``. Deterministic; dropped records
-    appear in the trace/audit with this stage as the reason.
+    budget. A bare string for ``allowed`` is ONE allowed value (never its
+    characters). A bool never equals a number (``True`` does not pass
+    ``allowed=[1]``). Fail closed: a record carrying an unhashable value is
+    dropped, and a record missing the field reads as ``None`` — dropped
+    unless ``None`` is explicitly in ``allowed``. Deterministic; dropped
+    records appear in the trace/audit with this stage as the reason.
     """
-    allowed_set = set(allowed)
+    check_str(field, "allowlist", "field")
+    values = [allowed] if isinstance(allowed, str) else allowed
+    if not isinstance(values, (list, tuple, set, frozenset)):
+        raise invalid_value(
+            "allowlist", "allowed",
+            f"allowed must be a string or a list of values, got "
+            f"{type(allowed).__name__}")
+    try:
+        allowed_keys = {_allow_key(a) for a in values}
+    except TypeError:
+        raise invalid_value("allowlist", "allowed",
+                            "allowed contains an unhashable value") from None
     out: Records = []
     for r in records:
         try:
-            ok = r.get(field) in allowed_set
+            ok = _allow_key(r.get(field)) in allowed_keys
         except TypeError:
-            ok = False
+            ok = False  # an unhashable record value fails closed
         if ok:
             out.append(r)
     return out
@@ -163,6 +179,41 @@ _INJECTION_PATTERNS = (
 )
 
 
+def _scan_text(value: Any) -> str:
+    """The text a quarantine pattern is matched against for one field value.
+
+    A string is used as is. A container contributes its dict keys (code-point
+    order) and its leaves, each as text, joined by a single space — so a
+    marker split by a newline or a quote inside a nested value is still found
+    (``str(value)`` would have rendered the newline as a backslash and an
+    ``n``). Scalars render as ``str()`` (``None`` is ``"None"``). Iterative,
+    and each container is expanded once, so neither a deeply nested nor a
+    self-referencing value can exhaust the stack or loop.
+    """
+    parts: List[str] = []
+    stack: List[Any] = [value]
+    seen: set = set()
+    while stack:
+        v = stack.pop()
+        if isinstance(v, str):
+            parts.append(v)
+        elif isinstance(v, dict):
+            if id(v) in seen:
+                continue
+            seen.add(id(v))
+            for k in sorted(v, key=str, reverse=True):
+                stack.append(v[k])
+                stack.append(str(k))
+        elif isinstance(v, (list, tuple)):
+            if id(v) in seen:
+                continue
+            seen.add(id(v))
+            stack.extend(reversed(v))
+        else:
+            parts.append(str(v))
+    return " ".join(parts)
+
+
 @checked(mapping=True)
 @traced
 def quarantine(records: Records, fields: Fields = ("snippet",),
@@ -175,7 +226,17 @@ def quarantine(records: Records, fields: Fields = ("snippet",),
 
     ``action="drop"`` removes matching records (traced/audited);
     ``action="flag"`` keeps every record and writes a boolean to ``into``
-    so downstream policy — or the harness — decides.
+    so downstream policy — or the harness — decides. A record that already
+    has the ``into`` key raises ``InputShapeError`` (``input.field_conflict``)
+    rather than being silently overwritten; chain two flag passes with
+    different ``into`` names.
+
+    A field whose value is a dict or list is scanned through every depth: its
+    keys and string leaves are joined with spaces, so a marker split by a
+    newline inside a nested value is still found. ``fields`` must not be
+    empty and every pattern must be a valid regex (each is compiled alone, so
+    the error names the culprit): misconfiguration raises ``ConfigError``
+    instead of leaving a control that quietly does nothing.
 
     ``patterns`` EXTENDS the built-in marker list — passing your own
     domain markers must never silently disable "ignore all previous
@@ -198,33 +259,66 @@ def quarantine(records: Records, fields: Fields = ("snippet",),
     ``config/.env`` are the common form).
     """
     if action not in ("drop", "flag"):
-        raise ValueError(f"action must be 'drop' or 'flag', got {action!r}")
-    field_list = _field_list(fields)
+        raise ConfigError(
+            "config.invalid_value",
+            f"action must be 'drop' or 'flag', got {action!r}",
+            stage="quarantine", param="action")
+    # fields=[] would scan nothing: a configured-looking control that does
+    # nothing is exactly what this stage refuses to be
+    field_list = check_fields(fields, "quarantine", allow_empty=False)
+    check_str(into, "quarantine", "into")
+    check_bool(replace_patterns, "quarantine", "replace_patterns")
     if patterns is None:
         if replace_patterns:
-            raise ValueError(
+            raise ConfigError(
+                "config.contradictory",
                 "replace_patterns=True without patterns is contradictory; "
-                "pass the replacement patterns")
+                "pass the replacement patterns",
+                stage="quarantine", param="replace_patterns")
         pattern_list = list(_INJECTION_PATTERNS)
     else:
-        user_patterns = _field_list(patterns)
+        user_patterns = check_fields(patterns, "quarantine", "patterns")
         if any(not p for p in user_patterns):
             # an empty fragment becomes an empty regex alternative, which
             # matches EVERY record — the opposite of configuring a screen
-            raise ValueError("empty pattern fragments match everything; "
-                             "remove them")
+            raise ConfigError(
+                "config.empty",
+                "empty pattern fragments match everything; remove them",
+                stage="quarantine", param="patterns")
+        for p in user_patterns:
+            try:  # compile each alone so the error names the culprit
+                re.compile(p, re.IGNORECASE)
+            except re.error as e:
+                raise ConfigError(
+                    "config.invalid_pattern",
+                    f"quarantine: invalid pattern {p!r}: {e}",
+                    stage="quarantine", param="patterns") from e
         pattern_list = (user_patterns if replace_patterns
                         else list(_INJECTION_PATTERNS) + user_patterns)
     if not pattern_list:
-        raise ValueError(
+        raise ConfigError(
+            "config.empty",
             "replace_patterns=True with no patterns would disable the "
-            "control entirely; pass at least one pattern")
-    matcher = re.compile("|".join(pattern_list), re.IGNORECASE)
+            "control entirely; pass at least one pattern",
+            stage="quarantine", param="patterns")
+    try:
+        matcher = re.compile("|".join(pattern_list), re.IGNORECASE)
+    except re.error as e:  # each fragment compiled alone, the union did not
+        raise ConfigError(
+            "config.invalid_pattern",
+            f"quarantine: the patterns cannot be combined: {e}",
+            stage="quarantine", param="patterns") from e
     out: Records = []
-    for r in records:
-        text = " ".join(str(r.get(f, "")) for f in field_list)
+    for i, r in enumerate(records):
+        text = " ".join(_scan_text(r[f]) if f in r else "" for f in field_list)
         hit = matcher.search(text) is not None
         if action == "flag":
+            if into in r:
+                raise InputShapeError(
+                    "input.field_conflict",
+                    f"quarantine: record {i} already has a {into!r} field; "
+                    f"pass a different into",
+                    stage="quarantine", param="into")
             out.append({**r, into: hit})
         elif not hit:
             out.append(r)
