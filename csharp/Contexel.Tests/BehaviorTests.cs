@@ -74,12 +74,12 @@ public class BehaviorTests
     public void QuarantineGuards()
     {
         Records one = [new Rec { ["snippet"] = "x" }];
-        Assert.Throws<ArgumentException>(() => Stages.Quarantine(one, action: "allow"));
-        Assert.Throws<ArgumentException>(() =>
+        Assert.ThrowsAny<ArgumentException>(() => Stages.Quarantine(one, action: "allow"));
+        Assert.ThrowsAny<ArgumentException>(() =>
             Stages.Quarantine(one, patterns: Array.Empty<string>(), replacePatterns: true));
-        Assert.Throws<ArgumentException>(() => Stages.Quarantine(one, patterns: ""));
-        Assert.Throws<ArgumentException>(() => Stages.Quarantine(one, patterns: new[] { "ok", "" }));
-        Assert.Throws<ArgumentException>(() => Stages.Quarantine(one, replacePatterns: true));
+        Assert.ThrowsAny<ArgumentException>(() => Stages.Quarantine(one, patterns: ""));
+        Assert.ThrowsAny<ArgumentException>(() => Stages.Quarantine(one, patterns: new[] { "ok", "" }));
+        Assert.ThrowsAny<ArgumentException>(() => Stages.Quarantine(one, replacePatterns: true));
     }
 
     [Fact]
@@ -93,7 +93,7 @@ public class BehaviorTests
     public void AllowlistThrowsOnUnhashableAllowedEntries()
     {
         Records recs = [new Rec { ["v"] = 1L }];
-        Assert.Throws<ArgumentException>(() =>
+        Assert.ThrowsAny<ArgumentException>(() =>
             Stages.Allowlist(recs, "v", [new Rec { ["nested"] = true }]));
     }
 

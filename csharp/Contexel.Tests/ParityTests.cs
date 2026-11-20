@@ -159,7 +159,7 @@ public class ParityTests
     }
 
     [Fact]
-    public void EdgeAllowlistPythonEquality()
+    public void EdgeAllowlistBoolNeverEqualsNumber()
     {
         Records recs =
         [

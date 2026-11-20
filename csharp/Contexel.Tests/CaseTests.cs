@@ -14,7 +14,55 @@ using Records = List<Dictionary<string, object?>>;
 public class CaseTests
 {
     private static readonly HashSet<string> AllowedKeys =
-        ["id", "stage", "args", "input", "expect"];
+        ["id", "stage", "args", "input", "expect", "expect_error", "strict"];
+
+    // One table of the allowed argument names (snake_case, as in the JSON)
+    // per stage kind. A typo'd option must fail loudly — never be silently
+    // ignored or defaulted (Slice 1 review, mandatory).
+    private static readonly Dictionary<string, HashSet<string>> ArgNames = new()
+    {
+        ["select"] = ["fields"],
+        ["dedupe"] = ["key"],
+        ["allowlist"] = ["field", "allowed"],
+        ["quarantine"] = ["fields", "patterns", "action", "into", "replace_patterns"],
+        ["rescore"] = ["query", "fields", "into", "proximity", "match"],
+        ["rank"] = ["by", "desc"],
+        ["truncate_field"] = ["field", "max_tokens"],
+        ["trim_to_budget"] = ["max_tokens", "min_records"],
+        ["merge"] = ["schema", "dedupe_key"],
+        ["pipeline"] = ["stages"],
+        ["shaped"] = ["stages"],
+        ["trace_report"] = ["stages", "id_field"],
+    };
+
+    private static readonly HashSet<string> NestingKinds = ["pipeline", "shaped", "trace_report"];
+    private static readonly HashSet<string> SpecKeys = ["stage", "args"];
+
+    /// <summary>Reject an unknown option name in a case's args and, for
+    /// pipeline/shaped/trace_report, in every nested stage spec.</summary>
+    internal static void ValidateArgs(string kind, Rec args, string where)
+    {
+        if (!ArgNames.TryGetValue(kind, out var allowed))
+            throw new ArgumentException($"{where}: unknown stage {kind}");
+        foreach (var key in args.Keys)
+            if (!allowed.Contains(key))
+                throw new ArgumentException(
+                    $"{where}: unknown argument '{key}' for stage {kind}");
+        if (!NestingKinds.Contains(kind)) return;
+        var specs = AsList(args["stages"]);
+        for (int i = 0; i < specs.Count; i++)
+        {
+            var spec = AsRec(specs[i]);
+            string at = $"{where}.stages[{i}]";
+            foreach (var key in spec.Keys)
+                if (!SpecKeys.Contains(key))
+                    throw new ArgumentException($"{at}: unknown key '{key}'");
+            var inner = (string)spec["stage"]!;
+            if (!RecordStages.Contains(inner))
+                throw new ArgumentException($"{at}: unknown stage {inner}");
+            ValidateArgs(inner, AsRec(spec["args"]), at);
+        }
+    }
 
     public static IEnumerable<object[]> CaseIds() =>
         AsList(Vectors["cases"]).Select(c => new object[] { (string)AsRec(c)["id"]! });
@@ -35,15 +83,35 @@ public class CaseTests
     private static string Str(Rec a, string key, string dflt) =>
         a.TryGetValue(key, out var v) ? (string)v! : dflt;
 
-    private static Records Input(Rec c) =>
-        c["input"] is "$fixture" ? Fixture : AsRecords(c["input"]);
+    // a JSON null input reaches the stage as null (not-a-list case). A
+    // Records list can only hold mappings or null, so a SCALAR item (a string,
+    // a number, a bool) or null is handed over as a null item: the one
+    // non-mapping item C# can represent (not-a-mapping case). Anything else
+    // (a JSON array, an unexpected dictionary type) fails loudly instead of
+    // being silently turned into null.
+    private static Records Input(Rec c) => c["input"] switch
+    {
+        "$fixture" => Fixture,
+        null => null!,
+        var v => AsList(v).Select(Item).ToList()!,
+    };
+
+    private static Rec? Item(object? x) => x switch
+    {
+        Rec r => r,
+        null or string or bool or int or long or double => null,
+        _ => throw new InvalidOperationException(
+            $"case input item of type {x.GetType().Name} is neither an object nor a scalar"),
+    };
 
     // One adapter per record stage: JSON args -> the port's call shape.
     private static Records RunStage(string kind, Rec a, Records r) => kind switch
     {
         "select" => Stages.Select(r, Strs(a["fields"])),
         "dedupe" => Stages.Dedupe(r, OptStrs(a, "key")),
-        "allowlist" => Stages.Allowlist(r, (string)a["field"]!, AsList(a["allowed"])),
+        "allowlist" => a["allowed"] is string one
+            ? Stages.Allowlist(r, (string)a["field"]!, one)
+            : Stages.Allowlist(r, (string)a["field"]!, AsList(a["allowed"])),
         "quarantine" => Stages.Quarantine(r, OptStrs(a, "fields"), OptStrs(a, "patterns"),
             Str(a, "action", "drop"), Str(a, "into", "quarantined"),
             Flag(a, "replace_patterns", false)),
@@ -103,6 +171,45 @@ public class CaseTests
         }
     }
 
+    /// <summary>The call under test: strict cases run inside strict mode.</summary>
+    internal static object? Execute(Rec c)
+    {
+        var kind = (string)c["stage"]!;
+        ValidateArgs(kind, AsRec(c["args"]), (string)c["id"]!);
+        if (!(c.TryGetValue("strict", out var s) && s is true)) return Run(c);
+        using (Strict.Begin()) return Run(c);
+    }
+
+    /// <summary>Replay one case: an <c>expect</c> case must equal the canon's
+    /// output; an <c>expect_error</c> case must throw the port's contexel
+    /// exception with that code — any other exception (or none) fails.</summary>
+    internal static void AssertCase(Rec c)
+    {
+        var id = (string)c["id"]!;
+        foreach (var key in c.Keys)
+            Assert.True(AllowedKeys.Contains(key), $"case {id} has unsupported key {key}");
+        if (c.TryGetValue("strict", out var strictValue))
+            Assert.True(strictValue is bool, $"case {id}: strict must be a boolean");
+        bool hasExpect = c.ContainsKey("expect"), hasError = c.ContainsKey("expect_error");
+        Assert.True(hasExpect != hasError, $"case {id} needs exactly one of expect / expect_error");
+        if (hasExpect)
+        {
+            AssertDeepEqual(c["expect"], Execute(c), id);
+            return;
+        }
+        string code = (string)AsRec(c["expect_error"])["code"]!;
+        object? result;
+        try { result = Execute(c); }
+        catch (ContexelException e)
+        {
+            Assert.True(e.Code == code,
+                $"case {id}: expected error {code}, got {e.Code} ({e.Message})");
+            return;
+        }
+        throw new Xunit.Sdk.XunitException(
+            $"case {id}: expected error {code}, but the call returned {Show(result)}");
+    }
+
     [Fact]
     public void CasesSectionIsPresentAndComplete()
     {
@@ -118,8 +225,6 @@ public class CaseTests
     public void CaseMatchesPython(string id)
     {
         var c = AsList(Vectors["cases"]).Select(AsRec).Single(x => (string)x["id"]! == id);
-        foreach (var key in c.Keys)
-            Assert.True(AllowedKeys.Contains(key), $"case {id} has unsupported key {key}");
-        AssertDeepEqual(c["expect"], Run(c), id);
+        AssertCase(c);
     }
 }

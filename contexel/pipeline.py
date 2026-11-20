@@ -19,7 +19,9 @@ from __future__ import annotations
 import hashlib
 from typing import Any, Callable, Dict, List
 
+from .errors import check_bool
 from .trace import current_trace
+from .validate import check_stage_output, strict as strict_mode
 
 Records = List[Dict[str, Any]]
 StageFn = Callable[[Records], Records]
@@ -57,11 +59,19 @@ def stage(fn: Callable, **kwargs: Any) -> StageFn:
     return run
 
 
-def pipeline(stages: List[StageFn]) -> StageFn:
+def pipeline(stages: List[StageFn], strict: bool = False) -> StageFn:
     """Compose stages left-to-right into one callable: ``pipeline([...])(records)``.
 
     The returned callable exposes ``.fingerprint`` -- a stable policy hash.
+
+    ``strict=True`` runs every stage in strict mode (see :func:`contexel.strict`)
+    and checks that each stage hands the next one a list, so a custom stage that
+    returns ``None`` raises an ``InputShapeError`` naming it, instead of
+    breaking the stage after it. It is entered inside the pipeline's own run, so
+    it also holds on worker threads. Strict never changes a successful result
+    and is not part of the fingerprint.
     """
+    check_bool(strict, "pipeline", "strict")
     descs = tuple(
         getattr(s, "__contexel_desc__", (getattr(s, "__name__", "callable"),))
         for s in stages
@@ -72,8 +82,14 @@ def pipeline(stages: List[StageFn]) -> StageFn:
         tr = current_trace()
         if tr is not None and fingerprint not in tr.policies:
             tr.policies.append(fingerprint)
-        for s in stages:
-            records = s(records)
+        if not strict:
+            for s in stages:
+                records = s(records)
+            return records
+        with strict_mode():
+            for i, s in enumerate(stages):
+                records = s(records)
+                check_stage_output(records, getattr(s, "__name__", "callable"), i)
         return records
 
     run.fingerprint = fingerprint  # type: ignore[attr-defined]

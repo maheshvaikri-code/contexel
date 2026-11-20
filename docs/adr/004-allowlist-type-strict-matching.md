@@ -1,6 +1,6 @@
 # ADR-004 — allowlist: bool never equals a number
 
-**Date:** 2026-11-19 · **Status:** proposed · **Amends:** ADR-001 §4, ADR-002 §7 (`PyEqKey`: True == 1 == 1.0)
+**Date:** 2026-11-19 · **Status:** accepted (implemented in Slice 2 of the foundation-hardening plan) · **Amends:** ADR-001 §4, ADR-002 §5 (`PyEqKey`: True == 1 == 1.0)
 **Deciders:** Chief Architect + human (chosen by the human 2026-11-19)
 
 ## Context

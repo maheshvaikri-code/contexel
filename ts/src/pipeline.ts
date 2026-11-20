@@ -4,8 +4,10 @@
  * (language-local in v1 per ADR-001) recorded into any active trace.
  */
 import { createHash } from "node:crypto";
+import { checkBool } from "./errors.js";
 import type { Rec, Records } from "./stages.js";
 import { currentTrace } from "./trace.js";
+import { checkStageOutput, strict as strictRun } from "./validate.js";
 
 export type StageFn = (records: Records) => Records;
 
@@ -45,8 +47,17 @@ export function stage<P>(
   return run;
 }
 
-/** Compose stages left-to-right; the callable exposes `.fingerprint`. */
-export function pipeline(stages: StageFn[]): Described {
+/** Compose stages left-to-right; the callable exposes `.fingerprint`.
+ *
+ * `{ strict: true }` runs every stage in strict mode (see `strict`) and checks
+ * that each stage hands the next one a list, so a custom stage that returns
+ * `null` throws an `InputShapeError` naming it, instead of breaking the stage
+ * after it. It is entered inside the pipeline's own run, so it also holds in a
+ * worker thread. Strict never changes a successful result and is not part of
+ * the fingerprint. */
+export function pipeline(stages: StageFn[], options: { strict?: boolean } = {}): Described {
+  if (options.strict !== undefined) checkBool(options.strict, "pipeline", "strict");
+  const isStrictPipeline = options.strict === true;
   const descs = stages.map(
     (s) => (s as Described).__contexelDesc ?? ((s as Described).name || "callable")
   );
@@ -58,9 +69,20 @@ export function pipeline(stages: StageFn[]): Described {
   const run: Described = (records: Records) => {
     const tr = currentTrace();
     if (tr && !tr.policies.includes(fingerprint)) tr.policies.push(fingerprint);
-    let out = records;
-    for (const s of stages) out = s(out);
-    return out;
+    if (!isStrictPipeline) {
+      let out = records;
+      for (const s of stages) out = s(out);
+      return out;
+    }
+    return strictRun(() => {
+      let out = records;
+      for (let i = 0; i < stages.length; i++) {
+        const s = stages[i] as Described;
+        out = s(out);
+        checkStageOutput(out, s.name || "callable", i);
+      }
+      return out;
+    });
   };
   run.fingerprint = fingerprint;
   return run;

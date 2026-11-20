@@ -11,17 +11,27 @@ import functools
 import inspect
 from typing import Any, Callable, Dict, List, Sequence, Union
 
+from .errors import InputShapeError, check_bool
 from .pipeline import pipeline
+from .validate import strict as strict_mode
 
 Records = List[Dict[str, Any]]
 StageFn = Callable[[Records], Records]
 
 
-def shaped(pipe: Union[StageFn, Sequence[StageFn]]) -> Callable[[Callable[..., Records]], Callable[..., Records]]:
+def shaped(pipe: Union[StageFn, Sequence[StageFn]],
+           strict: bool = False) -> Callable[[Callable[..., Records]], Callable[..., Records]]:
     """Decorator: run a tool's record-list output through a contexel pipeline.
 
     ``pipe`` may be a single ``records -> records`` callable (e.g. the result of
     :func:`contexel.pipeline`) or a list of stages, which is composed for you.
+
+    ``strict=True`` validates the tool's return value is a list (an
+    ``InputShapeError`` with stage ``"shaped"`` otherwise -- a tool that returns
+    ``None`` would else surface as an obscure error inside the first stage) and
+    runs the pipeline in strict mode, entered inside this wrapper so it holds on
+    worker threads. When ``pipe`` is a list of stages it is composed with
+    ``pipeline(..., strict=True)``, which also checks each stage's output.
 
     Async tools work too: a coroutine function is awaited and its returned
     records shaped (detected via ``inspect.iscoroutinefunction`` — a sync
@@ -41,7 +51,19 @@ def shaped(pipe: Union[StageFn, Sequence[StageFn]]) -> Callable[[Callable[..., R
 
         results = search_code("retry_backoff")  # already shaped, deterministically
     """
-    runner: StageFn = pipe if callable(pipe) else pipeline(list(pipe))
+    check_bool(strict, "shaped", "strict")
+    base: StageFn = pipe if callable(pipe) else pipeline(list(pipe), strict=strict)
+
+    def runner(records: Any) -> Records:
+        if not strict:
+            return base(records)
+        if not isinstance(records, (list, tuple)):
+            raise InputShapeError(
+                "input.not_list",
+                f"shaped: the tool must return a list, got {type(records).__name__}",
+                stage="shaped")
+        with strict_mode():
+            return base(records)
 
     def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
         if inspect.iscoroutinefunction(fn):

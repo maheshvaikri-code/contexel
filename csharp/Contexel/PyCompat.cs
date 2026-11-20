@@ -281,6 +281,17 @@ internal static class PyCompat
         _ => throw new ArgumentException($"unhashable type: '{PyTypeName(value)}'"),
     };
 
+    /// <summary>Allowlist membership key (ADR-004): the Python canon's
+    /// <c>(isinstance(v, bool), v)</c>. A bool never equals a number (so
+    /// <c>true</c> cannot pass a gate that approved <c>1</c>, nor <c>1</c> a
+    /// gate that approved <c>true</c>); int and float still compare by value;
+    /// a container raises (unhashable) so the caller can fail closed.</summary>
+    public static string AllowKey(object? value) => value switch
+    {
+        bool b => "bool:" + (b ? "True" : "False"),
+        _ => PyEqKey(value),
+    };
+
     private static string LongKey(long l)
     {
         // guard before the narrowing cast: (double)long.MaxValue is 2^63,

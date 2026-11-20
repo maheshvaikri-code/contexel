@@ -1,6 +1,6 @@
 # ADR-003 — Typed errors, config-vs-shape split, ambient strict mode
 
-**Date:** 2026-11-19 · **Status:** proposed (design approved by the human; written spec pending review)
+**Date:** 2026-11-19 · **Status:** accepted (implemented in Slice 2 of the foundation-hardening plan)
 **Deciders:** Chief Architect + human (public contract change, §5)
 
 ## Context
@@ -20,7 +20,10 @@ raise; data-shape errors raise only in an opt-in strict mode for legacy
 stages, and always for the new stages.** Strict is an ambient context flag, also
 settable via `pipeline(strict=True)` / `shaped(strict=True)`, which enter it
 inside their own run so it holds on threads. Strict never alters a successful
-result and is not part of the fingerprint.
+result and is not part of the fingerprint. Two shape errors are always raised,
+strict mode or not: `input.field_conflict` (carrying on would destroy data) and
+`quarantine`'s `input.not_mapping` (a screen that skips an item it cannot read
+would keep the attack).
 
 ## Alternatives considered
 | Option | Pros | Cons | Why not |
@@ -32,9 +35,22 @@ result and is not part of the fingerprint.
 | E one flat exception | trivial | callers cannot tell config from data errors | poor error taxonomy |
 
 ## Consequences
-- Positive: misconfiguration cannot hide; existing `catch` clauses keep working;
-  vectors can assert `expect_error.code` across languages.
+- Positive: misconfiguration cannot hide; `catch` clauses for the shape errors
+  (and C# `catch (ArgumentException)`) keep working; vectors can assert
+  `expect_error.code` across languages.
 - Negative / debt accepted: C# exact-type test assertions must change to
-  `ThrowsAny`; a few raw `TypeError`s become `ConfigError` (a `ValueError`).
+  `ThrowsAny`; a few raw `TypeError`s become `ConfigError` (a `ValueError`), so
+  an `except TypeError` no longer catches those configuration mistakes, and a bad
+  `quarantine` regex raises `ConfigError` instead of `re.error` (in C#, a handler
+  for `RegexParseException` no longer sees it; in TypeScript, a bad regex used to
+  throw a `SyntaxError` and a wrong-typed or `null` argument a raw `TypeError`,
+  and `ConfigError` extends only `Error`, so `instanceof SyntaxError` and
+  `instanceof TypeError` no longer match: catch `ContexelError` or
+  `ConfigError`).
+- Known per-language difference: C# `fields: null` (`quarantine`, `rescore`)
+  still means "use the default fields", because C# cannot tell an omitted
+  optional argument from an explicit `null` without changing the public API to
+  overloads, and it is left as is to avoid changing the public API; Python and
+  TypeScript raise `config.invalid_value`.
 - Invalidation triggers: a language where subclassing the platform's error type
   is impossible; evidence that users want strict-by-default.

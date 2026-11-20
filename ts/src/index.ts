@@ -18,6 +18,14 @@ export {
 } from "./stages.js";
 export { pipeline, stage, type StageFn } from "./pipeline.js";
 export { shaped } from "./shaped.js";
+export {
+  ContexelError,
+  ConfigError,
+  InputShapeError,
+  ERROR_CODES,
+  type ErrorCode,
+} from "./errors.js";
+export { strict, isStrict } from "./validate.js";
 export { trace, currentTrace, Trace, type Entry } from "./trace.js";
 export * as tokens from "./tokens.js";
 

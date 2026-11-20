@@ -13,22 +13,29 @@ from __future__ import annotations
 import json
 import math
 import re
+from collections.abc import Mapping
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 from . import tokens
+from .errors import (
+    ConfigError,
+    InputShapeError,
+    _kind,
+    check_bool,
+    check_choice,
+    check_fields,
+    check_non_negative_int,
+    check_query,
+    check_str,
+    invalid_value,
+)
 from .trace import traced
+from .validate import checked
 
 Record = Dict[str, Any]
 Records = List[Record]
 
 Fields = Union[str, Sequence[str]]
-
-
-def _field_list(fields: Fields) -> List[str]:
-    """A bare string means ONE field, not its characters — the common
-    JSON-boundary mistake ``fields="snippet"`` would otherwise silently
-    look up fields named "s", "n", "i", ... (mirrors ``dedupe(key=str)``)."""
-    return [fields] if isinstance(fields, str) else list(fields)
 
 
 def _fingerprint(value: Any) -> str:
@@ -65,13 +72,18 @@ def _dedupe_fp(value: Any) -> Any:
         return _fingerprint(value)
 
 
+@checked(mapping=True)
 @traced
 def select(records: Records, fields: Fields) -> Records:
-    """Keep only ``fields`` on each record. The fastest way to cut tool-output bloat."""
-    keep = _field_list(fields)
+    """Keep only ``fields`` on each record. The fastest way to cut tool-output bloat.
+
+    A bare string means ONE field, not its characters.
+    """
+    keep = check_fields(fields, "select")
     return [{k: r[k] for k in keep if k in r} for r in records]
 
 
+@checked(mapping=lambda args: args.get("key") is not None)
 @traced
 def dedupe(records: Records, key: Optional[Union[str, Sequence[str]]] = None) -> Records:
     """Drop duplicate records, keeping the first occurrence and preserving order.
@@ -79,12 +91,8 @@ def dedupe(records: Records, key: Optional[Union[str, Sequence[str]]] = None) ->
     ``key=None`` dedupes on the whole record; a str or list of strs dedupes on
     those field(s).
     """
-    if isinstance(key, str):
-        keys: Optional[List[str]] = [key]
-    elif key is None:
-        keys = None
-    else:
-        keys = list(key)
+    keys: Optional[List[str]] = (
+        None if key is None else check_fields(key, "dedupe", "key"))
 
     seen = set()
     out: Records = []
@@ -97,6 +105,7 @@ def dedupe(records: Records, key: Optional[Union[str, Sequence[str]]] = None) ->
     return out
 
 
+@checked(mapping=lambda args: isinstance(args.get("by"), str))
 @traced
 def rank(records: Records, by: Union[str, Callable[[Record], Any]], desc: bool = True) -> Records:
     """Sort records by a field name or key function. Records missing the field go last.
@@ -104,6 +113,10 @@ def rank(records: Records, by: Union[str, Callable[[Record], Any]], desc: bool =
     Use before :func:`trim_to_budget` so the least important records are dropped.
     Values of ``by`` must be mutually comparable.
     """
+    if not (isinstance(by, str) or callable(by)):
+        raise invalid_value("rank", "by", "by must be a field name or a key "
+                            f"function, got {type(by).__name__}")
+    check_bool(desc, "rank", "desc")
     if callable(by):
         return sorted(list(records), key=by, reverse=desc)
     present = [r for r in records if by in r]
@@ -112,24 +125,46 @@ def rank(records: Records, by: Union[str, Callable[[Record], Any]], desc: bool =
     return present + missing
 
 
+def _allow_key(value: Any) -> Any:
+    """Membership key for :func:`allowlist` (ADR-004): a bool never equals a
+    number, so ``True`` cannot pass a gate that approved ``1``. ``int`` and
+    ``float`` still compare by value (``1 == 1.0``) because TypeScript cannot
+    tell them apart."""
+    return (isinstance(value, bool), value)
+
+
+@checked(mapping=True)
 @traced
-def allowlist(records: Records, field: str, allowed: Sequence[Any]) -> Records:
+def allowlist(records: Records, field: str, allowed: Union[Any, Sequence[Any]]) -> Records:
     """Provenance gate: keep only records whose ``field`` value is in
     ``allowed``. The strongest injection control a shaper can offer is
     refusing content from sources you did not approve — apply this FIRST,
     before any relevance logic, so untrusted records never compete for the
-    budget. Fail closed: a record carrying an unhashable value is dropped,
-    and a record missing the field reads as ``None`` — dropped unless
-    ``None`` is explicitly in ``allowed``. Deterministic; dropped records
-    appear in the trace/audit with this stage as the reason.
+    budget. A bare string for ``allowed`` is ONE allowed value (never its
+    characters). A bool never equals a number (``True`` does not pass
+    ``allowed=[1]``). Fail closed: a record carrying an unhashable value is
+    dropped, and a record missing the field reads as ``None`` — dropped
+    unless ``None`` is explicitly in ``allowed``. Deterministic; dropped
+    records appear in the trace/audit with this stage as the reason.
     """
-    allowed_set = set(allowed)
+    check_str(field, "allowlist", "field")
+    values = [allowed] if isinstance(allowed, str) else allowed
+    if not isinstance(values, (list, tuple, set, frozenset)):
+        raise invalid_value(
+            "allowlist", "allowed",
+            f"allowed must be a string or a list of values, got "
+            f"{type(allowed).__name__}")
+    try:
+        allowed_keys = {_allow_key(a) for a in values}
+    except TypeError:
+        raise invalid_value("allowlist", "allowed",
+                            "allowed contains an unhashable value") from None
     out: Records = []
     for r in records:
         try:
-            ok = r.get(field) in allowed_set
+            ok = _allow_key(r.get(field)) in allowed_keys
         except TypeError:
-            ok = False
+            ok = False  # an unhashable record value fails closed
         if ok:
             out.append(r)
     return out
@@ -145,7 +180,59 @@ _INJECTION_PATTERNS = (
     r"</?\s*(?:system|assistant|instructions?)\s*>",
 )
 
+# the built-ins are trusted and compiled together, once; every caller pattern
+# is compiled on its own so it cannot change how the built-ins are read
+_BUILTIN_MATCHER = re.compile("|".join(_INJECTION_PATTERNS), re.IGNORECASE)
 
+# exact types whose repr() equals their str(): no need to compute the repr
+_REPR_IS_STR = (int, float, bool, type(None))
+
+
+def _scan_text(value: Any) -> str:
+    """The text a quarantine pattern is matched against for one field value.
+
+    A string is used as is. A container contributes its dict keys (code-point
+    order) and its leaves, each as text, joined by a single space — so a
+    marker split by a newline or a quote inside a nested value is still found
+    (``str(value)`` would have rendered the newline as a backslash and an
+    ``n``). Every other leaf -- numbers, booleans, ``None`` (``"None"``), any
+    object -- is scanned as its ``str()`` text, plus its ``repr()`` when that
+    differs (an object may show text in only one of the two; for JSON scalars
+    they agree). Iterative,
+    and each container is expanded once, so neither a deeply nested nor a
+    self-referencing value can exhaust the stack or loop.
+    """
+    parts: List[str] = []
+    stack: List[Any] = [value]
+    seen: set = set()
+    while stack:
+        v = stack.pop()
+        if isinstance(v, str):
+            parts.append(v)
+        elif isinstance(v, dict):
+            if id(v) in seen:
+                continue
+            seen.add(id(v))
+            for k in sorted(v, key=str, reverse=True):
+                stack.append(v[k])
+                stack.append(str(k))
+        elif isinstance(v, (list, tuple)):
+            if id(v) in seen:
+                continue
+            seen.add(id(v))
+            stack.extend(reversed(v))
+        else:
+            text = str(v)
+            parts.append(text)
+            # exact int/float/bool/None have repr == str: skip the second call
+            if type(v) not in _REPR_IS_STR:
+                rep = repr(v)
+                if rep != text:  # an object may show text in only one of the two
+                    parts.append(rep)
+    return " ".join(parts)
+
+
+@checked(mapping=True)
 @traced
 def quarantine(records: Records, fields: Fields = ("snippet",),
                patterns: Optional[Fields] = None,
@@ -157,7 +244,26 @@ def quarantine(records: Records, fields: Fields = ("snippet",),
 
     ``action="drop"`` removes matching records (traced/audited);
     ``action="flag"`` keeps every record and writes a boolean to ``into``
-    so downstream policy — or the harness — decides.
+    so downstream policy — or the harness — decides. A record that already
+    has the ``into`` key raises ``InputShapeError`` (``input.field_conflict``)
+    rather than being silently overwritten; chain two flag passes with
+    different ``into`` names.
+
+    Every item must be a mapping: a non-mapping item (a string, list, tuple,
+    ``None``, a number) ALWAYS raises ``InputShapeError``
+    (``input.not_mapping``), in ``drop`` and ``flag`` mode, strict mode or not
+    -- a screen that skips what it cannot read would keep the attack.
+
+    A field whose value is a dict or list is scanned through every depth: its
+    keys and leaves (strings as they are; numbers, booleans and None as their
+    text) are joined with spaces, so a marker split by a
+    newline inside a nested value is still found. ``fields`` must not be
+    empty and every pattern must be a valid regex: misconfiguration raises
+    ``ConfigError`` instead of leaving a control that quietly does nothing.
+    The built-in markers and each caller pattern are compiled SEPARATELY and a
+    record is dropped/flagged when ANY of them matches, so a pattern's inline
+    flags (``(?a)``, ``(?x)``) and numbered groups or backreferences stay its
+    own, and the error names the offending pattern.
 
     ``patterns`` EXTENDS the built-in marker list — passing your own
     domain markers must never silently disable "ignore all previous
@@ -180,33 +286,67 @@ def quarantine(records: Records, fields: Fields = ("snippet",),
     ``config/.env`` are the common form).
     """
     if action not in ("drop", "flag"):
-        raise ValueError(f"action must be 'drop' or 'flag', got {action!r}")
-    field_list = _field_list(fields)
+        raise ConfigError(
+            "config.invalid_value",
+            f"action must be 'drop' or 'flag', got {action!r}",
+            stage="quarantine", param="action")
+    # fields=[] would scan nothing: a configured-looking control that does
+    # nothing is exactly what this stage refuses to be
+    field_list = check_fields(fields, "quarantine", allow_empty=False)
+    check_str(into, "quarantine", "into")
+    check_bool(replace_patterns, "quarantine", "replace_patterns")
     if patterns is None:
         if replace_patterns:
-            raise ValueError(
+            raise ConfigError(
+                "config.contradictory",
                 "replace_patterns=True without patterns is contradictory; "
-                "pass the replacement patterns")
-        pattern_list = list(_INJECTION_PATTERNS)
+                "pass the replacement patterns",
+                stage="quarantine", param="replace_patterns")
+        matchers = [_BUILTIN_MATCHER]
     else:
-        user_patterns = _field_list(patterns)
+        user_patterns = check_fields(patterns, "quarantine", "patterns")
         if any(not p for p in user_patterns):
             # an empty fragment becomes an empty regex alternative, which
             # matches EVERY record — the opposite of configuring a screen
-            raise ValueError("empty pattern fragments match everything; "
-                             "remove them")
-        pattern_list = (user_patterns if replace_patterns
-                        else list(_INJECTION_PATTERNS) + user_patterns)
-    if not pattern_list:
-        raise ValueError(
+            raise ConfigError(
+                "config.empty",
+                "empty pattern fragments match everything; remove them",
+                stage="quarantine", param="patterns")
+        compiled = []
+        for p in user_patterns:
+            try:  # each pattern alone: its flags and groups stay its own
+                compiled.append(re.compile(p, re.IGNORECASE))
+            except re.error as e:
+                raise ConfigError(
+                    "config.invalid_pattern",
+                    f"quarantine: invalid pattern {p!r}: {e}",
+                    stage="quarantine", param="patterns") from e
+        matchers = (compiled if replace_patterns
+                    else [_BUILTIN_MATCHER] + compiled)
+    if not matchers:
+        raise ConfigError(
+            "config.empty",
             "replace_patterns=True with no patterns would disable the "
-            "control entirely; pass at least one pattern")
-    matcher = re.compile("|".join(pattern_list), re.IGNORECASE)
+            "control entirely; pass at least one pattern",
+            stage="quarantine", param="patterns")
     out: Records = []
-    for r in records:
-        text = " ".join(str(r.get(f, "")) for f in field_list)
-        hit = matcher.search(text) is not None
+    for i, r in enumerate(records):
+        # fail closed: a non-mapping item would otherwise look like "no field
+        # present" (``f in r`` is a substring / membership test) and be KEPT
+        if not isinstance(r, Mapping):
+            raise InputShapeError(
+                "input.not_mapping",
+                f"quarantine: item {i} must be a mapping, got {_kind(r)}",
+                stage="quarantine")
+        text = " ".join(_scan_text(r[f]) if f in r else "" for f in field_list)
+        hit = any(m.search(text) is not None for m in matchers)
         if action == "flag":
+            if into in r:
+                raise InputShapeError(
+                    "input.field_conflict",
+                    f"quarantine: record {i} already has a {into!r} field; "
+                    f"pass a different into",
+                    stage="quarantine", param="into")
             out.append({**r, into: hit})
         elif not hit:
             out.append(r)
@@ -216,6 +356,7 @@ def quarantine(records: Records, fields: Fields = ("snippet",),
 _TOKEN = re.compile(r"[^\W_]+")  # word tokens; underscores split snake_case
 
 
+@checked(mapping=True)
 @traced
 def rescore(records: Records, query: Union[str, Sequence[str]],
             fields: Fields = ("snippet",), into: str = "score",
@@ -245,6 +386,17 @@ def rescore(records: Records, query: Union[str, Sequence[str]],
     semantic relevance, a model reranker belongs in front; this stage removes
     the need to trust a tool's score, not the value of semantics.
     """
+    check_query(query, "rescore")
+    field_list = check_fields(fields, "rescore", allow_empty=False)
+    check_str(into, "rescore", "into")
+    check_bool(proximity, "rescore", "proximity")
+    if match == "stem":
+        # reserved for the English stemmer (ADR-006); until it ships, running
+        # it as substring matching would be a silent downgrade
+        raise invalid_value("rescore", "match",
+                            "match 'stem' is not available yet; use 'word' "
+                            "or 'substring'")
+    check_choice(match, "rescore", "match", ("word", "substring"))
     terms = _TOKEN.findall(query.lower()) if isinstance(query, str) else [
         t for part in query for t in _TOKEN.findall(str(part).lower())
     ]
@@ -253,7 +405,7 @@ def rescore(records: Records, query: Union[str, Sequence[str]],
         return [{**r, into: 0.0} for r in records]
 
     texts = [
-        " ".join(str(r.get(f, "")) for f in _field_list(fields)).lower()
+        " ".join(str(r.get(f, "")) for f in field_list).lower()
         for r in records
     ]
     if match == "word":
@@ -319,6 +471,7 @@ def _truncate_text(text: str, max_tokens: int, tokenizer: Any, suffix: str) -> s
     return text[:lo].rstrip() + suffix
 
 
+@checked(mapping=True)
 @traced
 def truncate_field(records: Records, field: str, max_tokens: int,
                    tokenizer: Any = None, suffix: str = "\u2026") -> Records:
@@ -326,6 +479,9 @@ def truncate_field(records: Records, field: str, max_tokens: int,
 
     Non-string values pass through untouched.
     """
+    check_str(field, "truncate_field", "field")
+    check_non_negative_int(max_tokens, "truncate_field", "max_tokens")
+    check_str(suffix, "truncate_field", "suffix")
     out: Records = []
     for r in records:
         value = r.get(field)
@@ -335,6 +491,7 @@ def truncate_field(records: Records, field: str, max_tokens: int,
     return out
 
 
+@checked(mapping=False)
 @traced
 def trim_to_budget(records: Records, max_tokens: int, tokenizer: Any = None,
                    min_records: int = 0) -> Records:
@@ -350,7 +507,12 @@ def trim_to_budget(records: Records, max_tokens: int, tokenizer: Any = None,
     the first ``min_records`` records (the best ones, post-:func:`rank`) are
     kept even when they exceed the budget. The overrun is visible in the
     trace/audit token counts.
+
+    ``max_tokens`` must be an integer >= 0 (``0`` returns ``[]``); ``None``,
+    a float, a bool or a negative number raises ``ConfigError``.
     """
+    check_non_negative_int(max_tokens, "trim_to_budget", "max_tokens")
+    check_non_negative_int(min_records, "trim_to_budget", "min_records")
     out: Records = []
     used = 0
     for r in records:
