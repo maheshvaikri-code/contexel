@@ -58,8 +58,8 @@ def test_envelope_guard_accepts_representable_values(ok):
 @pytest.mark.parametrize("part, case", [
     ("input", {"id": "bad/in", "stage": "select", "args": {"fields": ["b"]},
                "input": [{"a": 2.0, "b": 1}]}),
-    ("args", {"id": "bad/in", "stage": "trim_to_budget", "args": {"max_tokens": 10.0},
-              "input": []}),
+    ("args", {"id": "bad/in", "stage": "allowlist",
+              "args": {"field": "a", "allowed": [2.0]}, "input": []}),
     ("expect", {"id": "bad/in", "stage": "rescore", "args": {"query": "", "fields": ["a"]},
                 "input": [{"a": "x"}]}),
 ])

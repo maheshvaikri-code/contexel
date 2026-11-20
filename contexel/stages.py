@@ -16,6 +16,15 @@ import re
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 from . import tokens
+from .errors import (
+    check_bool,
+    check_choice,
+    check_fields,
+    check_non_negative_int,
+    check_query,
+    check_str,
+    invalid_value,
+)
 from .trace import traced
 from .validate import checked
 
@@ -69,8 +78,11 @@ def _dedupe_fp(value: Any) -> Any:
 @checked(mapping=True)
 @traced
 def select(records: Records, fields: Fields) -> Records:
-    """Keep only ``fields`` on each record. The fastest way to cut tool-output bloat."""
-    keep = _field_list(fields)
+    """Keep only ``fields`` on each record. The fastest way to cut tool-output bloat.
+
+    A bare string means ONE field, not its characters.
+    """
+    keep = check_fields(fields, "select")
     return [{k: r[k] for k in keep if k in r} for r in records]
 
 
@@ -82,12 +94,8 @@ def dedupe(records: Records, key: Optional[Union[str, Sequence[str]]] = None) ->
     ``key=None`` dedupes on the whole record; a str or list of strs dedupes on
     those field(s).
     """
-    if isinstance(key, str):
-        keys: Optional[List[str]] = [key]
-    elif key is None:
-        keys = None
-    else:
-        keys = list(key)
+    keys: Optional[List[str]] = (
+        None if key is None else check_fields(key, "dedupe", "key"))
 
     seen = set()
     out: Records = []
@@ -108,6 +116,10 @@ def rank(records: Records, by: Union[str, Callable[[Record], Any]], desc: bool =
     Use before :func:`trim_to_budget` so the least important records are dropped.
     Values of ``by`` must be mutually comparable.
     """
+    if not (isinstance(by, str) or callable(by)):
+        raise invalid_value("rank", "by", "by must be a field name or a key "
+                            f"function, got {type(by).__name__}")
+    check_bool(desc, "rank", "desc")
     if callable(by):
         return sorted(list(records), key=by, reverse=desc)
     present = [r for r in records if by in r]
@@ -252,6 +264,17 @@ def rescore(records: Records, query: Union[str, Sequence[str]],
     semantic relevance, a model reranker belongs in front; this stage removes
     the need to trust a tool's score, not the value of semantics.
     """
+    check_query(query, "rescore")
+    field_list = check_fields(fields, "rescore", allow_empty=False)
+    check_str(into, "rescore", "into")
+    check_bool(proximity, "rescore", "proximity")
+    if match == "stem":
+        # reserved for the English stemmer (ADR-006); until it ships, running
+        # it as substring matching would be a silent downgrade
+        raise invalid_value("rescore", "match",
+                            "match 'stem' is not available yet; use 'word' "
+                            "or 'substring'")
+    check_choice(match, "rescore", "match", ("word", "substring"))
     terms = _TOKEN.findall(query.lower()) if isinstance(query, str) else [
         t for part in query for t in _TOKEN.findall(str(part).lower())
     ]
@@ -260,7 +283,7 @@ def rescore(records: Records, query: Union[str, Sequence[str]],
         return [{**r, into: 0.0} for r in records]
 
     texts = [
-        " ".join(str(r.get(f, "")) for f in _field_list(fields)).lower()
+        " ".join(str(r.get(f, "")) for f in field_list).lower()
         for r in records
     ]
     if match == "word":
@@ -334,6 +357,9 @@ def truncate_field(records: Records, field: str, max_tokens: int,
 
     Non-string values pass through untouched.
     """
+    check_str(field, "truncate_field", "field")
+    check_non_negative_int(max_tokens, "truncate_field", "max_tokens")
+    check_str(suffix, "truncate_field", "suffix")
     out: Records = []
     for r in records:
         value = r.get(field)
@@ -359,7 +385,12 @@ def trim_to_budget(records: Records, max_tokens: int, tokenizer: Any = None,
     the first ``min_records`` records (the best ones, post-:func:`rank`) are
     kept even when they exceed the budget. The overrun is visible in the
     trace/audit token counts.
+
+    ``max_tokens`` must be an integer >= 0 (``0`` returns ``[]``); ``None``,
+    a float, a bool or a negative number raises ``ConfigError``.
     """
+    check_non_negative_int(max_tokens, "trim_to_budget", "max_tokens")
+    check_non_negative_int(min_records, "trim_to_budget", "min_records")
     out: Records = []
     used = 0
     for r in records:
