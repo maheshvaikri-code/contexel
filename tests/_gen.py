@@ -26,14 +26,15 @@ JUNK = [None, 0, -3, 7, 0.25, "", "junk", True, False, [], ["x", 1],
 # Regression seeds: any seed that ever exposed a bug is appended here and
 # always runs, so a found bug stays found.
 REGRESSION_SEEDS: List[int] = []
+DEFAULT_SEED, DEFAULT_CASES = 20261119, 200
 
 
 def base_seed() -> int:
-    return int(os.environ.get("CONTEXEL_PROP_SEED", "20261119"))
+    return int(os.environ.get("CONTEXEL_PROP_SEED", str(DEFAULT_SEED)))
 
 
 def case_count() -> int:
-    return int(os.environ.get("CONTEXEL_PROP_CASES", "200"))
+    return int(os.environ.get("CONTEXEL_PROP_CASES", str(DEFAULT_CASES)))
 
 
 def seeds() -> Iterator[int]:
@@ -41,6 +42,13 @@ def seeds() -> Iterator[int]:
     base = base_seed()
     for i in range(case_count()):
         yield base + i
+
+
+def canary_seeds() -> Iterator[int]:
+    """The run's seeds, then the default ones: whether a check CAN fail must
+    not depend on how small a reproduction run is."""
+    yield from seeds()
+    yield from range(DEFAULT_SEED, DEFAULT_SEED + DEFAULT_CASES)
 
 
 def make_records(rng: random.Random) -> List[dict]:

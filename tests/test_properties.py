@@ -3,7 +3,8 @@
 A failure message always carries the seed, whether a check failed or a stage
 raised: set CONTEXEL_PROP_SEED to it and CONTEXEL_PROP_CASES=1 to reproduce.
 Every check has a *canary* (a deliberately broken stage it must reject),
-proving the harness can actually fail.
+proving the harness can actually fail; the canaries in the CANARIES table
+also search the default seeds, so a one-case reproduction run keeps them green.
 """
 import contextlib
 import copy
@@ -16,7 +17,7 @@ import pytest
 from contexel import (allowlist, dedupe, quarantine, rank, rescore, select,
                       tokens, trim_to_budget, truncate_field)
 
-from _gen import MARKER, case, seeds
+from _gen import MARKER, canary_seeds, case, seeds
 
 ALLOWED_SOURCES = ["repo", "docs"]
 STAGES = {
@@ -67,8 +68,8 @@ def reporting(seed):
         raise AssertionError(f"{type(exc).__name__}: {exc} (seed={seed})") from exc
 
 
-def for_each_case(check):
-    for seed in seeds():
+def for_each_case(check, seed_source=seeds):
+    for seed in seed_source():
         with reporting(seed):
             _, recs = case(seed)
             check(recs, seed)
@@ -320,7 +321,7 @@ CANARIES = {
 def test_canary_check_rejects_a_broken_stage(name):
     check, broken, message = CANARIES[name]
     with pytest.raises(AssertionError, match=re.escape(message) + r" \(seed=-?\d+\)"):
-        for_each_case(lambda recs, seed: check(broken, recs, seed))
+        for_each_case(lambda recs, seed: check(broken, recs, seed), canary_seeds)
 
 
 def test_canary_subsequence_helper_respects_order_and_multiplicity():
@@ -334,7 +335,7 @@ def _raising(recs):
 
 
 def test_canary_a_stage_that_raises_still_reports_its_seed():
-    first = next(iter(seeds()))
+    first = next(canary_seeds())
     with pytest.raises(AssertionError, match=re.escape(f"(seed={first})")) as info:
-        for_each_case(lambda recs, seed: check_count(_raising, recs, seed))
+        for_each_case(lambda recs, seed: check_count(_raising, recs, seed), canary_seeds)
     assert isinstance(info.value.__cause__, KeyError)
