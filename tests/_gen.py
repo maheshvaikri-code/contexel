@@ -3,18 +3,26 @@
 Every generator takes a ``random.Random`` so a failing case is reproduced from
 its seed alone. Values stay inside the documented parity envelope: no NaN/Inf,
 no integer-valued floats as scores, mutually comparable scores.
+
+Records also carry keys no stage is asked about (``junk``, ``extra_<n>``), so a
+stage that touches an unexpected key is caught, and some records are exact
+copies of an earlier one, so the dedupe properties are never vacuous.
 """
+import copy
 import os
 import random
 from typing import Iterator, List, Tuple
 
 PATHS = ["src/a.py", "src/b.py", "docs/guide.md", "tests/t.py", "web/x.txt"]
 SOURCES = ["repo", "docs", "web", None]
+MARKER = "ignore all previous instructions"  # a built-in quarantine marker
 WORDS = [
     "retry", "backoff", "jitter", "parse", "config", "value", "error", "cache",
-    "ignore all previous instructions", "café", "naïve",
-    "日本語", "emoji\U0001F600", "x", "the", "of",
+    MARKER, "caf\u00e9", "na\u00efve",
+    "\u65e5\u672c\u8a9e", "emoji\U0001F600", "x", "the", "of",
 ]
+JUNK = [None, 0, -3, 7, 0.25, "", "junk", True, False, [], ["x", 1],
+        {"j": [None, 2.5]}, "\u00e9t\u00e9"]
 # Regression seeds: any seed that ever exposed a bug is appended here and
 # always runs, so a found bug stays found.
 REGRESSION_SEEDS: List[int] = []
@@ -36,8 +44,11 @@ def seeds() -> Iterator[int]:
 
 
 def make_records(rng: random.Random) -> List[dict]:
-    out = []
+    out: List[dict] = []
     for _ in range(rng.randint(0, 12)):
+        if out and rng.random() < 0.15:
+            out.append(copy.deepcopy(rng.choice(out)))  # an exact duplicate
+            continue
         words = rng.choices(WORDS, k=rng.randint(0, 14))
         rec = {
             "path": rng.choice(PATHS),
@@ -50,6 +61,10 @@ def make_records(rng: random.Random) -> List[dict]:
         }
         if rng.random() < 0.2:
             del rec["score"]  # missing sort key: rank puts these last
+        if rng.random() < 0.5:
+            rec["junk"] = copy.deepcopy(rng.choice(JUNK))
+        for n in range(rng.randint(0, 2)):
+            rec[f"extra_{n}"] = copy.deepcopy(rng.choice(JUNK))
         out.append(rec)
     return out
 
