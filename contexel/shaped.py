@@ -11,7 +11,7 @@ import functools
 import inspect
 from typing import Any, Callable, Dict, List, Sequence, Union
 
-from .errors import InputShapeError
+from .errors import InputShapeError, check_bool
 from .pipeline import pipeline
 from .validate import strict as strict_mode
 
@@ -51,6 +51,7 @@ def shaped(pipe: Union[StageFn, Sequence[StageFn]],
 
         results = search_code("retry_backoff")  # already shaped, deterministically
     """
+    check_bool(strict, "shaped", "strict")
     base: StageFn = pipe if callable(pipe) else pipeline(list(pipe), strict=strict)
 
     def runner(records: Any) -> Records:

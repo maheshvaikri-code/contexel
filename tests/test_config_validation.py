@@ -3,8 +3,8 @@ raises a typed ConfigError -- strict mode is not needed -- and never silently
 does something else."""
 import pytest
 
-from contexel import (ConfigError, dedupe, rank, rescore, select, trim_to_budget,
-                      truncate_field)
+from contexel import (ConfigError, dedupe, pipeline, rank, rescore, select, shaped,
+                      stage, trim_to_budget, truncate_field)
 
 RECS = [{"a": "x y", "n": 1}, {"a": "y z", "n": 2}]
 
@@ -144,3 +144,41 @@ def test_every_configuration_error_carries_its_stage_name():
     }
     for stage_name, call in cases.items():
         assert raised(call).stage == stage_name
+
+
+@pytest.mark.parametrize("bad", [[None], [5], [{"a": "b"}], ["ok", None], None, 5])
+def test_rescore_query_elements_must_be_strings(bad):
+    e = raised(lambda: rescore(RECS, bad, fields=["a"]))
+    assert (e.code, e.stage, e.param) == ("config.invalid_value", "rescore", "query")
+
+
+@pytest.mark.parametrize("query", ["x", ["x", "y"], ("x",)])
+def test_rescore_query_accepts_a_string_or_a_list_or_tuple_of_strings(query):
+    assert rescore(RECS, query, fields=["a"])
+
+
+@pytest.mark.parametrize("bad", ["no", 1, None, 0])
+def test_pipeline_strict_must_be_a_bool(bad):
+    e = raised(lambda: pipeline([stage(select, fields=["a"])], strict=bad))
+    assert (e.code, e.stage, e.param) == ("config.invalid_value", "pipeline", "strict")
+
+
+@pytest.mark.parametrize("bad", ["no", 1, None, 0])
+def test_shaped_strict_must_be_a_bool_at_construction(bad):
+    # raised when shaped(...) is called, not when the tool runs
+    e = raised(lambda: shaped([stage(select, fields=["a"])], strict=bad))
+    assert (e.code, e.stage, e.param) == ("config.invalid_value", "shaped", "strict")
+    e = raised(lambda: shaped(lambda r: r, strict=bad))
+    assert (e.code, e.stage, e.param) == ("config.invalid_value", "shaped", "strict")
+
+
+@pytest.mark.parametrize("flag", [True, False])
+def test_pipeline_and_shaped_accept_a_real_bool_for_strict(flag):
+    pipe = pipeline([stage(select, fields=["a"])], strict=flag)
+    assert pipe([{"a": 1, "b": 2}]) == [{"a": 1}]
+
+    @shaped([stage(select, fields=["a"])], strict=flag)
+    def tool():
+        return [{"a": 1, "b": 2}]
+
+    assert tool() == [{"a": 1}]

@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 from typing import Any, Callable, Dict, List
 
+from .errors import check_bool
 from .trace import current_trace
 from .validate import check_stage_output, strict as strict_mode
 
@@ -70,6 +71,7 @@ def pipeline(stages: List[StageFn], strict: bool = False) -> StageFn:
     it also holds on worker threads. Strict never changes a successful result
     and is not part of the fingerprint.
     """
+    check_bool(strict, "pipeline", "strict")
     descs = tuple(
         getattr(s, "__contexel_desc__", (getattr(s, "__name__", "callable"),))
         for s in stages

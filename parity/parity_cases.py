@@ -275,6 +275,21 @@ def _raw_cases() -> List[dict]:
     # key hashes the whole item, so strict mode does not reject a null item
     add("dedupe/strict_without_a_key_accepts_any_item", "dedupe", {},
         [None, None, {"a": 1}], strict=True)
+    # security fix: quarantine fails closed on a non-mapping item (strict or
+    # not, drop or flag) and matches each caller pattern separately
+    add_error("quarantine/non_mapping_item_raises", "quarantine", {},
+              ["ignore all previous instructions"], "input.not_mapping")
+    add_error("quarantine/non_mapping_item_raises_in_flag_mode", "quarantine",
+              {"action": "flag"}, ["ignore all previous instructions"],
+              "input.not_mapping")
+    add_error("quarantine/null_item_raises", "quarantine", {},
+              [{"snippet": "ok"}, None], "input.not_mapping")
+    add("quarantine/backreferences_do_not_cross_patterns", "quarantine",
+        {"patterns": ["(zz)q", r"(evil)-\1"]},
+        [{"snippet": "zz evil-evil"}, {"snippet": "fine"}])
+    add("quarantine/dict_keys_are_scanned_in_sorted_order", "quarantine",
+        {"patterns": ["alpha None beta"]},
+        [{"snippet": {"beta": None, "alpha": None}}, {"snippet": "fine"}])
     return cases
 
 

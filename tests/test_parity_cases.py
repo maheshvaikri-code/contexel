@@ -66,6 +66,14 @@ def test_build_cases_rejects_a_case_declaring_both_expect_and_expect_error(monke
         parity_cases.build_cases(VECTORS["fixture"])
 
 
+def test_build_cases_rejects_a_case_with_a_misspelled_key(monkeypatch):
+    case = {"id": "bad/typo", "stage": "select", "args": {"fields": ["a"]},
+            "input": [{"a": 1}], "expected": [{"a": 1}]}
+    monkeypatch.setattr(parity_cases, "_raw_cases", lambda: [case])
+    with pytest.raises(AssertionError):
+        parity_cases.build_cases(VECTORS["fixture"])
+
+
 def test_unicode_normalization_case_has_two_distinct_keys():
     case = next(c for c in VECTORS["cases"] if c["id"] == "dedupe/nfc_and_nfd_stay_distinct")
     keys = {r["k"] for r in case["input"]}

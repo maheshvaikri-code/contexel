@@ -94,11 +94,60 @@ def test_the_flag_is_scoped_to_the_block_and_nests():
     assert not is_strict()
 
 
-def test_strict_check_runs_before_trace():
-    with strict(), trace():
+def test_one_strict_object_can_be_entered_again_while_active():
+    s = strict()
+    with s:
+        with s:
+            assert is_strict()
+        assert is_strict()          # the inner exit restores the OUTER value
+    assert not is_strict()
+
+
+def test_one_strict_object_restores_after_an_exception_in_the_inner_block():
+    s = strict()
+    with s:
+        with pytest.raises(RuntimeError):
+            with s:
+                raise RuntimeError("boom")
+        assert is_strict()
+    assert not is_strict()
+
+
+def test_one_strict_object_can_be_reused_sequentially():
+    s = strict()
+    for _ in range(3):
+        with s:
+            assert is_strict()
+        assert not is_strict()
+
+
+@pytest.mark.parametrize("name", [
+    "select", "dedupe", "allowlist", "quarantine", "rescore", "rank",
+    "truncate_field", "trim_to_budget"])
+def test_strict_check_runs_before_trace(name):
+    calls = {
+        "select": lambda: select(None, ["a"]),
+        "dedupe": lambda: dedupe(None, key="a"),
+        "allowlist": lambda: allowlist(None, "a", ["x"]),
+        "quarantine": lambda: quarantine(None),
+        "rescore": lambda: rescore(None, "x", fields=["a"]),
+        "rank": lambda: rank(None, "a"),
+        "truncate_field": lambda: truncate_field(None, "a", 5),
+        "trim_to_budget": lambda: trim_to_budget(None, 10),
+    }
+    with trace(), strict():
         with pytest.raises(InputShapeError) as info:   # not a raw len(None) TypeError
-            select(None, ["a"])
+            calls[name]()
     assert info.value.code == "input.not_list"
+    assert info.value.stage == name
+
+
+def test_a_bad_call_under_strict_is_not_misdiagnosed_as_a_shape_error():
+    with strict():
+        with pytest.raises(TypeError) as info:
+            dedupe([None], kee="a")
+    assert not isinstance(info.value, ContexelError)
+    assert "kee" in str(info.value)
 
 
 def test_pipeline_strict_holds_on_a_worker_thread():
@@ -166,6 +215,17 @@ def test_shaped_strict_rejects_a_none_return():
     with pytest.raises(InputShapeError) as info:
         tool()
     assert (info.value.code, info.value.stage) == ("input.not_list", "shaped")
+
+
+def test_shaped_strict_with_a_list_of_stages_also_checks_each_stage_output():
+    def returns_none(records):
+        return None
+
+    tool = shaped([returns_none], strict=True)(lambda: [{"a": 1}])
+    with pytest.raises(InputShapeError) as info:
+        tool()
+    assert info.value.code == "input.not_list"
+    assert info.value.stage == "returns_none"
 
 
 def test_shaped_strict_holds_for_async_tools_and_on_a_worker_thread():

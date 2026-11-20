@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import math
 import re
+from collections.abc import Mapping
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 from . import tokens
@@ -28,7 +29,7 @@ from .errors import (
     invalid_value,
 )
 from .trace import traced
-from .validate import checked
+from .validate import _kind, checked
 
 Record = Dict[str, Any]
 Records = List[Record]
@@ -178,6 +179,10 @@ _INJECTION_PATTERNS = (
     r"</?\s*(?:system|assistant|instructions?)\s*>",
 )
 
+# the built-ins are trusted and compiled together, once; every caller pattern
+# is compiled on its own so it cannot change how the built-ins are read
+_BUILTIN_MATCHER = re.compile("|".join(_INJECTION_PATTERNS), re.IGNORECASE)
+
 
 def _scan_text(value: Any) -> str:
     """The text a quarantine pattern is matched against for one field value.
@@ -186,7 +191,10 @@ def _scan_text(value: Any) -> str:
     order) and its leaves, each as text, joined by a single space — so a
     marker split by a newline or a quote inside a nested value is still found
     (``str(value)`` would have rendered the newline as a backslash and an
-    ``n``). Scalars render as ``str()`` (``None`` is ``"None"``). Iterative,
+    ``n``). Every other leaf -- numbers, booleans, ``None`` (``"None"``), any
+    object -- is scanned as its ``str()`` text, plus its ``repr()`` when that
+    differs (an object may show text in only one of the two; for JSON scalars
+    they agree). Iterative,
     and each container is expanded once, so neither a deeply nested nor a
     self-referencing value can exhaust the stack or loop.
     """
@@ -210,7 +218,11 @@ def _scan_text(value: Any) -> str:
             seen.add(id(v))
             stack.extend(reversed(v))
         else:
-            parts.append(str(v))
+            text = str(v)
+            parts.append(text)
+            rep = repr(v)
+            if rep != text:  # an object may show text in only one of the two
+                parts.append(rep)
     return " ".join(parts)
 
 
@@ -231,12 +243,20 @@ def quarantine(records: Records, fields: Fields = ("snippet",),
     rather than being silently overwritten; chain two flag passes with
     different ``into`` names.
 
+    Every item must be a mapping: a non-mapping item (a string, list, tuple,
+    ``None``, a number) ALWAYS raises ``InputShapeError``
+    (``input.not_mapping``), in ``drop`` and ``flag`` mode, strict mode or not
+    -- a screen that skips what it cannot read would keep the attack.
+
     A field whose value is a dict or list is scanned through every depth: its
     keys and string leaves are joined with spaces, so a marker split by a
     newline inside a nested value is still found. ``fields`` must not be
-    empty and every pattern must be a valid regex (each is compiled alone, so
-    the error names the culprit): misconfiguration raises ``ConfigError``
-    instead of leaving a control that quietly does nothing.
+    empty and every pattern must be a valid regex: misconfiguration raises
+    ``ConfigError`` instead of leaving a control that quietly does nothing.
+    The built-in markers and each caller pattern are compiled SEPARATELY and a
+    record is dropped/flagged when ANY of them matches, so a pattern's inline
+    flags (``(?a)``, ``(?x)``) and numbered groups or backreferences stay its
+    own, and the error names the offending pattern.
 
     ``patterns`` EXTENDS the built-in marker list — passing your own
     domain markers must never silently disable "ignore all previous
@@ -275,7 +295,7 @@ def quarantine(records: Records, fields: Fields = ("snippet",),
                 "replace_patterns=True without patterns is contradictory; "
                 "pass the replacement patterns",
                 stage="quarantine", param="replace_patterns")
-        pattern_list = list(_INJECTION_PATTERNS)
+        matchers = [_BUILTIN_MATCHER]
     else:
         user_patterns = check_fields(patterns, "quarantine", "patterns")
         if any(not p for p in user_patterns):
@@ -285,33 +305,34 @@ def quarantine(records: Records, fields: Fields = ("snippet",),
                 "config.empty",
                 "empty pattern fragments match everything; remove them",
                 stage="quarantine", param="patterns")
+        compiled = []
         for p in user_patterns:
-            try:  # compile each alone so the error names the culprit
-                re.compile(p, re.IGNORECASE)
+            try:  # each pattern alone: its flags and groups stay its own
+                compiled.append(re.compile(p, re.IGNORECASE))
             except re.error as e:
                 raise ConfigError(
                     "config.invalid_pattern",
                     f"quarantine: invalid pattern {p!r}: {e}",
                     stage="quarantine", param="patterns") from e
-        pattern_list = (user_patterns if replace_patterns
-                        else list(_INJECTION_PATTERNS) + user_patterns)
-    if not pattern_list:
+        matchers = (compiled if replace_patterns
+                    else [_BUILTIN_MATCHER] + compiled)
+    if not matchers:
         raise ConfigError(
             "config.empty",
             "replace_patterns=True with no patterns would disable the "
             "control entirely; pass at least one pattern",
             stage="quarantine", param="patterns")
-    try:
-        matcher = re.compile("|".join(pattern_list), re.IGNORECASE)
-    except re.error as e:  # each fragment compiled alone, the union did not
-        raise ConfigError(
-            "config.invalid_pattern",
-            f"quarantine: the patterns cannot be combined: {e}",
-            stage="quarantine", param="patterns") from e
     out: Records = []
     for i, r in enumerate(records):
+        # fail closed: a non-mapping item would otherwise look like "no field
+        # present" (``f in r`` is a substring / membership test) and be KEPT
+        if not isinstance(r, Mapping):
+            raise InputShapeError(
+                "input.not_mapping",
+                f"quarantine: item {i} must be a mapping, got {_kind(r)}",
+                stage="quarantine")
         text = " ".join(_scan_text(r[f]) if f in r else "" for f in field_list)
-        hit = matcher.search(text) is not None
+        hit = any(m.search(text) is not None for m in matchers)
         if action == "flag":
             if into in r:
                 raise InputShapeError(

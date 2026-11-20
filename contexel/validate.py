@@ -31,13 +31,15 @@ _strict: "contextvars.ContextVar[bool]" = contextvars.ContextVar(
 
 class _StrictContext:
     def __init__(self) -> None:
-        self._token: Any = None
+        # a stack, so the SAME object can be entered again while active (and
+        # reused): each exit restores the value its own enter replaced
+        self._tokens: list = []
 
     def __enter__(self) -> None:
-        self._token = _strict.set(True)
+        self._tokens.append(_strict.set(True))
 
     def __exit__(self, *exc: Any) -> None:
-        _strict.reset(self._token)
+        _strict.reset(self._tokens.pop())
 
 
 def strict() -> _StrictContext:
@@ -47,7 +49,9 @@ def strict() -> _StrictContext:
     ``contextvars.copy_context()`` but is NOT inherited by a plain
     ``threading.Thread`` or executor worker. ``pipeline(..., strict=True)`` and
     ``shaped(..., strict=True)`` enter strict mode inside their own run, so
-    they are safe on worker threads.
+    they are safe on worker threads. A ``with strict():`` around a ``yield``
+    keeps strict on in the caller while the generator is suspended (standard
+    ``ContextVar`` behaviour).
     """
     return _StrictContext()
 

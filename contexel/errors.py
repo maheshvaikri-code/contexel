@@ -94,7 +94,12 @@ def check_fields(value: Any, stage: str, param: str = "fields", *,
 
 
 def check_query(value: Any, stage: str, param: str = "query") -> Any:
-    if isinstance(value, str) or isinstance(value, (list, tuple)):
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (list, tuple)):
+        if not all(isinstance(v, str) for v in value):
+            raise invalid_value(stage, param,
+                                f"{param} must contain only strings")
         return value
     raise invalid_value(
         stage, param,
