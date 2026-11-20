@@ -50,14 +50,24 @@ print(hashlib.sha256(payload.encode("utf-8")).hexdigest())
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repo root when placed in tests/
 
 
-def run_with_seed(seed: str) -> str:
-    env = dict(os.environ, PYTHONHASHSEED=seed)
+def _probe(code: str, seed, flags=()) -> str:
+    """Run ``code`` in a child with PYTHONHASHSEED=seed (variable removed when
+    seed is None) and return its stripped stdout."""
+    env = dict(os.environ)
+    if seed is None:
+        env.pop("PYTHONHASHSEED", None)
+    else:
+        env["PYTHONHASHSEED"] = seed
     proc = subprocess.run(
-        [sys.executable, "-c", CHILD.format(root=ROOT)],
+        [sys.executable, *flags, "-c", code],
         env=env, capture_output=True, text=True, timeout=120, check=False,
     )
     assert proc.returncode == 0, proc.stderr
     return proc.stdout.strip()
+
+
+def run_with_seed(seed: str) -> str:
+    return _probe(CHILD.format(root=ROOT), seed)
 
 
 def test_same_output_across_hash_seeds():
@@ -67,15 +77,16 @@ def test_same_output_across_hash_seeds():
 
 
 def test_child_really_sees_the_requested_hash_seed():
-    # Guards against the vacuous-test failure mode (a flag that drops the env).
-    code = "import sys; print(sys.flags.hash_randomization, hash('contexel'))"
-    outs = set()
-    for seed in ("0", "1"):
-        env = dict(os.environ, PYTHONHASHSEED=seed)
-        r = subprocess.run([sys.executable, "-c", code], env=env,
-                           capture_output=True, text=True, check=True)
-        outs.add(r.stdout.strip())
-    assert len(outs) == 2, "different PYTHONHASHSEED values must change hash()"
+    # Guards against the vacuous-test failure mode (a flag that drops the env):
+    # assert the seed TOOK EFFECT, not merely that outputs differ.
+    flag = "import sys; print(sys.flags.hash_randomization)"
+    h = "print(hash('contexel'))"
+    assert _probe(flag, "0") == "0", "PYTHONHASHSEED=0 must disable randomization"
+    first, again = _probe(h, "1"), _probe(h, "1")
+    assert first == again, "the same PYTHONHASHSEED must give the same hash()"
+    assert _probe(h, "0") != first, "different PYTHONHASHSEED values must change hash()"
+    # control: with the variable absent, randomization is on, so the flag discriminates
+    assert _probe(flag, None) == "1"
 
 
 def test_canary_a_hash_dependent_child_is_detected():
@@ -83,8 +94,7 @@ def test_canary_a_hash_dependent_child_is_detected():
     code = "print(','.join({'alpha', 'beta', 'gamma', 'delta', 'epsilon'}))"
     outs = set()
     for seed in ("0", "1", "2", "4242"):
-        env = dict(os.environ, PYTHONHASHSEED=seed)
-        r = subprocess.run([sys.executable, "-c", code], env=env,
-                           capture_output=True, text=True, check=True)
-        outs.add(r.stdout.strip())
+        first, again = _probe(code, seed), _probe(code, seed)
+        assert first == again, f"seed {seed} was not honoured (set order varied between runs)"
+        outs.add(first)
     assert len(outs) > 1, "set order never varied; the sweep could not detect a hazard"
