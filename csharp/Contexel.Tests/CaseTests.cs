@@ -107,6 +107,7 @@ public class CaseTests
     public void CasesSectionIsPresentAndComplete()
     {
         var cases = AsList(Vectors["cases"]);
+        Assert.NotEmpty(cases); // a runner must never pass vacuously
         Assert.Equal((long)AsRec(Vectors["_meta"])["case_count"]!, (long)cases.Count);
         var ids = cases.Select(c => (string)AsRec(c)["id"]!).ToList();
         Assert.Equal(ids.Count, ids.Distinct().Count());

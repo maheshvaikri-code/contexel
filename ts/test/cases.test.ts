@@ -94,6 +94,7 @@ function run(c: Case): unknown {
 
 test("the cases section is present and complete", () => {
   assert.ok(Array.isArray(vectors.cases), "vectors.cases missing");
+  assert.ok(vectors.cases.length > 0, "vectors.cases is empty (a runner must never pass vacuously)");
   assert.strictEqual(
     vectors.cases.length,
     vectors._meta.case_count,
