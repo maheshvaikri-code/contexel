@@ -32,9 +32,18 @@ result and is not part of the fingerprint.
 | E one flat exception | trivial | callers cannot tell config from data errors | poor error taxonomy |
 
 ## Consequences
-- Positive: misconfiguration cannot hide; existing `catch` clauses keep working;
-  vectors can assert `expect_error.code` across languages.
+- Positive: misconfiguration cannot hide; `catch` clauses for the shape errors
+  (and C# `catch (ArgumentException)`) keep working; vectors can assert
+  `expect_error.code` across languages.
 - Negative / debt accepted: C# exact-type test assertions must change to
-  `ThrowsAny`; a few raw `TypeError`s become `ConfigError` (a `ValueError`).
+  `ThrowsAny`; a few raw `TypeError`s become `ConfigError` (a `ValueError`), so
+  an `except TypeError` no longer catches those configuration mistakes, and a bad
+  `quarantine` regex raises `ConfigError` instead of `re.error` (in C#, a handler
+  for `RegexParseException` no longer sees it).
+- Known per-language difference: C# `fields: null` (`quarantine`, `rescore`)
+  still means "use the default fields", because C# cannot tell an omitted
+  optional argument from an explicit `null` without changing the public API to
+  overloads, which the maintainers chose not to do; Python and TypeScript raise
+  `config.invalid_value`.
 - Invalidation triggers: a language where subclassing the platform's error type
   is impossible; evidence that users want strict-by-default.

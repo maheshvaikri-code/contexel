@@ -237,8 +237,13 @@ raises a typed error. Every error is a `ContexelError` with a stable `code`
 a `ValueError`) for a wrong *call* — an unknown `match`, `fields=[]`, an invalid
 regex, a negative `max_tokens` — and an `InputShapeError` (also a `TypeError`)
 for wrong *data*. Bad data is lenient by default, so valid input behaves exactly
-as before; switch on strict mode to have a stage that gets a non-list, or an
-item that is not a mapping, raise instead and name itself and the item index:
+as before, with one exception that is never lenient: `quarantine(action="flag")`
+over a record that already has the `into` key always raises
+`input.field_conflict`, strict mode or not and clean record or not, because
+carrying on would overwrite your data (so re-running a flag pipeline on its own
+output raises; pass a different `into`). Switch on strict mode to have a stage
+that gets a non-list, or an item that is not a mapping, raise instead and name
+itself and the item index:
 
 ```python
 from contexel import ConfigError, InputShapeError, allowlist, quarantine, select, strict
@@ -292,6 +297,32 @@ except InputShapeError as e:
 ```text
 forgets_to_return
 ```
+
+Strict mode covers the eight record stages (`select`, `dedupe`, `allowlist`,
+`quarantine`, `rescore`, `rank`, `truncate_field`, `trim_to_budget`) and the
+check on what a pipeline or a `shaped` tool returns. It does not cover `merge`,
+which still accepts anything iterable (`merge("ab")` returns `['a', 'b']`, strict
+or not). A tuple is accepted wherever a list is. `fields=[]` raises
+`config.empty` for `quarantine` and `rescore` only; `select(records, [])` still
+returns `[{}, ...]`.
+
+Differences between the languages (the codes are the contract, the rest can
+differ):
+
+- **Regex dialect.** `quarantine` compiles patterns with each language's own
+  engine, so whether a pattern is invalid (`config.invalid_pattern`) is per port:
+  `(?P<a>x)` is valid in Python and invalid in TypeScript and C#; `(?i)x` is
+  invalid in Python (3.11+) and TypeScript and valid in C#.
+- **Integral floats.** `max_tokens=1000.0` is rejected in Python and accepted in
+  TypeScript, which has one number type.
+- **`null` as a default.** TypeScript raises for `fields: null`, as Python does
+  for `fields=None`; C# treats `fields: null` as "use the default fields" for
+  `quarantine` and `rescore`, because it cannot tell an omitted optional
+  argument from an explicit `null` without changing its public API.
+- **Messages.** They differ between ports and are not part of the contract
+  (TypeScript's say `NoneType` and `None`, for instance). A single bad pattern is
+  named in the message; when the patterns only fail once combined, the message
+  says they "cannot be combined" and does not name one.
 
 ## Alternatives, and what pairs with it
 

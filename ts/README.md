@@ -90,9 +90,14 @@ throws a typed error. Every error is a `ContexelError` with a stable `code`
 (the cross-language contract; messages are for humans): a `ConfigError` for a
 wrong *call* — an unknown `match`, `fields: []`, an invalid regex, a negative
 `maxTokens` — and an `InputShapeError` for wrong *data*. Bad data is lenient by
-default, so valid input behaves exactly as before; wrap calls in `strict(...)`
-to have a stage that gets a non-array, or an item that is not an object, throw
-instead and name itself and the item index:
+default, so valid input behaves exactly as before, with one exception that is
+never lenient: `quarantine(records, { action: "flag" })` over a record that
+already has the `into` key always throws `input.field_conflict`, inside
+`strict(...)` or not and clean record or not, because carrying on would
+overwrite your data (so re-running a flag pipeline on its own output throws; pass
+a different `into`). Wrap calls in `strict(...)` to have a stage that gets a
+non-array, or an item that is not an object, throw instead and name itself and
+the item index:
 
 ```ts
 import { ConfigError, InputShapeError, allowlist, quarantine, select, strict } from "contexel";
@@ -149,6 +154,37 @@ try {
 ```text
 input.not_list shaped
 ```
+
+Strict mode covers the eight record stages (`select`, `dedupe`, `allowlist`,
+`quarantine`, `rescore`, `rank`, `truncateField`, `trimToBudget`) and the check
+on what a pipeline or a `shaped` tool returns. It does not cover `merge`, which
+still accepts anything iterable (`merge("ab")` returns `["a", "b"]`, strict or
+not). `fields: []` throws `config.empty` for `quarantine` and `rescore` only;
+`select(records, { fields: [] })` still returns `[{}, ...]`.
+
+Only `undefined` means "use the default" for an option (`fields` of
+`quarantine` and `rescore`, `into`, `proximity`, `match`, `desc`, `suffix`,
+`minRecords`, `action`); `null` throws `config.invalid_value`. The exceptions are
+`key` (`dedupe`) and `tokenizer`, where `null` still means "default", and
+`patterns: null`, which means "no extra patterns". Before this release `null` was
+treated like `undefined` for the options above.
+
+Differences between the languages (the codes are the contract, the rest can
+differ):
+
+- **Regex dialect.** `quarantine` compiles patterns with each language's own
+  engine, so whether a pattern is invalid (`config.invalid_pattern`) is per port:
+  `(?P<a>x)` is valid in Python and invalid here and in C#; `(?i)x` is invalid
+  here and in Python (3.11+) and valid in C#.
+- **Integral floats.** `maxTokens: 1000.0` is accepted here, because JavaScript
+  has one number type; Python rejects `1000.0`.
+- **`null` as a default.** `fields: null` throws here (as `fields=None` does in
+  Python); C# treats `fields: null` as "use the default fields" for `quarantine`
+  and `rescore`.
+- **Messages.** They differ between ports and are not part of the contract (the
+  TypeScript ones say `NoneType` and `None`, for instance). A single bad pattern
+  is named in the message; when the patterns only fail once combined, the message
+  says they "cannot be combined" and does not name one.
 
 ## Parity, precisely
 

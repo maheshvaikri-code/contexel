@@ -99,7 +99,8 @@ Replacing the built-ins is an explicit opt-in:
 A field whose value is a dict or list is scanned through every depth (keys
 and string leaves, joined by spaces), so a marker split by a newline inside
 a nested value is still found. <code>fields=[]</code> and an invalid regex
-(the error names the pattern) raise <code>ConfigError</code> instead of
+(the error names the pattern, unless the patterns only fail once combined)
+raise <code>ConfigError</code> instead of
 leaving a control that quietly does nothing, and flag mode over a record
 that already has the <code>into</code> key raises
 <code>InputShapeError</code> (<code>input.field_conflict</code>) rather than
@@ -210,22 +211,31 @@ transform — the one stage that is not auto-traced.</p>
 <p>Every error contexel raises on purpose is a <code>ContexelError</code>
 with a stable <code>code</code> — the cross-language contract; messages are
 for humans and may differ between the Python, TypeScript and C# ports.</p>
+<div class="scroll">
 <table>
   <tr><th>code</th><th>raised when</th></tr>
   <tr><td><code>config.invalid_value</code></td><td>an unsupported option value or a wrong-typed parameter (<code>match</code>, <code>action</code>, <code>by</code>, a negative or non-integer <code>max_tokens</code>)</td></tr>
   <tr><td><code>config.empty</code></td><td>the call would silently do nothing or everything: an empty pattern fragment, an empty replacement list, <code>fields=[]</code> for <code>quarantine</code> and <code>rescore</code></td></tr>
   <tr><td><code>config.contradictory</code></td><td><code>replace_patterns=True</code> without <code>patterns</code></td></tr>
-  <tr><td><code>config.invalid_pattern</code></td><td>a pattern fails to compile; the message names it</td></tr>
+  <tr><td><code>config.invalid_pattern</code></td><td>a pattern fails to compile; the message names it, unless the patterns only fail once combined ("cannot be combined")</td></tr>
   <tr><td><code>input.not_list</code></td><td>(strict) records are not a list</td></tr>
   <tr><td><code>input.not_mapping</code></td><td>(strict) an item is not a mapping; the message names the stage and index</td></tr>
   <tr><td><code>input.field_conflict</code></td><td>an output field already exists (<code>quarantine</code> flag <code>into</code>) — always raised, because continuing would destroy data</td></tr>
 </table>
+</div>
 <p><code>ConfigError</code> is also a <code>ValueError</code> and
 <code>InputShapeError</code> also a <code>TypeError</code> (in C# both derive
-from <code>ArgumentException</code>), so existing <code>except</code> clauses
-keep working. Configuration errors <strong>always</strong> raise. Data-shape
-errors are <strong>opt-in</strong>: by default a stage keeps its lenient
-behavior, so valid input is byte-identical to before.</p>
+from <code>ArgumentException</code>). Handlers for the shape errors keep
+working, but a configuration mistake that used to raise a raw
+<code>TypeError</code> now raises a <code>ConfigError</code>, which an
+<code>except TypeError</code> no longer catches, and a bad
+<code>quarantine</code> regex raises <code>ConfigError</code>, not
+<code>re.error</code>. Configuration errors <strong>always</strong> raise.
+Data-shape errors are <strong>opt-in</strong>, with one exception: by default
+a stage keeps its lenient behavior, so valid input is byte-identical to
+before, but <code>input.field_conflict</code> is raised whether or not strict
+mode is on. Strict mode covers the eight record stages and the pipeline or
+<code>shaped</code> output check, not <code>merge</code>.</p>
 <pre><code>with contexel.strict():                         # ambient, this context only
     select(records, ["a"])                      # InputShapeError names stage + item
 

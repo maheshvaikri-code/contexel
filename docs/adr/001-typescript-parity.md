@@ -2,6 +2,12 @@
 
 **Status:** accepted · 2026-07-26 · Chief Architect
 
+**Amended by:** ADR-004 and ADR-003 (Slice 2, see the CHANGELOG): in §4,
+`allowlist` no longer uses Python equality (`True == 1 == 1.0`: a bool never
+equals a number); `quarantine` no longer scans the `repr` of a nested value, so
+the repr and nested-key-order margins no longer apply to it (`rescore` still
+does).
+
 ## Decision
 
 1. **Same repo, `ts/` package**, published to npm as `contexel` (name

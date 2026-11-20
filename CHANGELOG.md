@@ -13,8 +13,15 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   `input.not_list`, `input.not_mapping`, `input.field_conflict` — the
   cross-language contract (messages are not). Python: `ConfigError` is also a
   `ValueError` and `InputShapeError` a `TypeError`; C#: both derive from
-  `ArgumentException`; so existing handlers keep working. The shared parity
-  vectors gain error cases that assert the code in all three languages.
+  `ArgumentException`. Handlers for the shape errors keep working, but they do
+  not all carry over: a configuration mistake that used to raise a raw
+  `TypeError` (`select(r, None)`, `dedupe(r, key=5)`, `max_tokens=None`, ...)
+  now raises a `ConfigError`, which is a `ValueError`, so an `except TypeError`
+  no longer catches it (catch `ValueError` or `ContexelError`); a bad
+  `quarantine` regex raises `ConfigError`, not `re.error`; and in C#
+  `catch (ArgumentException)` still works but a handler for the framework's
+  `RegexParseException` no longer sees a bad `quarantine` pattern. The shared
+  parity vectors gain error cases that assert the code in all three languages.
 - Opt-in strict mode that validates the shape of stage input and names the
   stage and item index: `with strict():` (Python), `strict(fn)` (TypeScript),
   `Strict.Begin()` (C#), and `pipeline(..., strict=True)` /
@@ -33,23 +40,52 @@ exceptions, all intentional:
    `edges.allowlist_bool_int` changes from `[true, 1, 1.0]` to `[1, 1.0]`.
 2. `allowlist(allowed="github")` is one allowed value, not its characters.
 3. `quarantine` now finds a marker inside a nested dict or list value (a
-   newline in the value used to defeat the match); it scans dict keys and string
-   leaves joined by spaces, so a custom pattern written against the Python
-   `repr` punctuation of a nested value (quotes, braces) no longer matches it.
-   `fields=[]`, an invalid regex and, in flag mode, a record that already has the
-   `into` key now raise instead of silently doing nothing or overwriting.
+   newline in the value used to defeat the match). A nested value is scanned as
+   its dict keys (in sorted order, not insertion order) and its leaves, joined
+   by single spaces (strings as they are; numbers, booleans and null as their
+   text), so a custom pattern written against the Python `repr` punctuation of
+   a nested value (quotes, braces) no longer matches it, and a phrase can now
+   match across adjacent items: `[{"snippet": ["system", "prompt"]}]` and
+   `["ignore", "all previous instructions"]` are now dropped (they were kept).
+   `fields=[]` now raises instead of silently doing nothing, and an invalid
+   regex raises a `ConfigError` (see item 4 and the handlers note above). In
+   flag mode, a record that already has the `into` key raises
+   `input.field_conflict` instead of being silently overwritten; this is raised
+   whether or not strict mode is on and whether or not the record is clean, so
+   re-running a flag pipeline on its own output raises (pass a different `into`).
 4. Misconfiguration raises a typed `ConfigError`: an unknown `rescore` `match`
    (it silently ran substring matching; `match="stem"` is reserved and raises
    until the stemmer ships), `fields=[]` for `rescore`, a `max_tokens` or
    `min_records` that is negative or not an integer (`0` stays valid; `None` used
    to raise a raw `TypeError` and is now a `ConfigError`, a `ValueError`), and
-   a wrong-typed `fields`, `key`, `by`, `desc`, `into`, `proximity`, `query`,
-   `allowed` or `field`. In Python `fields` must now be a string or a
-   list/tuple of strings (a set or generator is rejected).
-5. C# tests that asserted the exact exception type
-   (`Assert.Throws<ArgumentException>`) became `Assert.ThrowsAny<…>`, because
-   the typed errors derive from `ArgumentException`; a caller's
-   `catch (ArgumentException)` is unaffected.
+   any wrong-typed parameter, for example `rank(r, by=5)`,
+   `rank(r, "score", desc="yes")`, `rescore(r, "q", into=5)`,
+   `truncate_field(r, "a", 3, suffix=5)` or `allowlist(r, "f", None)`; this
+   covers `fields`, `key`, `by`, `desc`, `into`, `proximity`, `query`,
+   `allowed`, `field`, `suffix`, `patterns`, `replace_patterns`, `action` and
+   `match`. In Python `fields`, `key` and `query` must now be a string or a
+   list/tuple of strings (a set or generator is rejected; `allowed` still takes
+   a set, but not a generator, dict, range or `None`), and `max_tokens` and
+   `min_records` must be a real `int`: `1000.0` and `True` are rejected, where
+   they used to be accepted. TypeScript has one number type, so `1000.0` is
+   just `1000` there and is accepted.
+5. TypeScript `null` is no longer "use the default". The old code treated an
+   omitted option and `null` alike (`??`); now only `undefined` selects the
+   default, for `fields` (`quarantine`, `rescore`), `into`, `proximity`,
+   `match`, `desc`, `suffix`, `minRecords` and `action`, and `null` raises
+   `config.invalid_value`. `key: null` (`dedupe`) and `tokenizer: null` still
+   mean "default", as `None` does in Python, and `patterns: null` now means "no
+   extra patterns" (it used to crash with a raw `TypeError`). C# is different
+   on purpose: `fields: null` (`quarantine`, `rescore`) still means "use the
+   default `snippet` field", because C# cannot tell an omitted optional argument
+   from an explicit `null` without changing the public API to overloads, which
+   the maintainers chose not to do.
+
+### Tests
+C# tests that asserted the exact exception type
+(`Assert.Throws<ArgumentException>`) became `Assert.ThrowsAny<…>`, because the
+typed errors derive from `ArgumentException`. This is a test change only: a
+caller's `catch (ArgumentException)` is unaffected.
 
 ### Added — test infrastructure (no library behavior change)
 - Seeded stdlib property tests for every stage (purity, determinism,

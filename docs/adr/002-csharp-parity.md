@@ -2,6 +2,12 @@
 
 **Status:** accepted · 2026-07-28 · Chief Architect
 
+**Amended by:** ADR-004 and ADR-003 (Slice 2, see the CHANGELOG): in §5,
+`PyEqKey` (`True == 1 == 1.0`) is no longer how `Allowlist` matches (a bool
+never equals a number); in §7, `Quarantine` no longer scans the `repr` of a
+nested value, so the nested-container repr margin no longer applies to it
+(`Rescore` still does).
+
 ## Decision
 
 1. **Same repo, `csharp/` directory**, published to NuGet as `Contexel`

@@ -80,14 +80,19 @@ accounting.
 
 A control must never be weaker than it looks, so misconfiguration always
 throws a typed error. Every error is a `ContexelException` (an
-`ArgumentException`, so existing `catch` clauses keep working) with a stable
-`Code` — the cross-language contract; messages are for humans: a
+`ArgumentException`, so a `catch (ArgumentException)` clause keeps working)
+with a stable `Code` — the cross-language contract; messages are for humans: a
 `ConfigException` for a wrong *call* (an unknown `match`, an empty `fields`
 list, an invalid regex, a negative `maxTokens`) and an `InputShapeException`
 for wrong *data*. Bad data is lenient by default, so valid input behaves
-exactly as before; open a `Strict.Begin()` scope to have a stage that gets a
-null list, or a null item, throw instead and name itself and the item index
-(C# is statically typed, so null is the only shape violation left):
+exactly as before, with one exception that is never lenient: `Quarantine(...,
+action: "flag")` over a record that already has the `into` key always throws
+`input.field_conflict`, inside a `Strict.Begin()` scope or not and clean record
+or not, because carrying on would overwrite your data (so re-running a flag
+pipeline on its own output throws; pass a different `into`). Open a
+`Strict.Begin()` scope to have a stage that gets a null list, or a null item,
+throw instead and name itself and the item index (C# is statically typed, so
+null is the only shape violation left):
 
 ```csharp
 using Contexel;
@@ -165,6 +170,34 @@ catch (InputShapeException e)
 ```text
 forgets_to_return
 ```
+
+Strict mode covers the eight record stages (`Select`, `Dedupe`, `Allowlist`,
+`Quarantine`, `Rescore`, `Rank`, `TruncateField`, `TrimToBudget`) and the check
+on what a pipeline or a shaped tool returns. It does not cover `Merge`, which
+does not check its sources. An empty `fields` list throws `config.empty` for
+`Quarantine` and `Rescore` only; `Select(records, Array.Empty<string>())` still
+returns an empty record for each input record.
+
+`fields: null` is the default, not an error, for `Quarantine` and `Rescore` (it
+means the `snippet` field): C# cannot tell an omitted optional argument from an
+explicit `null` without changing the public API to overloads, so the two are
+treated alike. Python and TypeScript raise for it.
+
+Differences between the languages (the codes are the contract, the rest can
+differ):
+
+- **Regex dialect.** `Quarantine` compiles patterns with .NET's regex engine, so
+  whether a pattern is invalid (`config.invalid_pattern`) is per port: `(?P<a>x)`
+  is valid in Python and invalid here and in TypeScript; `(?i)x` is valid here
+  and invalid in Python (3.11+) and TypeScript. A bad pattern now surfaces as a
+  `ConfigException` (an `ArgumentException`), not the framework's
+  `RegexParseException`.
+- **Integral floats.** Token budgets are `int`, so there is no `1000.0` to
+  accept; Python rejects it and TypeScript accepts it.
+- **Messages.** They differ between ports and are not part of the contract (the
+  TypeScript ones say `NoneType` and `None`, for instance). A single bad pattern
+  is named in the message; when the patterns only fail once combined, the message
+  says they "cannot be combined" and does not name one.
 
 ## Links
 
