@@ -154,6 +154,22 @@ def _raw_cases() -> List[dict]:
     add("rescore/proximity_window_is_80_characters", "rescore",
         {"query": "alpha beta", "fields": ["s"]},
         [{"s": "alpha " + "z" * (gap - 7) + " beta", "gap": gap} for gap in (79, 80, 81)])
+
+    # Close-out cases (each arithmetic is in the comment above it).
+    # Three tied scores whose input path order (b, a, c) is neither ascending
+    # nor descending: any tie-break on "path" reorders them.
+    add("rank/ties_keep_input_order", "rank", {"by": "s"},
+        [{"s": 1, "path": "b"}, {"s": 1, "path": "a"}, {"s": 2, "path": "d"},
+         {"s": 1, "path": "c"}, {"s": 0, "path": "e"}])
+    # a missing field reads as None, and None is allowed here
+    add("allowlist/missing_field_reads_as_none_which_may_be_allowed", "allowlist",
+        {"field": "src", "allowed": ["a", None]},
+        [{"src": "a", "n": 1}, {"n": 2}, {"src": "b", "n": 3}, {"src": None, "n": 4}])
+    # 19 chars -> ceil(19/4) = 5 tokens > 4; budget 4 - 1 (suffix) = 3 tokens
+    # = 12 chars, and the 12-char cut "abcdefghi   " ends in spaces: rstrip
+    add("truncate_field/cut_landing_in_whitespace_is_stripped_before_the_suffix",
+        "truncate_field", {"field": "s", "max_tokens": 4},
+        [{"s": "abcdefghi" + " " * 3 + "jklmnop"}])
     return cases
 
 

@@ -3,7 +3,7 @@
     "generated_by": "python contexel (canon)",
     "adr": "docs/adr/001-typescript-parity.md",
     "fixture_records": 6,
-    "case_count": 28
+    "case_count": 31
   },
   "fixture": [
     {
@@ -1547,6 +1547,116 @@
           "s": "alpha zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz beta",
           "gap": 81,
           "score": 0.106825
+        }
+      ]
+    },
+    {
+      "id": "rank/ties_keep_input_order",
+      "stage": "rank",
+      "args": {
+        "by": "s"
+      },
+      "input": [
+        {
+          "s": 1,
+          "path": "b"
+        },
+        {
+          "s": 1,
+          "path": "a"
+        },
+        {
+          "s": 2,
+          "path": "d"
+        },
+        {
+          "s": 1,
+          "path": "c"
+        },
+        {
+          "s": 0,
+          "path": "e"
+        }
+      ],
+      "expect": [
+        {
+          "s": 2,
+          "path": "d"
+        },
+        {
+          "s": 1,
+          "path": "b"
+        },
+        {
+          "s": 1,
+          "path": "a"
+        },
+        {
+          "s": 1,
+          "path": "c"
+        },
+        {
+          "s": 0,
+          "path": "e"
+        }
+      ]
+    },
+    {
+      "id": "allowlist/missing_field_reads_as_none_which_may_be_allowed",
+      "stage": "allowlist",
+      "args": {
+        "field": "src",
+        "allowed": [
+          "a",
+          null
+        ]
+      },
+      "input": [
+        {
+          "src": "a",
+          "n": 1
+        },
+        {
+          "n": 2
+        },
+        {
+          "src": "b",
+          "n": 3
+        },
+        {
+          "src": null,
+          "n": 4
+        }
+      ],
+      "expect": [
+        {
+          "src": "a",
+          "n": 1
+        },
+        {
+          "n": 2
+        },
+        {
+          "src": null,
+          "n": 4
+        }
+      ]
+    },
+    {
+      "id": "truncate_field/cut_landing_in_whitespace_is_stripped_before_the_suffix",
+      "stage": "truncate_field",
+      "args": {
+        "field": "s",
+        "max_tokens": 4
+      },
+      "input": [
+        {
+          "s": "abcdefghi   jklmnop"
+        }
+      ],
+      "expect": [
+        {
+          "s": "abcdefghi…"
         }
       ]
     }
