@@ -37,7 +37,7 @@ export function isStrict(): boolean {
 
 /** A mapping, as a stage that indexes records sees one: a non-null object
  * that is not an array. */
-function isMapping(value: unknown): boolean {
+export function isMapping(value: unknown): boolean {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 

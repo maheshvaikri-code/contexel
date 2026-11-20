@@ -4,7 +4,7 @@
  * tool returning a promise is awaited, then shaped (an improvement over
  * static detection — JS shapes any thenable result).
  */
-import { InputShapeError } from "./errors.js";
+import { InputShapeError, checkBool } from "./errors.js";
 import type { Records } from "./stages.js";
 import { pipeline, type StageFn } from "./pipeline.js";
 import { strict as strictRun } from "./validate.js";
@@ -22,6 +22,7 @@ type Tool<A extends unknown[]> = (...args: A) => Records | Promise<Records>;
  * prebuilt pipeline is simply run inside strict mode.
  */
 export function shaped(pipe: StageFn | StageFn[], options: { strict?: boolean } = {}) {
+  if (options.strict !== undefined) checkBool(options.strict, "shaped", "strict");
   const strict = options.strict === true;
   const base = typeof pipe === "function" ? pipe : pipeline(pipe, { strict });
   const runner: StageFn = (records) => {

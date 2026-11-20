@@ -96,7 +96,13 @@ export function checkFields(
 }
 
 export function checkQuery(value: unknown, stage: string, param = "query"): string | unknown[] {
-  if (typeof value === "string" || Array.isArray(value)) return value;
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    if (!value.every((v) => typeof v === "string")) {
+      throw invalidValue(stage, param, `${param} must contain only strings`);
+    }
+    return value;
+  }
   throw invalidValue(
     stage,
     param,

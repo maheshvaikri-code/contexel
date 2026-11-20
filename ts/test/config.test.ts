@@ -12,10 +12,12 @@ import {
   InputShapeError,
   allowlist,
   dedupe,
+  pipeline,
   quarantine,
   rank,
   rescore,
   select,
+  shaped,
   trimToBudget,
   truncateField,
   type Records,
@@ -227,4 +229,41 @@ test("every configuration error carries its stage name", () => {
   for (const [name, call] of Object.entries(cases)) {
     assert.strictEqual(raised(call).stage, name);
   }
+});
+
+test("rescore query: a string or a list of strings is accepted, any other element raises", () => {
+  assert.ok(rescore(RECS, { query: "x", fields: ["a"] }));
+  assert.ok(rescore(RECS, { query: ["x", "y"], fields: ["a"] }));
+  for (const bad of [[null], ["x", null], [1], ["x", 2], [{}], [["x"]]]) {
+    const e = raised(() => rescore(RECS, { query: bad as never, fields: ["a"] }));
+    assert.deepStrictEqual(
+      [e.code, e.stage, e.param],
+      ["config.invalid_value", "rescore", "query"],
+      JSON.stringify(bad)
+    );
+  }
+});
+
+test("pipeline and shaped strict must be a boolean when given", () => {
+  const identity = (r: Records) => r;
+  const builders: Array<[string, (opts: { strict?: unknown }) => unknown]> = [
+    ["pipeline", (opts) => pipeline([identity], opts as never)],
+    ["shaped", (opts) => shaped([identity], opts as never)],
+  ];
+  for (const [stage, build] of builders) {
+    for (const bad of ["yes", 1, null, 0, "", {}]) {
+      const e = raised(() => build({ strict: bad }));
+      assert.deepStrictEqual(
+        [e.code, e.stage, e.param],
+        ["config.invalid_value", stage, "strict"],
+        `${stage} ${String(bad)}`
+      );
+    }
+    assert.ok(build({ strict: true }));
+    assert.ok(build({ strict: false }));
+    assert.ok(build({ strict: undefined }));
+    assert.ok(build({}));
+  }
+  assert.ok(pipeline([identity]));
+  assert.ok(shaped([identity]));
 });

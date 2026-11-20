@@ -18,7 +18,7 @@ import {
   checkStr,
   invalidValue,
 } from "./errors.js";
-import { checked } from "./validate.js";
+import { checked, isMapping } from "./validate.js";
 import {
   allowKey,
   codePointIndexer,
@@ -156,6 +156,10 @@ const INJECTION_PATTERNS = [
   "</?\\s*(?:system|assistant|instructions?)\\s*>",
 ];
 
+// the built-ins are trusted and compiled together, once; every caller pattern
+// is compiled on its own so it cannot change how the built-ins are read
+const BUILTIN_MATCHER = new RegExp(INJECTION_PATTERNS.join("|"), "i");
+
 /** The text a quarantine pattern is matched against for one field value.
  *
  * A string is used as is. A container contributes its object keys (code-point
@@ -194,6 +198,21 @@ function scanText(value: unknown): string {
   return parts.join(" ");
 }
 
+/**
+ * Drop (or, with `action: "flag"`, mark) records whose `fields` contain a
+ * prompt-injection marker.
+ *
+ * Every item must be a mapping: a non-mapping item (string, array, null,
+ * number, boolean) ALWAYS throws `InputShapeError` (`input.not_mapping`), in
+ * drop and flag mode, strict mode or not, because a screen that skips what it
+ * cannot read would keep the attack.
+ *
+ * `patterns` EXTEND the built-in markers (`replacePatterns: true` is the
+ * explicit opt-out). The built-ins and EACH caller pattern are compiled
+ * separately and a record is dropped/flagged when ANY of them matches, so a
+ * pattern's groups, named groups and numbered backreferences stay its own,
+ * and an invalid pattern is named in the `ConfigError`.
+ */
 export const quarantine = checked(
   "quarantine",
   true,
@@ -227,7 +246,7 @@ export const quarantine = checked(
       // custom patterns EXTEND the built-ins: passing domain markers must
       // never silently disable "ignore all previous instructions" detection;
       // replacePatterns is the explicit opt-out
-      let patternList: string[];
+      let matchers: RegExp[];
       if (params.patterns === undefined || params.patterns === null) {
         if (replacePatterns) {
           throw new ConfigError(
@@ -236,7 +255,7 @@ export const quarantine = checked(
             { stage: "quarantine", param: "replacePatterns" }
           );
         }
-        patternList = INJECTION_PATTERNS;
+        matchers = [BUILTIN_MATCHER];
       } else {
         const userPatterns = checkFields(params.patterns, "quarantine", "patterns");
         if (userPatterns.some((p) => !p)) {
@@ -248,10 +267,12 @@ export const quarantine = checked(
             { stage: "quarantine", param: "patterns" }
           );
         }
+        const compiled: RegExp[] = [];
         for (const p of userPatterns) {
           try {
-            // compile each alone so the error names the culprit
-            new RegExp(p, "i");
+            // each pattern alone (flag "i" only, never g or y: test() would
+            // become stateful): its groups and references stay its own
+            compiled.push(new RegExp(p, "i"));
           } catch (e) {
             throw new ConfigError(
               "config.invalid_pattern",
@@ -260,9 +281,9 @@ export const quarantine = checked(
             );
           }
         }
-        patternList = replacePatterns ? userPatterns : [...INJECTION_PATTERNS, ...userPatterns];
+        matchers = replacePatterns ? compiled : [BUILTIN_MATCHER, ...compiled];
       }
-      if (!patternList.length) {
+      if (!matchers.length) {
         throw new ConfigError(
           "config.empty",
           "replacePatterns with no patterns would disable the control entirely; " +
@@ -270,25 +291,23 @@ export const quarantine = checked(
           { stage: "quarantine", param: "patterns" }
         );
       }
-      let matcher: RegExp;
-      try {
-        matcher = new RegExp(patternList.join("|"), "i");
-      } catch (e) {
-        // each fragment compiled alone, the union did not
-        throw new ConfigError(
-          "config.invalid_pattern",
-          `quarantine: the patterns cannot be combined: ${(e as Error).message}`,
-          { stage: "quarantine", param: "patterns" }
-        );
-      }
       const out: Records = [];
       for (let i = 0; i < records.length; i++) {
         const r = records[i];
+        // fail closed: a non-mapping item would otherwise look like "no field
+        // present" and be KEPT (and, in flag mode, spread into the output)
+        if (!isMapping(r)) {
+          throw new InputShapeError(
+            "input.not_mapping",
+            `quarantine: item ${i} must be a mapping, got ${pyTypeName(r)}`,
+            { stage: "quarantine" }
+          );
+        }
         // a missing field reads as ""; containers are scanned leaf by leaf
         const text = fields
           .map((f) => (Object.hasOwn(r, f) ? scanText(r[f]) : ""))
           .join(" ");
-        const hit = matcher.test(text);
+        const hit = matchers.some((m) => m.test(text));
         if (action === "flag") {
           if (Object.hasOwn(r, into)) {
             throw new InputShapeError(

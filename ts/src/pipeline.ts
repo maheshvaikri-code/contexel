@@ -4,6 +4,7 @@
  * (language-local in v1 per ADR-001) recorded into any active trace.
  */
 import { createHash } from "node:crypto";
+import { checkBool } from "./errors.js";
 import type { Rec, Records } from "./stages.js";
 import { currentTrace } from "./trace.js";
 import { checkStageOutput, strict as strictRun } from "./validate.js";
@@ -55,6 +56,7 @@ export function stage<P>(
  * worker thread. Strict never changes a successful result and is not part of
  * the fingerprint. */
 export function pipeline(stages: StageFn[], options: { strict?: boolean } = {}): Described {
+  if (options.strict !== undefined) checkBool(options.strict, "pipeline", "strict");
   const isStrictPipeline = options.strict === true;
   const descs = stages.map(
     (s) => (s as Described).__contexelDesc ?? ((s as Described).name || "callable")
