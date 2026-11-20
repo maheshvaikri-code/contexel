@@ -84,14 +84,24 @@ public class CaseTests
         a.TryGetValue(key, out var v) ? (string)v! : dflt;
 
     // a JSON null input reaches the stage as null (not-a-list case). A
-    // Records list can only hold mappings or null, so any item that is not a
-    // JSON object (a string, a number, null...) is handed over as a null item:
-    // the one non-mapping item C# can represent (not-a-mapping case)
+    // Records list can only hold mappings or null, so a SCALAR item (a string,
+    // a number, a bool) or null is handed over as a null item: the one
+    // non-mapping item C# can represent (not-a-mapping case). Anything else
+    // (a JSON array, an unexpected dictionary type) fails loudly instead of
+    // being silently turned into null.
     private static Records Input(Rec c) => c["input"] switch
     {
         "$fixture" => Fixture,
         null => null!,
-        var v => AsList(v).Select(x => x as Rec).ToList()!,
+        var v => AsList(v).Select(Item).ToList()!,
+    };
+
+    private static Rec? Item(object? x) => x switch
+    {
+        Rec r => r,
+        null or string or bool or int or long or double => null,
+        _ => throw new InvalidOperationException(
+            $"case input item of type {x.GetType().Name} is neither an object nor a scalar"),
     };
 
     // One adapter per record stage: JSON args -> the port's call shape.

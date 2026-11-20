@@ -96,6 +96,47 @@ public class ConfigTests
         Assert.All(Stages.Rescore(Recs(), Array.Empty<string>(), A), r => Assert.Equal(0.0, r["score"]));
     }
 
+    /// <summary>A sequence that can be enumerated only once: a second
+    /// enumeration yields nothing (a database cursor, a stream).</summary>
+    private sealed class OneShot(string[] items) : IEnumerable<string>
+    {
+        public int Enumerations { get; private set; }
+
+        public IEnumerator<string> GetEnumerator()
+        {
+            Enumerations++;
+            return (Enumerations == 1 ? items : []).AsEnumerable().GetEnumerator();
+        }
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() =>
+            GetEnumerator();
+    }
+
+    [Fact]
+    public void RescoreEnumeratesALazyQueryExactlyOnce()
+    {
+        var oneShot = new OneShot(["x", "y"]);
+        var scored = Stages.Rescore(Recs(), oneShot, A);
+        Assert.Equal(1, oneShot.Enumerations);
+        VectorData.AssertDeepEqual(
+            Stages.Rescore(Recs(), new List<string> { "x", "y" }, A)
+                .Select(r => (object?)r).ToList(),
+            scored, "one-shot query");
+        Assert.Contains(scored, r => (double)r["score"]! > 0.0);
+    }
+
+    [Fact]
+    public void RescoreRejectsBoolQueryElements()
+    {
+        object?[][] bad = [[true], ["x", false]];
+        foreach (var query in bad)
+        {
+            var e = Raised(() => Stages.Rescore(Recs(), query, A));
+            Assert.Equal(("config.invalid_value", "query"), (e.Code, e.Param));
+            Assert.Contains("query must contain only strings", e.Message);
+        }
+    }
+
     [Fact]
     public void ConfigurationErrorsThrowEvenWithNoRecordsAndNoStrictMode()
     {

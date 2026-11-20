@@ -301,7 +301,7 @@ public static class Stages
                                        string into, bool proximity, string match) =>
         Trace.Traced("rescore", records, () =>
         {
-            Check.Query(query, "rescore");
+            var validQuery = Check.Query(query, "rescore"); // materialized once
             var fieldNames = Check.Fields(fields ?? new[] { "snippet" }, "rescore",
                                           allowEmpty: false);
             Check.Str(into, "rescore", "into");
@@ -313,7 +313,7 @@ public static class Stages
                     "match 'stem' is not available yet; use 'word' or 'substring'");
             }
             Check.Choice(match, "rescore", "match", "word", "substring");
-            var rawTerms = (query switch
+            var rawTerms = (validQuery switch
             {
                 string q => Word.Matches(q.ToLowerInvariant()).Select(m => m.Value),
                 // Python: str(part) for each element of the list

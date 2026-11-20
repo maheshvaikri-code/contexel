@@ -124,16 +124,24 @@ internal static class Check
         return names;
     }
 
+    /// <summary>Validates the query and returns what the caller must use: the
+    /// string itself, or the sequence materialized ONCE (a lazy or one-shot
+    /// sequence would be consumed by the check and arrive empty, or run its
+    /// side effects twice).</summary>
     public static object Query(object? value, string stage, string param = "query")
     {
         if (value is string) return value;
         if (value is IEnumerable seq && !IsUnordered(seq))
         {
-            // a stray number or null would be str()-ed into a term silently
+            // a stray number, bool or null would be str()-ed into a term silently
+            var terms = new List<string>();
             foreach (var item in seq)
-                if (item is not string)
+            {
+                if (item is not string term)
                     throw InvalidValue(stage, param, $"{param} must contain only strings");
-            return value;
+                terms.Add(term);
+            }
+            return terms;
         }
         throw InvalidValue(stage, param,
             $"{param} must be a string or a list of strings, got {Kind(value)}");
