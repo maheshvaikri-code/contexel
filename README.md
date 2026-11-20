@@ -308,6 +308,12 @@ or not). A tuple is accepted wherever a list is. `fields=[]` raises
 `config.empty` for `quarantine` and `rescore` only; `select(records, [])` still
 returns `[{}, ...]`.
 
+A `strict()` object keeps its own token stack, so one object can be entered
+again, nested or one use after another, and each exit restores the previous
+state. Sharing ONE object between asyncio tasks or threads whose uses overlap
+can fail instead (`ValueError: ... was created in a different Context`): call
+`strict()` for each use.
+
 Differences between the languages (the codes are the contract, the rest can
 differ):
 
@@ -316,11 +322,27 @@ differ):
   or flags a record when any of them matches. Whether a pattern is invalid
   (`config.invalid_pattern`; the message names the pattern) is per port:
   `(?P<a>x)` is valid in Python only and `(?<a>x)` in TypeScript and C# only;
-  TypeScript has no inline flags, so `(?i)x` is invalid there, while Python and
-  C# accept the flags their engines support and a flag affects only its own
-  pattern; `\Z` is a literal `Z` in TypeScript and an end anchor in Python and
-  C#; the Kelvin sign U+212A is folded to `k` by Python and C# but not by
+  TypeScript rejects the global inline-flag form `(?i)x` (matching is already
+  case-insensitive there), and accepts the scoped modifiers `(?i:...)` and
+  `(?-i:...)` only on newer engines (Node 24 accepts them; older Node versions
+  were not tested here), so their validity depends on the Node version, while
+  Python accepts a leading `(?i)` and `(?i:...)`, C# accepts the flags .NET
+  supports, and a flag affects only its own pattern; `\Z` is a literal `Z` in
+  TypeScript and an end anchor in Python and C#; a lone `\1` (a back-reference
+  with no group of its own) is a legacy octal escape in TypeScript, so it is
+  valid there and matches U+0001, but it is `config.invalid_pattern` in Python
+  and C#; the Kelvin sign U+212A is folded to `k` by Python and C# but not by
   TypeScript.
+- **Each pattern means what it says on its own.** Before this release the
+  built-ins and your custom patterns were joined into one regex, so one pattern's
+  inline flags and group numbers leaked into the others. A custom pattern can
+  therefore no longer weaken or silently disable the built-ins, and a few
+  records that were dropped only because of the leak are now kept: on Python 3.9
+  `patterns=["(?s)zz", "c.d"]` dropped `"c\nd"` and now keeps it (the `(?s)`
+  was applying to `c.d`), and with `replace_patterns=True`,
+  `["(?m)^admin:", "^ignore"]` dropped `"hello\nignore"` and now keeps it. This
+  is the intended behaviour, but a pattern list that relied on the leak must be
+  rewritten (give each pattern its own flags).
 - **Integral floats.** `max_tokens=1000.0` is rejected in Python and accepted in
   TypeScript, which has one number type.
 - **`null` as a default.** TypeScript raises for `fields: null`, as Python does
@@ -356,7 +378,20 @@ not catch exactly the same obfuscations:
 - A shared in-process container is expanded once, so a marker that needs the same
   list twice is not found (JSON-decoded input never shares structure). A `set`,
   `frozenset`, `deque` or dict view is not expanded: it is scanned as its `str()`
-  text, so a marker split by a newline inside one is kept.
+  text, so a marker split by a newline inside one is kept. The same holds for a
+  `collections.abc.Mapping` that is not a `dict` when it is a field value (not an
+  item): a `MappingProxyType` is scanned only through its `str()` and `repr()`, so
+  one holding a newline-split marker is kept.
+- A leaf that is not a string, number, boolean or `None` (a `Decimal`, `datetime`,
+  `Enum` or `UUID`, at the top level of a field as well as nested) is scanned as
+  its `str()` text and, when it differs, its `repr()`, so a custom pattern can
+  match the `repr()` only (`Decimal('5')` for `Decimal("5")`) and an anchored
+  pattern such as `^5$` no longer matches a `Decimal("5")` field, whose scanned
+  text is `5 Decimal('5')`. An object whose `__repr__` raises makes `quarantine`
+  raise that exception unchanged (it fails closed, but it is not a
+  `ContexelError`), and side effects in `__repr__` run. Exact `int`, `float`,
+  `bool` and `None` leaves skip the `repr()` call, and dict keys are scanned with
+  `str()` only.
 - `allowlist`: a `None` entry in `allowed` admits records that lack the field (a
   trap with `os.environ.get(...)`); `float("nan")` in `allowed` matches only the
   same object; and, unlike `quarantine`, a non-mapping item raises a raw

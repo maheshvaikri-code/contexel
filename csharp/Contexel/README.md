@@ -180,6 +180,11 @@ does not check its sources. An empty `fields` list throws `config.empty` for
 `Quarantine` and `Rescore` only; `Select(records, Array.Empty<string>())` still
 returns an empty record for each input record.
 
+Dispose strict scopes in the reverse order you opened them, which `using` does:
+each scope restores the value it saw when it began, so disposing two scopes out
+of order (`s1 = Strict.Begin(); s2 = Strict.Begin(); s1.Dispose(); s2.Dispose();`)
+leaves strict mode ON after both are disposed (`Strict.IsActive` is `true`).
+
 The `Shaped.Wrap` overloads gained an optional `strict` parameter. That is
 source-compatible, but a caller compiled against the previous release must be
 recompiled (the method signatures changed). The new `Allowlist(records, field,
@@ -204,13 +209,28 @@ differ):
   record when any of them matches. Whether a pattern is invalid
   (`config.invalid_pattern`; the message names the pattern) is per port:
   `(?P<a>x)` is valid in Python only and `(?<a>x)` here and in TypeScript only;
-  TypeScript has no inline flags, so `(?i)x` is invalid there, while .NET and
-  Python accept the flags their engines support, each affecting only its own
-  pattern (an option such as `(?-i)` no longer leaks into later patterns);
-  `\Z` is a literal `Z` in TypeScript and an end anchor here and in Python; the
-  Kelvin sign U+212A is folded to `k` here and in Python but not by TypeScript.
-  A bad pattern surfaces as a `ConfigException` (an `ArgumentException`), not the
-  framework's `RegexParseException`.
+  TypeScript rejects the global inline-flag form `(?i)x` (matching is already
+  case-insensitive there), and accepts the scoped modifiers `(?i:...)` and
+  `(?-i:...)` only on newer engines (Node 24 accepts them; older Node versions
+  were not tested here), so their validity depends on the Node version, while
+  .NET accepts the flags it supports and Python accepts a leading `(?i)` and
+  `(?i:...)`, each flag affecting only its own pattern (an option such as
+  `(?-i)` no longer leaks into later patterns); `\Z` is a literal `Z` in
+  TypeScript and an end anchor here and in Python; a lone `\1` (a back-reference
+  with no group of its own) is a legacy octal escape in TypeScript, so it is
+  valid there and matches U+0001, but it is `config.invalid_pattern` here and in
+  Python; the Kelvin sign U+212A is folded to `k` here and in Python but not by
+  TypeScript. A bad pattern surfaces as a `ConfigException` (an
+  `ArgumentException`), not the framework's `RegexParseException`.
+- **Each pattern means what it says on its own.** Before this release the
+  built-ins and your custom patterns were joined into one regex, so an inline
+  option in one pattern (`(?s)`, `(?m)`, `(?x)`, `(?-i)`) also applied to the
+  patterns after it. A custom pattern can therefore no longer weaken or silently
+  disable the built-ins, and a few records that were dropped only because of the
+  leak are now kept: `patterns: new[] { "(?s)zz", "c.d" }` dropped `"c\nd"` (the
+  `(?s)` was applying to `c.d`) and now keeps it. This is the intended
+  behaviour, but a pattern list that relied on the leak must be rewritten (give
+  each pattern its own options).
 - **Integral floats.** Token budgets are `int`, so there is no `1000.0` to
   accept; Python rejects it and TypeScript accepts it.
 - **Messages.** They differ between ports and are not part of the contract (the

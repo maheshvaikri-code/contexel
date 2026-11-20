@@ -97,7 +97,8 @@ that weakens the control is the failure mode this API refuses to have).
 Replacing the built-ins is an explicit opt-in:
 <code>replace_patterns=True</code>, and an empty replacement raises.
 A field whose value is a dict or list is scanned through every depth (keys
-and string leaves, joined by spaces), so a marker split by a newline inside
+and leaves, joined by spaces; strings as they are, numbers, booleans and
+None as their text), so a marker split by a newline inside
 a nested value is still found. <code>fields=[]</code> and an invalid regex
 (the error names the pattern; every custom pattern is compiled and matched
 on its own) raise <code>ConfigError</code> instead of

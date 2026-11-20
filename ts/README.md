@@ -96,9 +96,12 @@ already has the `into` key always throws `input.field_conflict`, inside
 `strict(...)` or not and clean record or not, because carrying on would
 overwrite your data (so re-running a flag pipeline on its own output throws; pass
 a different `into`). And `quarantine` always throws `input.not_mapping` for an
-item that is not an object (a string, array, number, boolean or `null`), in drop
-and flag mode, because a screen that skips what it cannot read would keep the
-attack. Wrap calls in `strict(...)` to have any other stage that gets a
+item that is not a plain record: a string, array, number, boolean, `null` or
+`undefined`, and also a `Map`, `Set`, `Date`, `RegExp`, typed array or boxed
+`String`, `Number` or `Boolean`. It does so in drop and flag mode, inside
+`strict(...)` or not, because a screen that skips what it cannot read would keep
+the attack; plain objects, class instances and null-prototype objects are
+scanned. Wrap calls in `strict(...)` to have any other stage that gets a
 non-array, or an item that is not an object, throw instead and name itself and
 the item index:
 
@@ -187,11 +190,27 @@ differ):
   or flags a record when any of them matches. Whether a pattern is invalid
   (`config.invalid_pattern`; the message names the pattern) is per port:
   `(?P<a>x)` is valid in Python only and `(?<a>x)` here and in C# only;
-  JavaScript has no inline flags, so `(?i)x` is invalid here (matching is
-  already case-insensitive), while Python and C# accept the flags their engines
-  support, each affecting only its own pattern; `\Z` is a literal `Z` here and
-  an end anchor in Python and C#; the Kelvin sign U+212A is folded to `k` by
-  Python and C# but not by this port.
+  this port rejects the global inline-flag form `(?i)x` (matching is already
+  case-insensitive), and accepts the scoped modifiers `(?i:...)` and `(?-i:...)`
+  only on newer engines (Node 24 accepts them; older Node versions were not
+  tested here), so their validity depends on the Node version, while Python
+  accepts a leading `(?i)` and `(?i:...)`, C# accepts the flags .NET supports,
+  and a flag affects only its own pattern; `\Z` is a literal `Z` here and an end
+  anchor in Python and C#; a lone `\1` (a back-reference with no group of its
+  own) is a legacy octal escape here, so it is valid and matches U+0001, but it
+  is `config.invalid_pattern` in Python and C#; the Kelvin sign U+212A is folded
+  to `k` by Python and C# but not by this port.
+- **Each pattern means what it says on its own.** Before this release the
+  built-ins and your custom patterns were joined into one regex, so an unmatched
+  numbered back-reference in one pattern matched the empty string and could
+  complete a match of another. A custom pattern can therefore no longer weaken
+  or silently disable the built-ins, and a few records that were dropped only
+  because of the leak are now kept: the two patterns `(zz)q` and `(evil)-\1`
+  dropped `"evil-x"` (the `\1` of the second pattern referred to the group of the
+  first, which never took part, and matched the empty string) and now keep it;
+  only text that really matches a pattern on its own is dropped. This is the
+  intended behaviour, but a pattern list that relied on the leak must be
+  rewritten.
 - **Integral floats.** `maxTokens: 1000.0` is accepted here, because JavaScript
   has one number type; Python rejects `1000.0`.
 - **`null` as a default.** `fields: null` throws here (as `fields=None` does in
@@ -226,8 +245,14 @@ not catch exactly the same obfuscations:
   Do not accept patterns from untrusted sources. A pattern that matches the empty
   string (`a*`) drops every record.
 - A shared in-process container is expanded once, so a marker that needs the same
-  array twice is not found (JSON-decoded input never shares structure). `Set`,
-  `Map` and `Date` values are not scanned.
+  array twice is not found (JSON-decoded input never shares structure). `Map`,
+  `Set`, `Date` and typed arrays are not read inside a nested value either (as an
+  item they raise `input.not_mapping`; as a field value, a marker held in one is
+  not found).
+- `quarantine` reads a class instance through its own properties only: a field
+  that is inherited from the prototype, or defined as a getter on the prototype
+  (not an own property), is read as if the record had no such field, and the
+  record is kept. Own accessor properties are read.
 - `allowlist`: a `null` or `undefined` entry in `allowed` admits records that lack
   the field (sparse array literals too); `NaN` in `allowed` matches `NaN`; and,
   unlike `quarantine`, a non-object item does not raise `input.not_mapping`: it is

@@ -69,9 +69,13 @@ exceptions, all intentional:
    An item that is not a mapping (a string, list, tuple, number, boolean or
    null) always raises `input.not_mapping`, in drop and flag mode, strict mode
    or not, because a screen that skips what it cannot read would keep the
-   attack. Before, Python raised a raw `AttributeError`; during this slice a
-   string, list or tuple was silently kept in drop mode, and TypeScript in flag
-   mode spread a string into per-character keys; C# threw a
+   attack. In TypeScript this covers every object that is not a plain record
+   too: a `Map`, `Set`, `Date`, `RegExp`, typed array or boxed `String`,
+   `Number` or `Boolean` raises, while plain objects, class instances and
+   null-prototype objects are scanned. Before, Python raised a raw
+   `AttributeError`; during this slice a string, list or tuple was silently
+   kept in drop mode, and TypeScript in flag mode spread a string into
+   per-character keys; C# threw a
    `NullReferenceException` for a null item. This is the one other exception
    (besides `input.field_conflict`) to "shape errors only in strict mode";
    `allowlist` does not share it (see Known limitations).
@@ -85,7 +89,21 @@ exceptions, all intentional:
    (`["(zz)q", "(evil)-\1"]` drops `"zz evil-evil"`), a .NET option such as
    `(?-i)` no longer leaks into later patterns, and the "cannot be combined"
    error no longer exists: an invalid pattern is always named,
-   `config.invalid_pattern`.
+   `config.invalid_pattern`. This also NARROWS some pattern lists that worked
+   before: a few records that were dropped only because of the leak are now
+   kept. On Python 3.9 `patterns=["(?s)zz", "c.d"]` dropped `"c\nd"` and
+   `["(?m)zz", "^evil"]` dropped `"x\nevil"` (the first pattern's flag was
+   applying to the second); in Python (3.9 and 3.12) `replace_patterns=True`
+   with `["(?m)^admin:", "^ignore"]` dropped `"hello\nignore"`; in C#
+   `["(?s)zz", "c.d"]` dropped `"c\nd"` and `["(?m)zz", "^evil"]` dropped
+   `"x\nevil"`; in TypeScript an unmatched
+   numbered back-reference matched the empty string in the joined regex, so
+   `["(zz)q", "(evil)-\1"]` dropped `"evil-x"`. All of these are now kept: only
+   text that really matches a pattern on its own is dropped. This is the
+   intended behaviour (a pattern means what it says on its own, and the
+   built-ins can no longer be weakened or silently disabled by a custom
+   pattern), but a custom pattern list that relied on the leak must be
+   rewritten, giving each pattern its own flags and groups.
 4. Misconfiguration raises a typed `ConfigError`: an unknown `rescore` `match`
    (it silently ran substring matching; `match="stem"` is reserved and raises
    until the stemmer ships), `fields=[]` for `rescore`, a `max_tokens` or
@@ -122,8 +140,21 @@ exceptions, all intentional:
    bool (`strict="no"` used to turn strict mode ON in Python, TypeScript tested
    `=== true`); Python `quarantine` scans the `repr()` as well as the `str()`
    of an in-process object leaf when they differ (an object may show text in
-   only one of them); the Python `strict()` context object can be re-entered
-   (nested or sequential reuse restores the previous state correctly).
+   only one of them), for a top-level field value as well as a nested one: a
+   `Decimal`, `datetime`, `Enum` or `UUID` field now matches a custom pattern
+   against its `repr()` (`Decimal("5")` is kept by a pattern `Decimal` before
+   and dropped now), while an anchored pattern such as `^5$` no longer matches
+   a `Decimal("5")` field (the scanned text is `5 Decimal('5')`); an object
+   whose `__repr__` raises makes `quarantine` raise that exception unchanged
+   (it fails closed, but it is not a `ContexelError`) and side effects in
+   `__repr__` run; exact `int`, `float`, `bool` and `None` leaves skip the
+   `repr()` call and dict keys are scanned with `str()` only; the Python
+   `strict()` context object can be re-entered (nested or sequential reuse
+   restores the previous state correctly), but one object shared between
+   asyncio tasks or threads whose uses overlap can fail with `ValueError: ...
+   was created in a different Context`: call `strict()` for each use; in C#
+   disposing two `Strict.Begin()` scopes out of order leaves strict mode on:
+   use `using`.
 7. C#: a `HashSet` or `SortedSet` passed as `fields`, `key`, `patterns` or
    `query` used to be accepted and now throws `ConfigException`
    (`config.invalid_value`; the message says "got list" for a set). Python and
@@ -154,7 +185,14 @@ same obfuscations.
   TypeScript only; dotless i and dotted I (U+0131, U+0130) and long s (U+017F,
   in "system prompt") by Python only. In custom patterns `\Z` is a literal
   `Z` in TypeScript and an end anchor in Python and C#, and the Kelvin sign
-  (U+212A) is folded to `k` by Python and C# but not by TypeScript.
+  (U+212A) is folded to `k` by Python and C# but not by TypeScript. A lone
+  `\1` (a back-reference with no group of its own) is a legacy octal escape in
+  TypeScript (valid, it matches U+0001) but `config.invalid_pattern` in Python
+  and C#. TypeScript rejects the global inline flag `(?i)x`; the scoped
+  modifiers `(?i:...)` and `(?-i:...)` are accepted only by newer engines (Node
+  24 accepts them; older Node versions were not tested here), so their validity
+  there depends on the Node version, while Python accepts a leading `(?i)` and
+  `(?i:...)` and C# the flags .NET supports.
 - None of the ports catches: zero-width characters (U+200B, U+2060), RLM and
   RLO marks, a soft hyphen (U+00AD), combining marks, homoglyphs (Cyrillic
   U+0430 for `a`), fullwidth forms, `&nbsp;`, a marker split across two
@@ -180,8 +218,15 @@ same obfuscations.
   same list twice is not found (JSON-decoded input never shares structure).
   In Python a `set`, `frozenset`, `deque` or dict view is not expanded (it is
   scanned as its `str()` text, so a newline-split marker inside one is kept);
-  in TypeScript `Set`, `Map` and `Date` are not scanned; C# enumerates any
-  `IEnumerable`.
+  in TypeScript `Map`, `Set`, `Date` and typed arrays are not read inside a
+  nested value either (as an item they raise `input.not_mapping`); C#
+  enumerates any `IEnumerable`. In Python a `collections.abc.Mapping` that is
+  not a `dict` (a `MappingProxyType`) is scanned as a field value only through
+  its `str()` and `repr()`, so one holding a newline-split marker is kept.
+- TypeScript reads a class instance through its own properties only: a field
+  that is inherited from the prototype or defined as a prototype getter (not an
+  own property) is read as if the record had no such field, and the record is
+  kept (own accessor properties are read).
 - `dedupe(key=[])` and `dedupe(key="")` keep only the first record in all three
   languages. A very deep value under an active `trace()` raises `RecursionError`
   in Python and `RangeError` in TypeScript (both catchable) and overflows the

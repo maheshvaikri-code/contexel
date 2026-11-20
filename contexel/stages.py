@@ -255,7 +255,8 @@ def quarantine(records: Records, fields: Fields = ("snippet",),
     -- a screen that skips what it cannot read would keep the attack.
 
     A field whose value is a dict or list is scanned through every depth: its
-    keys and string leaves are joined with spaces, so a marker split by a
+    keys and leaves (strings as they are; numbers, booleans and None as their
+    text) are joined with spaces, so a marker split by a
     newline inside a nested value is still found. ``fields`` must not be
     empty and every pattern must be a valid regex: misconfiguration raises
     ``ConfigError`` instead of leaving a control that quietly does nothing.
