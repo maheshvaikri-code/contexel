@@ -86,6 +86,29 @@ def test_trace_dropped_ids_are_reported_in_input_order():
     assert dropped == [1, 3]
 
 
+def test_a_dropped_idless_record_never_absorbs_an_identified_drop():
+    # The stage drops an id-less record as well as "a" and "b". It ends with
+    # FEWER id-less records than it was given, which explains no lost id: the
+    # budget is 0, not negative, so both ids are reported.
+    records = [{"t": "x"}, {"id": "a", "t": "x"}, {"id": "b", "t": "x"},
+               {"id": "c", "t": "y"}]
+    out, dropped = _drops(
+        records, lambda r: allowlist(r, field="t", allowed=["y"]))
+    assert out == [{"id": "c", "t": "y"}]
+    assert dropped == ["a", "b"]
+
+
+def test_ids_1_and_the_string_1_are_different_ids():
+    # The survivor's id is the integer 1; the dropped record's is the string
+    # "1". Keying both alike would let the survivor stand for the drop.
+    records = [{"id": "1", "k": "drop"}, {"id": 1, "k": "keep"}]
+    out, dropped = _drops(
+        records, lambda r: allowlist(r, field="k", allowed=["keep"]))
+    assert out == [{"id": 1, "k": "keep"}]
+    assert dropped == ["1"]
+    assert type(dropped[0]) is str
+
+
 # --- AC 29: what the fingerprint covers -----------------------------------
 
 def _fp(*stages):
@@ -258,6 +281,20 @@ def test_a_callable_a_custom_object_and_a_list_subclass_are_not_copied():
     assert seen["key"] is by
     assert seen["box"] is box
     assert seen["tags"] is tags
+
+
+def test_a_bound_frozenset_is_passed_as_the_same_object():
+    # a frozenset is immutable, so there is nothing to copy: the stage gets
+    # the caller's object itself, still a frozenset
+    allowed = frozenset({"a", "b"})
+    seen = {}
+
+    def grab(records, **objects):
+        seen.update(objects)
+        return records
+
+    stage(grab, allowed=allowed)([])
+    assert seen["allowed"] is allowed
 
 
 def test_a_stage_gets_the_same_private_copy_on_every_call():

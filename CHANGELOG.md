@@ -49,7 +49,7 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   covers sets, nested pipelines and the tiktoken encoding, and a stage keeps a
   private copy of what is bound to it (Behavior changes 8 to 10). The shared
   parity vectors gain a case kind, `trace_dropped_ids`, that asserts each
-  stage's dropped ids in all three languages (77 cases in all).
+  stage's dropped ids in all three languages (79 cases in all).
 - `tools/check_versions.py` (standard library) fails when the seven version
   locations of the three packages disagree (`pyproject.toml`,
   `contexel/__init__.py`, `ts/package.json`, both entries of

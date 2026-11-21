@@ -134,6 +134,12 @@ public class FingerprintTests
             Fp(WithParam("v", new Rec { ["k"] = new HashSet<string> { "y" } })));
     }
 
+    [Fact]
+    public void ASetInADictionaryParameterIgnoresInsertionOrder() =>
+        Assert.Equal(
+            Fp(WithParam("v", new Rec { ["k"] = new HashSet<string> { "a", "b", "c" } })),
+            Fp(WithParam("v", new Rec { ["k"] = new HashSet<string> { "c", "a", "b" } })));
+
     private static Stage Select(string field) =>
         new("select", r => Stages.Select(r, new[] { field }),
             new Rec { ["fields"] = L(field) });

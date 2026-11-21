@@ -3,7 +3,7 @@
     "generated_by": "python contexel (canon)",
     "adr": "docs/adr/001-typescript-parity.md",
     "fixture_records": 6,
-    "case_count": 77
+    "case_count": 79
   },
   "fixture": [
     {
@@ -2822,6 +2822,80 @@
             "b",
             2
           ]
+        ]
+      ]
+    },
+    {
+      "id": "trace_dropped_ids/a_dropped_idless_record_never_absorbs_an_identified_drop",
+      "stage": "trace_dropped_ids",
+      "args": {
+        "id_field": "id",
+        "stages": [
+          {
+            "stage": "allowlist",
+            "args": {
+              "field": "t",
+              "allowed": [
+                "y"
+              ]
+            }
+          }
+        ]
+      },
+      "input": [
+        {
+          "t": "x"
+        },
+        {
+          "id": "a",
+          "t": "x"
+        },
+        {
+          "id": "b",
+          "t": "x"
+        },
+        {
+          "id": "c",
+          "t": "y"
+        }
+      ],
+      "expect": [
+        [
+          "a",
+          "b"
+        ]
+      ]
+    },
+    {
+      "id": "trace_dropped_ids/the_integer_1_and_the_string_1_are_different_ids",
+      "stage": "trace_dropped_ids",
+      "args": {
+        "id_field": "id",
+        "stages": [
+          {
+            "stage": "allowlist",
+            "args": {
+              "field": "k",
+              "allowed": [
+                "keep"
+              ]
+            }
+          }
+        ]
+      },
+      "input": [
+        {
+          "id": "1",
+          "k": "drop"
+        },
+        {
+          "id": 1,
+          "k": "keep"
+        }
+      ],
+      "expect": [
+        [
+          "1"
         ]
       ]
     }

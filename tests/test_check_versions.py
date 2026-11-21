@@ -81,7 +81,7 @@ def run(root, capsys):
 def test_agreeing_versions_pass(tmp_path, capsys):
     status, out, err = run(make_tree(tmp_path), capsys)
     assert status == 0, err
-    assert "1.2.3" in out and "7" in out
+    assert out == "check_versions: all 7 version locations say 1.2.3" + NL
 
 
 @pytest.mark.parametrize("key", sorted(KEYS))

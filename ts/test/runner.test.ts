@@ -69,6 +69,18 @@ for (const kind of ["pipeline", "shaped", "trace_report", "trace_dropped_ids"]) 
   });
 }
 
+test("a trace_dropped_ids case without a non-empty string id_field is rejected", () => {
+  // with no id field nothing is attributed and [[]] would pass vacuously
+  const stages = [{ stage: "select", args: { fields: ["a"] } }];
+  for (const args of [{ stages }, { stages, id_field: "" }, { stages, id_field: 1 }]) {
+    const c = base({ id: "t/no_id_field", stage: "trace_dropped_ids", args, expect: [[]] });
+    assert.throws(
+      () => checkCase(c, FIXTURE),
+      /case t\/no_id_field: trace_dropped_ids needs a non-empty string id_field/
+    );
+  }
+});
+
 test("an unknown key in a nested stage spec is rejected", () => {
   const c = base({
     stage: "pipeline",

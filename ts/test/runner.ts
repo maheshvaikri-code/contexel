@@ -148,7 +148,13 @@ function execute(c: Case, fixture: Records): unknown {
       return tr.report();
     }
     case "trace_dropped_ids": {
-      const [, tr] = trace({ idField: c.args.id_field as string }, () =>
+      // without an id field nothing is attributed, so every expectation of
+      // empty lists would pass vacuously: refuse the case instead
+      const idField = c.args.id_field;
+      if (typeof idField !== "string" || idField === "") {
+        throw new Error(`case ${c.id}: trace_dropped_ids needs a non-empty string id_field`);
+      }
+      const [, tr] = trace({ idField }, () =>
         build(stages)(records)
       );
       return (tr.audit().stages as { dropped_ids: unknown[] }[]).map((e) => e.dropped_ids);

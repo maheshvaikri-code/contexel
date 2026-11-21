@@ -332,6 +332,19 @@ def _raw_cases() -> List[dict]:
         [{"id": "a", "k": "keep"}, {"id": "a", "k": "drop"}])
     add("trace_dropped_ids/list_ids_are_attributed", "trace_dropped_ids", keep_only,
         [{"id": ["a", 1], "k": "keep"}, {"id": ["b", 2], "k": "drop"}])
+    # a stage that drops an id-less record has FEWER id-less survivors than
+    # inputs: that explains no lost id (the budget is 0, never negative)
+    add("trace_dropped_ids/a_dropped_idless_record_never_absorbs_an_identified_drop",
+        "trace_dropped_ids",
+        {"id_field": "id",
+         "stages": [{"stage": "allowlist", "args": {"field": "t", "allowed": ["y"]}}]},
+        [{"t": "x"}, {"id": "a", "t": "x"}, {"id": "b", "t": "x"},
+         {"id": "c", "t": "y"}])
+    # the integer 1 and the string "1" are different ids: the survivor 1 must
+    # not stand for the dropped "1"
+    add("trace_dropped_ids/the_integer_1_and_the_string_1_are_different_ids",
+        "trace_dropped_ids", keep_only,
+        [{"id": "1", "k": "drop"}, {"id": 1, "k": "keep"}])
     return cases
 
 
