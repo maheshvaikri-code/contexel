@@ -159,25 +159,33 @@ def traced(fn: Callable) -> Callable:
                     return repr(value)
 
             remaining: dict = {}
-            unidentified = 0  # surviving records without the id field
+            unidentified_out = 0  # surviving records without the id field
             for r in out:
                 if isinstance(r, dict) and fid in r:
                     key = id_key(r[fid])
                     remaining[key] = remaining.get(key, 0) + 1
                 else:
-                    unidentified += 1
+                    unidentified_out += 1
+            unidentified_in = 0  # input records that never had the id field
+            unmatched: list = []  # input ids with no surviving record
             for r in records:
                 if isinstance(r, dict) and fid in r:
                     original = r[fid]
                     key = id_key(original)
                     if remaining.get(key, 0) > 0:
                         remaining[key] -= 1
-                    elif unidentified > 0:
-                        # a survivor lost the id field (e.g. select dropped
-                        # it) — that is not a dropped record
-                        unidentified -= 1
                     else:
-                        dropped.append(original)
+                        unmatched.append(original)
+                else:
+                    unidentified_in += 1
+            # A survivor can lose its id (select drops the field), and that is
+            # not a drop. Only the id-less survivors the stage ADDED beyond the
+            # id-less records it was given can be that, so at most ``lost``
+            # unmatched ids are explained away; every other one is reported
+            # dropped. (Black-box stages leave which ones ambiguous: the first
+            # ``lost`` in input order are the ones absorbed.)
+            lost = max(0, unidentified_out - unidentified_in)
+            dropped = unmatched[lost:]
         tr._add(getattr(fn, "__name__", "stage"),
                 before_n, len(out), before_tok, tokens.count(out), dropped)
         return out
