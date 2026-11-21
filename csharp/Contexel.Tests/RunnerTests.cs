@@ -56,6 +56,7 @@ public class RunnerTests
     [InlineData("pipeline")]
     [InlineData("shaped")]
     [InlineData("trace_report")]
+    [InlineData("trace_dropped_ids")]
     public void AnUnknownArgKeyInANestedStageSpecIsRejected(string wrapper)
     {
         var stages = Items(

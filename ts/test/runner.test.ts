@@ -22,7 +22,14 @@ test("a valid case passes", () => {
 test("the argument table covers exactly the record stages plus the composite kinds", () => {
   assert.deepStrictEqual(
     Object.keys(ARG_NAMES).sort(),
-    [...Object.keys(RECORD_STAGES), "merge", "pipeline", "shaped", "trace_report"].sort()
+    [
+      ...Object.keys(RECORD_STAGES),
+      "merge",
+      "pipeline",
+      "shaped",
+      "trace_report",
+      "trace_dropped_ids",
+    ].sort()
   );
 });
 
@@ -42,7 +49,7 @@ test("an unknown argument name in a case is rejected, not ignored", () => {
   );
 });
 
-for (const kind of ["pipeline", "shaped", "trace_report"]) {
+for (const kind of ["pipeline", "shaped", "trace_report", "trace_dropped_ids"]) {
   test(`an unknown argument inside a nested ${kind} stage spec is rejected`, () => {
     const c = base({
       stage: kind,

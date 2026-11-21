@@ -103,27 +103,36 @@ public sealed class Trace : IDisposable
         if (!string.IsNullOrEmpty(fid)) // Python: `if self.id_field:` — "" is falsy
         {
             var remaining = new Dictionary<string, int>();
-            int unidentified = 0; // survivors without the id field absorb drops
+            int unidentifiedOut = 0; // surviving records without the id field
             foreach (var r in output)
             {
-                if (r.TryGetValue(fid, out var v))
+                if (r is not null && r.TryGetValue(fid, out var v))
                 {
                     string k = IdKey(v);
                     remaining[k] = remaining.GetValueOrDefault(k) + 1;
                 }
-                else unidentified++;
+                else unidentifiedOut++;
             }
+            int unidentifiedIn = 0; // input records that never had the id field
+            var unmatched = new List<object?>(); // input ids with no surviving record
             foreach (var r in records)
             {
-                if (r.TryGetValue(fid, out var original))
+                if (r is not null && r.TryGetValue(fid, out var original))
                 {
                     string k = IdKey(original);
                     int left = remaining.GetValueOrDefault(k);
                     if (left > 0) remaining[k] = left - 1;
-                    else if (unidentified > 0) unidentified--;
-                    else dropped.Add(original);
+                    else unmatched.Add(original);
                 }
+                else unidentifiedIn++;
             }
+            // A survivor can lose its id (select drops the field), and that is
+            // not a drop. Only the id-less survivors the stage ADDED beyond the
+            // id-less records it was given can be that, so at most `lost`
+            // unmatched ids are explained away; every other one is reported
+            // dropped (the first `lost` in input order are the ones absorbed).
+            int lost = Math.Max(0, unidentifiedOut - unidentifiedIn);
+            dropped.AddRange(unmatched.Skip(lost));
         }
         tr.Entries.Add(new Entry(name, beforeN, output.Count, beforeTok,
                                  Tokens.Count(output), dropped));

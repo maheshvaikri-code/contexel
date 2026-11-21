@@ -3,7 +3,7 @@
     "generated_by": "python contexel (canon)",
     "adr": "docs/adr/001-typescript-parity.md",
     "fixture_records": 6,
-    "case_count": 70
+    "case_count": 77
   },
   "fixture": [
     {
@@ -2551,6 +2551,278 @@
         {
           "snippet": "fine"
         }
+      ]
+    },
+    {
+      "id": "trace_dropped_ids/drop_beside_a_record_without_the_id",
+      "stage": "trace_dropped_ids",
+      "args": {
+        "id_field": "id",
+        "stages": [
+          {
+            "stage": "allowlist",
+            "args": {
+              "field": "t",
+              "allowed": [
+                "y",
+                "z"
+              ]
+            }
+          }
+        ]
+      },
+      "input": [
+        {
+          "id": "a",
+          "t": "x"
+        },
+        {
+          "t": "y"
+        },
+        {
+          "id": "b",
+          "t": "z"
+        }
+      ],
+      "expect": [
+        [
+          "a"
+        ]
+      ]
+    },
+    {
+      "id": "trace_dropped_ids/select_stripping_ids_is_not_a_drop",
+      "stage": "trace_dropped_ids",
+      "args": {
+        "id_field": "id",
+        "stages": [
+          {
+            "stage": "select",
+            "args": {
+              "fields": [
+                "title"
+              ]
+            }
+          }
+        ]
+      },
+      "input": [
+        {
+          "id": "a",
+          "title": "x"
+        },
+        {
+          "title": "y"
+        },
+        {
+          "id": "b",
+          "title": "z"
+        }
+      ],
+      "expect": [
+        []
+      ]
+    },
+    {
+      "id": "trace_dropped_ids/each_stage_is_attributed_on_its_own",
+      "stage": "trace_dropped_ids",
+      "args": {
+        "id_field": "id",
+        "stages": [
+          {
+            "stage": "allowlist",
+            "args": {
+              "field": "t",
+              "allowed": [
+                "y"
+              ]
+            }
+          },
+          {
+            "stage": "select",
+            "args": {
+              "fields": [
+                "title"
+              ]
+            }
+          }
+        ]
+      },
+      "input": [
+        {
+          "id": "a",
+          "t": "x",
+          "title": "A"
+        },
+        {
+          "id": "b",
+          "t": "y",
+          "title": "B"
+        },
+        {
+          "t": "y",
+          "title": "C"
+        }
+      ],
+      "expect": [
+        [
+          "a"
+        ],
+        []
+      ]
+    },
+    {
+      "id": "trace_dropped_ids/dropped_ids_keep_input_order",
+      "stage": "trace_dropped_ids",
+      "args": {
+        "id_field": "id",
+        "stages": [
+          {
+            "stage": "allowlist",
+            "args": {
+              "field": "k",
+              "allowed": [
+                "keep"
+              ]
+            }
+          }
+        ]
+      },
+      "input": [
+        {
+          "id": 1,
+          "k": "drop"
+        },
+        {
+          "k": "keep"
+        },
+        {
+          "id": 3,
+          "k": "drop"
+        },
+        {
+          "id": 4,
+          "k": "keep"
+        }
+      ],
+      "expect": [
+        [
+          1,
+          3
+        ]
+      ]
+    },
+    {
+      "id": "trace_dropped_ids/falsy_ids_are_reported",
+      "stage": "trace_dropped_ids",
+      "args": {
+        "id_field": "id",
+        "stages": [
+          {
+            "stage": "allowlist",
+            "args": {
+              "field": "k",
+              "allowed": [
+                "keep"
+              ]
+            }
+          }
+        ]
+      },
+      "input": [
+        {
+          "id": 0,
+          "k": "drop"
+        },
+        {
+          "id": "",
+          "k": "drop"
+        },
+        {
+          "id": "x",
+          "k": "keep"
+        }
+      ],
+      "expect": [
+        [
+          0,
+          ""
+        ]
+      ]
+    },
+    {
+      "id": "trace_dropped_ids/a_duplicate_id_reports_the_dropped_copy",
+      "stage": "trace_dropped_ids",
+      "args": {
+        "id_field": "id",
+        "stages": [
+          {
+            "stage": "allowlist",
+            "args": {
+              "field": "k",
+              "allowed": [
+                "keep"
+              ]
+            }
+          }
+        ]
+      },
+      "input": [
+        {
+          "id": "a",
+          "k": "keep"
+        },
+        {
+          "id": "a",
+          "k": "drop"
+        }
+      ],
+      "expect": [
+        [
+          "a"
+        ]
+      ]
+    },
+    {
+      "id": "trace_dropped_ids/list_ids_are_attributed",
+      "stage": "trace_dropped_ids",
+      "args": {
+        "id_field": "id",
+        "stages": [
+          {
+            "stage": "allowlist",
+            "args": {
+              "field": "k",
+              "allowed": [
+                "keep"
+              ]
+            }
+          }
+        ]
+      },
+      "input": [
+        {
+          "id": [
+            "a",
+            1
+          ],
+          "k": "keep"
+        },
+        {
+          "id": [
+            "b",
+            2
+          ],
+          "k": "drop"
+        }
+      ],
+      "expect": [
+        [
+          [
+            "b",
+            2
+          ]
+        ]
       ]
     }
   ]

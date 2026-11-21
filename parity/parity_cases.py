@@ -17,7 +17,9 @@ per-language test, not a shared case.
 
 Kinds: the eight record stages, ``merge`` (input = list of sources),
 ``pipeline`` / ``shaped`` (args.stages = [{"stage", "args"}, ...]), and
-``trace_report`` (args.stages + optional args.id_field; expect = report text).
+``trace_report`` (args.stages + optional args.id_field; expect = report text) and
+``trace_dropped_ids`` (args.stages + args.id_field; expect = the ``dropped_ids`` of
+each traced stage, in stage order).
 Callable-valued arguments cannot be JSON: those stay hand-written edge vectors.
 """
 from __future__ import annotations
@@ -86,6 +88,10 @@ def _run(case: dict, fixture: List[dict]) -> Any:
         with trace(id_field=args.get("id_field")) as t:
             _pipe(args["stages"])(records)
         return t.report()
+    if kind == "trace_dropped_ids":
+        with trace(id_field=args["id_field"]) as t:
+            _pipe(args["stages"])(records)
+        return [stage_entry["dropped_ids"] for stage_entry in t.audit()["stages"]]
     raise ValueError(f"unknown case kind {kind!r}")
 
 
@@ -291,6 +297,41 @@ def _raw_cases() -> List[dict]:
     add("quarantine/dict_keys_are_scanned_in_sorted_order", "quarantine",
         {"patterns": ["alpha None beta"]},
         [{"snippet": {"beta": None, "alpha": None}}, {"snippet": "fine"}])
+
+    # --- Slice 3: trace attribution (ADR-008, brief AC 28) ---
+    # expect = each traced stage's dropped_ids, in stage order. A record that
+    # never had the id field must not hide a real drop, and a stage that only
+    # strips the id from its survivors drops nothing.
+    add("trace_dropped_ids/drop_beside_a_record_without_the_id", "trace_dropped_ids",
+        {"id_field": "id",
+         "stages": [{"stage": "allowlist",
+                     "args": {"field": "t", "allowed": ["y", "z"]}}]},
+        [{"id": "a", "t": "x"}, {"t": "y"}, {"id": "b", "t": "z"}])
+    add("trace_dropped_ids/select_stripping_ids_is_not_a_drop", "trace_dropped_ids",
+        {"id_field": "id",
+         "stages": [{"stage": "select", "args": {"fields": ["title"]}}]},
+        [{"id": "a", "title": "x"}, {"title": "y"}, {"id": "b", "title": "z"}])
+    add("trace_dropped_ids/each_stage_is_attributed_on_its_own", "trace_dropped_ids",
+        {"id_field": "id",
+         "stages": [{"stage": "allowlist", "args": {"field": "t", "allowed": ["y"]}},
+                    {"stage": "select", "args": {"fields": ["title"]}}]},
+        [{"id": "a", "t": "x", "title": "A"}, {"id": "b", "t": "y", "title": "B"},
+         {"t": "y", "title": "C"}])
+    add("trace_dropped_ids/dropped_ids_keep_input_order", "trace_dropped_ids",
+        {"id_field": "id",
+         "stages": [{"stage": "allowlist", "args": {"field": "k", "allowed": ["keep"]}}]},
+        [{"id": 1, "k": "drop"}, {"k": "keep"}, {"id": 3, "k": "drop"},
+         {"id": 4, "k": "keep"}])
+    # falsy, duplicated and list-valued ids are ids like any other
+    keep_only = {"id_field": "id", "stages": [
+        {"stage": "allowlist", "args": {"field": "k", "allowed": ["keep"]}}]}
+    add("trace_dropped_ids/falsy_ids_are_reported", "trace_dropped_ids", keep_only,
+        [{"id": 0, "k": "drop"}, {"id": "", "k": "drop"}, {"id": "x", "k": "keep"}])
+    add("trace_dropped_ids/a_duplicate_id_reports_the_dropped_copy",
+        "trace_dropped_ids", keep_only,
+        [{"id": "a", "k": "keep"}, {"id": "a", "k": "drop"}])
+    add("trace_dropped_ids/list_ids_are_attributed", "trace_dropped_ids", keep_only,
+        [{"id": ["a", 1], "k": "keep"}, {"id": ["b", 2], "k": "drop"}])
     return cases
 
 
