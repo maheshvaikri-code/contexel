@@ -65,3 +65,9 @@ files = ["contexel"]
 python_version = "3.10"
 warn_unused_ignores = true
 warn_redundant_casts = true
+
+# tiktoken is an optional runtime dependency and the CI hygiene job installs
+# only the lint extra, so mypy must not require it to be present.
+[[tool.mypy.overrides]]
+module = "tiktoken"
+ignore_missing_imports = true
