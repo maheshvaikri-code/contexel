@@ -89,4 +89,123 @@ public class FingerprintTests
         var b = new Pipeline(Named("t", new Rec { ["max_tokens"] = 5L, ["field"] = "s" }));
         Assert.Equal(a.Fingerprint, b.Fingerprint);
     }
+
+    // --- AC 29: what the fingerprint covers ---------------------------------
+
+    private static string Fp(params Stage[] stages) => new Pipeline(stages).Fingerprint;
+
+    private static Stage WithParam(string key, object? value) =>
+        Named("annotate", new Rec { [key] = value });
+
+    [Fact]
+    public void FingerprintDiffersForSetContents() =>
+        Assert.NotEqual(Fp(WithParam("allowed", new HashSet<string> { "a" })),
+                        Fp(WithParam("allowed", new HashSet<string> { "b" })));
+
+    [Fact]
+    public void TheFingerprintOfASetIgnoresInsertionOrderAndSetType()
+    {
+        var ab = Fp(WithParam("s", new HashSet<string> { "a", "b", "c" }));
+        var ba = Fp(WithParam("s", new HashSet<string> { "c", "a", "b" }));
+        var sorted = Fp(WithParam("s", new SortedSet<string> { "b", "c", "a" }));
+        Assert.Equal(ab, ba);
+        Assert.Equal(ab, sorted);
+    }
+
+    [Fact]
+    public void TheFingerprintOfASetIsNotThatOfAListOrADictionary()
+    {
+        var forms = new object?[]
+        {
+            new HashSet<string> { "a" }, L("a"), new Rec { ["a"] = 1L }, new Rec(),
+            new HashSet<string>(),
+        }.Select(v => Fp(WithParam("v", v))).ToList();
+        Assert.Equal(forms.Count, forms.Distinct().Count());
+    }
+
+    [Fact]
+    public void ASetNestedInAListOrADictionaryIsCoveredToo()
+    {
+        Assert.NotEqual(
+            Fp(WithParam("v", L(1L, new HashSet<long> { 1, 2 }))),
+            Fp(WithParam("v", L(1L, new HashSet<long> { 1, 3 }))));
+        Assert.NotEqual(
+            Fp(WithParam("v", new Rec { ["k"] = new HashSet<string> { "x" } })),
+            Fp(WithParam("v", new Rec { ["k"] = new HashSet<string> { "y" } })));
+    }
+
+    private static Stage Select(string field) =>
+        new("select", r => Stages.Select(r, new[] { field }),
+            new Rec { ["fields"] = L(field) });
+
+    private static Stage Outer(Pipeline inner) => new("inner", inner.Run);
+
+    [Fact]
+    public void FingerprintDiffersForNestedPipelines()
+    {
+        var innerA = new Pipeline(Select("a"));
+        var innerB = new Pipeline(Select("b"));
+        var sameAsA = new Pipeline(Select("a"));
+        var dedupe = Named("dedupe", new Rec { ["key"] = "a" });
+        Assert.NotEqual(Fp(Outer(innerA), dedupe), Fp(Outer(innerB), dedupe));
+        Assert.Equal(Fp(Outer(innerA), dedupe), Fp(Outer(sameAsA), dedupe));
+    }
+
+    [Fact]
+    public void ANestedPipelineWithItsOwnParametersStillContributesItsFingerprint()
+    {
+        var parameters = new Rec { ["note"] = "x" };
+        Assert.NotEqual(
+            Fp(new Stage("inner", new Pipeline(Select("a")).Run, parameters)),
+            Fp(new Stage("inner", new Pipeline(Select("b")).Run, parameters)));
+    }
+
+    [Fact]
+    public void ANestedPipelineStillRunsItsStages()
+    {
+        var inner = new Pipeline(Select("a"));
+        var outer = new Pipeline(Outer(inner),
+            new Stage("dedupe", r => Stages.Dedupe(r, "a"), new Rec { ["key"] = "a" }));
+        Records input = [new Rec { ["a"] = 1L, ["b"] = 2L }, new Rec { ["a"] = 1L }];
+        var result = outer.Run(input);
+        Assert.Single(result);
+        Assert.Equal(1L, result[0]["a"]);
+    }
+
+    [Fact]
+    public void ANestedPipelineWrappedInALambdaIsNotDetected()
+    {
+        // documented limit: only a stage built from `inner.Run` itself is
+        // recognised; a lambda that calls it is opaque, like any other lambda
+        var innerA = new Pipeline(Select("a"));
+        var innerB = new Pipeline(Select("b"));
+        Assert.Equal(Fp(new Stage("inner", r => innerA.Run(r))),
+                     Fp(new Stage("inner", r => innerB.Run(r))));
+    }
+
+    // --- AC 30 (as far as C# can promise it) ---------------------------------
+
+    [Fact]
+    public void ParametersChangedAfterConstructionDoNotChangeTheFingerprint()
+    {
+        var allowed = L("a");
+        var pipe = new Pipeline(Named("allowlist", new Rec { ["allowed"] = allowed }));
+        var before = pipe.Fingerprint;
+        allowed.Add("b");
+        Assert.Equal(before, pipe.Fingerprint);
+    }
+
+    [Fact]
+    public void PipelineCopiesItsListOfStages()
+    {
+        var stages = new List<Stage> { Select("a") };
+        var pipe = new Pipeline(stages);
+        var before = pipe.Fingerprint;
+        stages.Add(Select("b"));
+        stages[0] = Select("b");
+        Records input = [new Rec { ["a"] = 1L, ["b"] = 2L }];
+        var result = pipe.Run(input);
+        Assert.Equal(new[] { "a" }, result[0].Keys.ToArray());
+        Assert.Equal(before, pipe.Fingerprint);
+    }
 }
