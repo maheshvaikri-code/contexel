@@ -100,8 +100,9 @@ def collect(root: Path) -> List[Found]:
         path = root / loc.path
         try:
             text = path.read_text(encoding="utf-8")
-        except OSError as exc:
-            raise Unreadable(f"{loc.path}: cannot read it ({exc.strerror or exc})") from exc
+        except (OSError, UnicodeDecodeError) as exc:
+            why = exc.strerror if isinstance(exc, OSError) and exc.strerror else exc
+            raise Unreadable(f"{loc.path} ({loc.label}): cannot read it ({why})") from exc
         try:
             found.append(Found(loc.label, loc.path, loc.read(text)))
         except Unreadable as exc:

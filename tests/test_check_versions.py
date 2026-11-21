@@ -152,3 +152,16 @@ def test_it_runs_as_the_script_ci_runs(tmp_path):
         capture_output=True, text=True, timeout=60)
     assert proc.returncode == 1
     assert "csharp/Contexel/Contexel.csproj" in proc.stderr
+
+
+NOT_UTF8 = bytes([0xFF, 0xFE, 0x00]) + b" not utf-8 " + bytes([0x80])
+
+
+@pytest.mark.parametrize("rel", ["contexel/__init__.py", "ts/package.json"])
+def test_a_file_that_is_not_utf8_fails_loudly_naming_it(tmp_path, capsys, rel):
+    root = make_tree(tmp_path)
+    (root / rel).write_bytes(NOT_UTF8)
+    status, _out, err = run(root, capsys)
+    assert status == 2
+    assert rel in err
+    assert "Traceback" not in err
