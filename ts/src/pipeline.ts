@@ -5,9 +5,10 @@
  *
  * Coverage: primitives, arrays, plain objects and `Set`s (by sorted contents)
  * are hashed by value; a nested pipeline contributes its own fingerprint;
- * functions by `name`; any other object only by its type. `stage()` takes a
- * private copy of the arrays, plain objects and `Set`s bound to it (a `Set`'s
- * elements are not copied) and `pipeline()` copies its list of stages, so
+ * functions by `name`; any other object by its own enumerable entries (so a
+ * `Map`, `Date` or `RegExp`, which have none, all render as `{}`). `stage()`
+ * takes a private copy of the exact arrays, plain objects and `Set`s bound to
+ * it (subclasses are kept as they are; a `Set`'s elements are not copied) and `pipeline()` copies its list of stages, so
  * changing the caller's own array or object afterwards changes neither the
  * behavior nor the fingerprint. Class instances, `Map`s and the elements of a
  * `Set` stay live.
@@ -47,19 +48,28 @@ function stableRepr(value: unknown): string {
   return typeof value;
 }
 
-/** A private copy of the arrays, plain objects and `Set`s in `value` (any
- * depth). A `Set` is copied as a shell: its elements are the caller's own.
- * Everything else (class instances, `Map`s, functions) is returned as it is. */
+/** A private copy of the exact arrays, plain objects and `Set`s in `value`
+ * (any depth), the same exact-type rule as the Python port. A `Set` is copied
+ * as a shell: its elements are the caller's own. Everything else (subclasses,
+ * class instances, `Map`s, functions) is returned as it is. */
 function snapshot<T>(value: T): T {
-  if (Array.isArray(value)) return value.map(snapshot) as T;
-  if (value instanceof Set) return new Set(value) as T;
-  if (value !== null && typeof value === "object") {
-    const proto = Object.getPrototypeOf(value);
-    if (proto === Object.prototype || proto === null) {
-      const copy: Rec = Object.create(proto);
-      for (const [k, v] of Object.entries(value as Rec)) copy[k] = snapshot(v);
-      return copy as T;
+  if (value === null || typeof value !== "object") return value;
+  const proto = Object.getPrototypeOf(value);
+  if (proto === Array.prototype) return (value as unknown[]).map(snapshot) as T;
+  if (proto === Set.prototype) return new Set(value as unknown as Set<unknown>) as T;
+  if (proto === Object.prototype || proto === null) {
+    const copy: Rec = Object.create(proto);
+    // defineProperty, not assignment: `copy["__proto__"] = v` would call the
+    // prototype setter and re-parent the copy instead of keeping the own key.
+    for (const [k, v] of Object.entries(value as Rec)) {
+      Object.defineProperty(copy, k, {
+        value: snapshot(v),
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
     }
+    return copy as T;
   }
   return value;
 }

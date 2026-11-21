@@ -200,3 +200,89 @@ test("a function, a class instance, a Map and the elements of a Set are not copi
   assert.notEqual(seen.set, set); // the Set is copied...
   assert.equal([...(seen.set as Set<unknown>)][0], element); // ...its elements are not
 });
+
+// --- fix round 1: own "__proto__" keys and exact-type copying -------------
+
+const outcome = (run: () => unknown): { ok: boolean; value: unknown } => {
+  try {
+    return { ok: true, value: run() };
+  } catch (e) {
+    return { ok: false, value: (e as Error).message };
+  }
+};
+
+test("a JSON-parsed __proto__ param key stays an own key and re-parents nothing", () => {
+  const poisoned = JSON.parse('{"field":"s","__proto__":{"fields":["secret"]}}') as Record<string, unknown>;
+  let seen: Record<string, unknown> | undefined;
+  const grab = (r: Records, p: Record<string, unknown>): Records => {
+    seen = p;
+    return r;
+  };
+  stage(grab, poisoned)([]);
+  assert.ok(seen !== undefined);
+  assert.notEqual(seen, poisoned); // still a private copy
+  assert.equal(Object.getPrototypeOf(seen), Object.prototype);
+  assert.deepEqual(Object.keys(seen), ["field", "__proto__"]);
+  assert.deepEqual(Object.getOwnPropertyDescriptor(seen, "__proto__")?.value, { fields: ["secret"] });
+  assert.equal(seen.fields, undefined); // nothing inherited
+  assert.equal(({} as Record<string, unknown>).fields, undefined); // no global pollution
+});
+
+test("a poisoned __proto__ policy behaves as it did unbound and fingerprints differently", () => {
+  const records: Records = [{ s: "evil" }, { s: "ok" }];
+  const poisonedAllow = JSON.parse('{"field":"s","__proto__":{"allowed":["evil"]}}');
+  assert.deepEqual(
+    outcome(() => stage(allowlist, poisonedAllow)(records)),
+    outcome(() => allowlist(records, poisonedAllow))
+  );
+  const poisonedSelect = JSON.parse('{"__proto__":{"fields":["secret"]}}');
+  assert.deepEqual(
+    outcome(() => stage(select, poisonedSelect)([{ secret: 1, a: 2 }])),
+    outcome(() => select([{ secret: 1, a: 2 }], poisonedSelect))
+  );
+  assert.notEqual(fp(stage(select, poisonedSelect)), fp(stage(select, {} as never)));
+  assert.equal(({} as Record<string, unknown>).allowed, undefined);
+  assert.equal(({} as Record<string, unknown>).fields, undefined);
+});
+
+test("a Set subclass and an Array subclass are passed through by identity", () => {
+  class CISet extends Set<string> {
+    override has(v: string): boolean {
+      return super.has(v.toLowerCase());
+    }
+  }
+  class Tagged extends Array<number> {
+    tag: string;
+    constructor(...items: number[]) {
+      super(...items);
+      this.tag = "t";
+    }
+  }
+  const ci = new CISet(["a"]);
+  const tagged = new Tagged(1, 2, 3);
+  const seen: Record<string, unknown> = {};
+  const grab = (r: Records, p: Record<string, unknown>): Records => {
+    Object.assign(seen, p);
+    return r;
+  };
+  stage(grab, { ci, tagged, nested: [ci, tagged] })([]);
+  assert.equal(seen.ci, ci);
+  assert.equal(seen.tagged, tagged);
+  assert.equal((seen.nested as unknown[])[0], ci);
+  assert.equal((seen.nested as unknown[])[1], tagged);
+});
+
+test("a plain Array and a plain Set are still copied", () => {
+  const arr = [1];
+  const set = new Set([1]);
+  const seen: Record<string, unknown> = {};
+  const grab = (r: Records, p: Record<string, unknown>): Records => {
+    Object.assign(seen, p);
+    return r;
+  };
+  stage(grab, { arr, set })([]);
+  arr.push(2);
+  set.add(2);
+  assert.deepEqual(seen.arr, [1]);
+  assert.deepEqual([...(seen.set as Set<number>)], [1]);
+});
