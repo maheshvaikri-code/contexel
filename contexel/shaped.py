@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import functools
 import inspect
-from typing import Any, Callable, Dict, List, Sequence, Union
+from typing import Any, Callable, Dict, List, Sequence, Union, cast
 
 from .errors import InputShapeError, check_bool
 from .pipeline import pipeline
@@ -63,7 +63,7 @@ def shaped(pipe: Union[StageFn, Sequence[StageFn]],
                 f"shaped: the tool must return a list, got {type(records).__name__}",
                 stage="shaped")
         with strict_mode():
-            return base(records)
+            return base(cast(Records, records))
 
     def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
         if inspect.iscoroutinefunction(fn):

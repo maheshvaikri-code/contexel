@@ -51,6 +51,13 @@ jobs:
           python-version: "3.12"
       - name: The seven version locations agree
         run: python tools/check_versions.py
+      - run: pip install -e ".[lint]"
+      - run: ruff check contexel
+      - run: mypy
+      - name: The wheel ships py.typed
+        run: |
+          pip wheel . --no-deps -w dist
+          python -c "import glob, zipfile; names = zipfile.ZipFile(glob.glob('dist/*.whl')[0]).namelist(); assert 'contexel/py.typed' in names, names"
 
   # Cross-language parity (ADR-001): Python is canon. Regenerate the golden
   # vectors, fail if the committed file is stale, then hold the TypeScript
