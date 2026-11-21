@@ -4,7 +4,8 @@
  * (language-local in v1 per ADR-001) recorded into any active trace.
  *
  * Coverage: primitives, arrays, plain objects and `Set`s (by sorted contents)
- * are hashed by value; a nested pipeline contributes its own fingerprint;
+ * are hashed by value; a nested pipeline used directly as a stage contributes
+ * its own fingerprint (one wrapped by `stage(inner, {})` hashes as `run`);
  * functions by `name`; any other object by its own enumerable entries (so a
  * `Map`, `Date` or `RegExp`, which have none, all render as `{}`). `stage()`
  * takes a private copy of the exact arrays, plain objects and `Set`s bound to
@@ -75,9 +76,10 @@ function snapshot<T>(value: T): T {
 }
 
 /** Bind params to a stage so it slots into a pipeline as `records => records`.
- * The stage keeps a private copy of any array, plain object or `Set` among the
- * params, so changing the caller's own value afterwards cannot change what the
- * stage does or what its fingerprint says. */
+ * The stage keeps a private copy of any exact array, plain object or `Set`
+ * among the params (a `Set`'s elements are not copied), so changing the
+ * caller's own value afterwards cannot change what the stage does or what its
+ * fingerprint says. */
 export function stage<P>(
   fn: (records: Records, params: P) => Records,
   params: P

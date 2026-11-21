@@ -54,7 +54,8 @@ awaited, then shaped). `trace()` records what every stage removed;
 dropped, and `t.audit()` emits a JSON-able governance record keyed by the
 pipeline's policy fingerprint — a shaping decision is inspectable and
 attributable instead of silent. The fingerprint covers what a stage is bound to
-(lists, dicts, sets, a nested pipeline, a tiktoken encoding), and `stage()`
+(lists, dicts, sets, a nested pipeline used directly as a stage, a tiktoken
+encoding), and `stage()`
 keeps a private copy of the plain lists, dicts and sets bound to it, so
 changing yours afterwards changes neither the behavior nor the fingerprint. A
 record that never had the id field is untracked; if a stage strips the id from

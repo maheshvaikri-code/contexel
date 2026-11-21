@@ -10,7 +10,9 @@ bound parameters, exposed as ``pipe.fingerprint`` and recorded into any active
 policy* shaped a given context. Coverage, precisely: primitives, lists,
 tuples, dicts, sets and frozensets are hashed by value (a set by its sorted
 contents, so insertion order and the hash seed do not matter); a nested
-:func:`pipeline` contributes its own fingerprint; callables are hashed by
+:func:`pipeline` used directly as a stage (``pipeline([..., inner, ...])``)
+contributes its own fingerprint, while one wrapped by ``stage(inner)`` or bound
+as a keyword argument is hashed by its name ``run``; callables are hashed by
 ``__name__`` (distinct lambdas collide as ``<lambda>`` -- name your key
 functions; a tokenizer from :func:`contexel.tokens.tiktoken_tokenizer` is named
 ``tiktoken:<encoding or model>``); any other object contributes only its type

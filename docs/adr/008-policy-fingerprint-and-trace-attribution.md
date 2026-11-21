@@ -31,16 +31,24 @@ A pipeline containing none of these keeps its current fingerprint. In trace, onl
 - **TypeScript** snapshots an exact `Array`, plain or null-prototype object and
   `Set` shell (a `Set`'s elements are not copied); a `Set` or `Array` subclass
   stays live; an own `__proto__` key (as `JSON.parse` produces) is kept as an
-  own key in the copy; a `Set` is hashed by sorted contents; a pipeline used
-  as a stage contributes `pipeline(<fp>)`. No tiktoken exists in this port.
+  own key in the copy; typed arrays, `Buffer`, objects from another realm and
+  any other non-plain object are not copied; a `Set` is hashed by sorted
+  contents; a pipeline used directly as a stage contributes `pipeline(<fp>)`
+  (one wrapped by `stage(inner, {})` hashes as `run`). No tiktoken exists in
+  this port.
 - **C#** cannot snapshot behavior: a stage is a delegate, and the declared
   `Stage.Parameters` exist only to feed the fingerprint, so the fingerprint is
   computed once at construction and a closure over a caller's list can still
   change behavior (documented, not fixable without an API that owns the data).
   Sets are hashed by sorted contents at any depth; a stage built from `inner.Run`
   contributes the inner fingerprint (a lambda wrapper is opaque). No tiktoken.
-- **Trace** attribution (`lost`) is identical in all three and pinned by shared
-  vectors of kind `trace_dropped_ids`. The rule counts id-less records, so it is
+- **Trace** attribution (`lost`) is identical in all three, up to id-key
+  equality, and pinned by shared vectors of kind `trace_dropped_ids`. Ids are
+  compared by equality and the languages differ on it: Python and C# treat 1,
+  1.0 and True as one id (and 0 and False), TypeScript keeps them apart, and a
+  list-valued id collides with the string of its `repr` (Python) or JSON
+  (TypeScript); the integer 1 and the string "1" are different ids in all
+  three. The rule counts id-less records, so it is
   an approximation in both directions for a black-box stage: one that ADDS
   id-less records can hide up to that many drops (the bound in the decision
   above), and one that both strips an id from a survivor AND drops an id-less

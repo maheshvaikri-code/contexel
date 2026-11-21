@@ -54,14 +54,15 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   locations of the three packages disagree (`pyproject.toml`,
   `contexel/__init__.py`, `ts/package.json`, both entries of
   `ts/package-lock.json`, `ts/src/index.ts`, `csharp/Contexel/Contexel.csproj`),
-  naming the file. It runs on every push and pull request in the new CI job
-  `hygiene`, and in the release gate before any package is published.
+  naming the file. It runs on every push to main and every pull request in the
+  new CI job `hygiene`, and in the release gate before any package is
+  published.
 - `contexel/py.typed` ships in the wheel (the package is typed), and `ruff` and
   `mypy` are configured and pass on `contexel/`. They live in a new dev-only
-  extra, `pip install "contexel[lint]"` (MIT, never shipped, no runtime
-  dependency); the CI job `hygiene` runs them on Python 3.12 and checks the
-  built wheel. mypy 2.x cannot target Python 3.9, so it checks against 3.10 and
-  the Python 3.9 test legs prove the runtime.
+  extra, `pip install "contexel[lint]"` (MIT, never a runtime dependency); the
+  CI job `hygiene` runs them on Python 3.12 and checks the built wheel. mypy
+  2.x cannot target Python 3.9, so it checks against 3.10 and the Python 3.9
+  test legs prove the runtime.
 
 ### Behavior changes
 Valid input with strict mode off keeps byte-identical output; these are the
@@ -185,7 +186,11 @@ exceptions, all intentional:
    lost its id). Now only as many unmatched ids as the stage produced extra
    id-less survivors (beyond the id-less records it was given) are explained
    away, the first ones in input order, and every other unmatched id is
-   reported dropped. All three languages; the audit keys are unchanged. An
+   reported dropped. All three languages, identical up to id-key equality
+   (see Known limitations); the audit keys are unchanged. In C#, a null record
+   in the input of a traced stage is now counted as id-less instead of
+   throwing a `NullReferenceException` (the built-in stages still throw on a
+   null item). An
    audit recorded before this change may have under-reported. A stage that
    ADDS id-less records can still hide up to that many drops: a black-box stage
    leaves that ambiguity, and the bound is the number it added. The rule
@@ -202,8 +207,11 @@ exceptions, all intentional:
    hash as `{}`) and any `ISet<T>` or `IReadOnlySet<T>` in C# (it used to hash
    as a list in enumeration order) are hashed by their sorted contents, at any
    depth; a nested pipeline contributes its own fingerprint (Python and
-   TypeScript: any pipeline used as a stage; C#: a stage built from
-   `inner.Run`), where it used to contribute only the word `run`; and a Python
+   TypeScript: a pipeline that IS the stage, used directly in a stage list as
+   in `pipeline([..., inner, ...])`; C#: a stage built from `inner.Run`), where
+   it used to contribute only the word `run` (a pipeline wrapped by
+   `stage(inner)` in Python or `stage(inner, {})` in TypeScript, or passed as
+   a keyword argument or parameter, still hashes as its name `run`); and a Python
    tiktoken tokenizer is named `tiktoken:<encoding or model>` instead of
    `<lambda>`. A pipeline that binds none of these keeps its exact fingerprint
    (golden tests in all three languages). Fingerprints recorded earlier for the
@@ -322,6 +330,32 @@ same obfuscations.
   C# lambda that calls another pipeline's `Run` is opaque; and nothing hashes
   the code inside a stage function, only its name, so two lambdas share
   `<lambda>`. The fingerprints stay language-local.
+- Nested pipelines in Python and TypeScript fingerprints: only a pipeline that
+  IS the stage (used directly in a stage list, `pipeline([..., inner, ...])`)
+  contributes its own fingerprint. A pipeline wrapped by `stage(inner)`
+  (Python) or `stage(inner, {})` (TypeScript), or passed as a keyword argument
+  or parameter, is still hashed by its name `run`, so two different inner
+  pipelines bound that way share a fingerprint.
+- TypeScript `stage()` copies only an exact array, plain or null-prototype
+  object and `Set` shell: typed arrays, `Buffer`, objects from another realm
+  (`node:vm`) and any other non-plain object are not copied, so changing them
+  later changes the behavior without changing the fingerprint.
+- Trace attribution compares ids by equality, and the languages differ on what
+  is equal: Python and C# treat 1, 1.0 and True as one id (and 0 and False),
+  TypeScript keeps them apart, and a list-valued id collides with the string
+  of its `repr` (Python) or JSON (TypeScript). A crafted id can therefore make
+  the audit name a different record than the one dropped; the number of
+  dropped records is still right.
+- Python: ids that all hash to the same value make `trace` attribution (and
+  `dedupe`) quadratic (4000 colliding integer ids took about 0.26 s, 8000
+  about 1.0 s). Do not feed untrusted, attacker-chosen id values to a pipeline
+  without a bound on the input size.
+- The `lint` extra's version ranges float, so a new ruff rule or mypy release
+  can turn the `hygiene` job red without a code change (pin them if
+  reproducibility matters more than freshness).
+- No test or check guards the CI workflow steps themselves: removing the
+  `check_versions` step from `ci.yml` or `release.yml` would fail no test. The
+  first CI run and code review are the guard.
 - Python fingerprints: a dict KEY is still rendered by `repr`, so a frozenset
   used as a dict key is hash-seed dependent and a custom-object key embeds a
   memory address (pre-existing). The elements of a list, tuple or set are
@@ -331,8 +365,9 @@ same obfuscations.
   entries and renders as `{}`, so they collide with each other and with an
   empty object. A `Set` that contains a cyclic structure now throws
   `RangeError` when the stage is built (arrays and objects already did).
-  TypeScript keeps `1` and `true` as different dropped-id keys where Python and
-  C# treat 1, 1.0 and True as one key (outside the shared vectors).
+  TypeScript keeps `1` and `true` (and `0` and `false`) as different
+  dropped-id keys where Python and C# treat 1, 1.0 and True as one key (and 0
+  and False) (outside the shared vectors).
 - C# fingerprints: a set renders as text and so collides with the literal
   string of the same text (a `HashSet<string>` {"a"} and the string
   `set{"a"}`; Python does not). A delegate INSIDE a list or dictionary is named

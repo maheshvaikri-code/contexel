@@ -37,10 +37,11 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: python -m pytest -q
 
-  # Release hygiene (brief AC 32-33), on every push and pull request, not only
-  # when a tag is cut: the seven version copies agree, the package is typed and
-  # lint-clean, and the wheel really ships py.typed. mypy 2.x needs Python
-  # 3.10 or newer, so this runs on 3.12; the test matrix covers 3.9.
+  # Release hygiene (brief AC 32-33), on every push to main and every pull
+  # request, not only when a tag is cut: the seven version copies agree, the
+  # package is typed and lint-clean, and the wheel really ships py.typed. mypy
+  # 2.x needs Python 3.10 or newer, so this runs on 3.12; the test matrix
+  # covers 3.9.
   hygiene:
     runs-on: ubuntu-latest
     defaults:

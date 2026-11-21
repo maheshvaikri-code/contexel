@@ -2,8 +2,8 @@
 
 One release ships a PyPI wheel, an npm tarball and a NuGet package, and each
 carries its own copy of the version. A release whose copies differ publishes
-mismatched packages, so this check runs on every push and in the release gate
-(brief AC 33), not only when a tag is cut.
+mismatched packages, so this check runs on every push to main, on every pull
+request and in the release gate (brief AC 33), not only when a tag is cut.
 
 Standard library only, and it runs on every supported Python (3.9 and later),
 so the pyproject version is read with a regular expression, not ``tomllib``.
