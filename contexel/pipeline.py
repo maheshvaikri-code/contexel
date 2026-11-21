@@ -8,11 +8,21 @@ Every pipeline carries a **fingerprint**: a stable hash of its stage names and
 bound parameters, exposed as ``pipe.fingerprint`` and recorded into any active
 :func:`contexel.trace` -- so an audit trail can say *which version of the
 policy* shaped a given context. Coverage, precisely: primitives, lists,
-tuples, and dicts are hashed by value; callables by ``__name__`` (distinct
-lambdas collide as ``<lambda>`` -- name your key functions); any other object
-contributes only its type name. Bind parameters through :func:`stage` when the
-fingerprint should cover them; opaque stage callables contribute only their
-``__name__``.
+tuples, dicts, sets and frozensets are hashed by value (a set by its sorted
+contents, so insertion order and the hash seed do not matter); a nested
+:func:`pipeline` contributes its own fingerprint; callables are hashed by
+``__name__`` (distinct lambdas collide as ``<lambda>`` -- name your key
+functions; a tokenizer from :func:`contexel.tokens.tiktoken_tokenizer` is named
+``tiktoken:<encoding or model>``); any other object contributes only its type
+name. Bind parameters through :func:`stage` when the fingerprint should cover
+them; opaque stage callables contribute only their ``__name__``.
+
+The fingerprint cannot go stale: :func:`stage` takes a private copy of the
+plain containers (``list``, ``tuple``, ``dict``, ``set``, ``frozenset``, at any
+depth) bound to it, and :func:`pipeline` copies its list of stages, so changing
+the caller's own list or dict afterwards changes neither the behavior nor the
+fingerprint. Objects that are not plain containers (a subclass, a custom
+class) are not copied: they stay live, and only their type name is hashed.
 """
 from __future__ import annotations
 
@@ -40,21 +50,48 @@ def _stable_repr(value: Any) -> str:
         return "{" + ",".join(
             f"{k!r}:{_stable_repr(v)}" for k, v in items
         ) + "}"
+    if isinstance(value, (set, frozenset)):
+        # Iteration order depends on the hash seed: hash the sorted contents.
+        return "set{" + ",".join(sorted(_stable_repr(v) for v in value)) + "}"
     if callable(value):
         return getattr(value, "__name__", type(value).__name__)
     return type(value).__name__
 
 
+def _snapshot(value: Any) -> Any:
+    """A private copy of the plain containers in ``value`` (any depth).
+
+    Only an exact ``list``, ``tuple``, ``dict``, ``set`` or ``frozenset`` is
+    copied (its elements recursively); everything else is returned as it is.
+    """
+    kind = type(value)
+    if kind is list:
+        return [_snapshot(v) for v in value]
+    if kind is tuple:
+        return tuple(_snapshot(v) for v in value)
+    if kind is dict:
+        return {k: _snapshot(v) for k, v in value.items()}
+    if kind is set:
+        return set(value)  # elements are hashable, so already immutable
+    return value
+
+
 def stage(fn: Callable, **kwargs: Any) -> StageFn:
-    """Bind keyword args to a stage so it slots into a pipeline as a ``records -> records`` step."""
+    """Bind keyword args to a stage so it slots into a pipeline as a ``records -> records`` step.
+
+    The stage keeps a private copy of any plain list, tuple, dict or set among
+    the arguments, so changing the caller's own container afterwards cannot
+    change what the stage does or what its fingerprint says.
+    """
+    bound = {k: _snapshot(v) for k, v in kwargs.items()}
 
     def run(records: Records) -> Records:
-        return fn(records, **kwargs)
+        return fn(records, **bound)
 
     run.__name__ = getattr(fn, "__name__", "stage")
     run.__contexel_desc__ = (  # type: ignore[attr-defined]
         run.__name__,
-        tuple(sorted((k, _stable_repr(v)) for k, v in kwargs.items())),
+        tuple(sorted((k, _stable_repr(v)) for k, v in bound.items())),
     )
     return run
 
@@ -72,6 +109,7 @@ def pipeline(stages: List[StageFn], strict: bool = False) -> StageFn:
     and is not part of the fingerprint.
     """
     check_bool(strict, "pipeline", "strict")
+    stages = list(stages)  # a later change to the caller's list is not ours
     descs = tuple(
         getattr(s, "__contexel_desc__", (getattr(s, "__name__", "callable"),))
         for s in stages
@@ -93,4 +131,6 @@ def pipeline(stages: List[StageFn], strict: bool = False) -> StageFn:
         return records
 
     run.fingerprint = fingerprint  # type: ignore[attr-defined]
+    # as a stage of an outer pipeline, contribute this fingerprint (not "run")
+    run.__contexel_desc__ = ("pipeline", (fingerprint,))  # type: ignore[attr-defined]
     return run
