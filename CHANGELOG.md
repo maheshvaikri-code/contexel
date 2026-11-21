@@ -43,6 +43,26 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   `contexel.errors`).
 - The parity runners reject unknown option names inside a case's `args`.
 
+### Added — audit truthfulness and release hygiene (ADR-008)
+- The audit no longer says something false: a trace's `dropped_ids` reports a
+  drop that an unrelated id-less record used to hide, a policy fingerprint
+  covers sets, nested pipelines and the tiktoken encoding, and a stage keeps a
+  private copy of what is bound to it (Behavior changes 8 to 10). The shared
+  parity vectors gain a case kind, `trace_dropped_ids`, that asserts each
+  stage's dropped ids in all three languages (74 cases in all).
+- `tools/check_versions.py` (standard library) fails when the seven version
+  locations of the three packages disagree (`pyproject.toml`,
+  `contexel/__init__.py`, `ts/package.json`, both entries of
+  `ts/package-lock.json`, `ts/src/index.ts`, `csharp/Contexel/Contexel.csproj`),
+  naming the file. It runs on every push and pull request in the new CI job
+  `hygiene`, and in the release gate before any package is published.
+- `contexel/py.typed` ships in the wheel (the package is typed), and `ruff` and
+  `mypy` are configured and pass on `contexel/`. They live in a new dev-only
+  extra, `pip install "contexel[lint]"` (MIT, never shipped, no runtime
+  dependency); the CI job `hygiene` runs them on Python 3.12 and checks the
+  built wheel. mypy 2.x cannot target Python 3.9, so it checks against 3.10 and
+  the Python 3.9 test legs prove the runtime.
+
 ### Behavior changes
 Valid input with strict mode off keeps byte-identical output; these are the
 exceptions, all intentional:
@@ -159,6 +179,40 @@ exceptions, all intentional:
    `query` used to be accepted and now throws `ConfigException`
    (`config.invalid_value`; the message says "got list" for a set). Python and
    TypeScript reject sets there as well.
+8. `trace(id_field=...)` no longer under-reports `dropped_ids`. A record dropped
+   while some other surviving record never had the id field used to be
+   reported as not dropped (the id-less survivor was assumed to be the one that
+   lost its id). Now only as many unmatched ids as the stage produced extra
+   id-less survivors (beyond the id-less records it was given) are explained
+   away, the first ones in input order, and every other unmatched id is
+   reported dropped. All three languages; the audit keys are unchanged. An
+   audit recorded before this change may have under-reported. A stage that
+   ADDS id-less records can still hide up to that many drops: a black-box stage
+   leaves that ambiguity, and the bound is the number it added.
+9. Policy fingerprints cover more, so a pipeline that binds one of these has a
+   new fingerprint: a `set` or `frozenset` in Python (it used to hash as the
+   type name `set`, so every set collided), a `Set` in TypeScript (it used to
+   hash as `{}`) and any `ISet<T>` or `IReadOnlySet<T>` in C# (it used to hash
+   as a list in enumeration order) are hashed by their sorted contents, at any
+   depth; a nested pipeline contributes its own fingerprint (Python and
+   TypeScript: any pipeline used as a stage; C#: a stage built from
+   `inner.Run`), where it used to contribute only the word `run`; and a Python
+   tiktoken tokenizer is named `tiktoken:<encoding or model>` instead of
+   `<lambda>`. A pipeline that binds none of these keeps its exact fingerprint
+   (golden tests in all three languages). Fingerprints recorded earlier for the
+   changed shapes no longer match.
+10. `stage()` copies the plain containers bound to it, and `pipeline()` copies
+    its list of stages, in Python and TypeScript, so changing your own list,
+    dict or set afterwards no longer changes the behavior (it used to, with the
+    fingerprint unchanged). Code that relied on editing a bound list after
+    building the stage must build the stage again. Only plain containers are
+    copied: a subclass, a custom object, a function, a TypeScript class
+    instance or `Map`, and the elements of a TypeScript `Set` stay live. C#
+    cannot copy a closure: its fingerprint is computed once when the pipeline
+    is constructed.
+11. Python `tokens.tiktoken_tokenizer()` counts text such as `"<|endoftext|>"`
+    as ordinary text (`disallowed_special=()`) instead of raising `ValueError`;
+    counts for text without such literals are unchanged.
 
 ### Compatibility
 C#: the `Shaped.Wrap` overloads gained an optional `strict` parameter. That is
@@ -234,6 +288,13 @@ same obfuscations.
   string (`a*`) drops every record. TypeScript ignores unknown option keys (a
   typo such as `{ field: "body" }` is silently ignored; the compile-time
   excess-property check only covers object literals).
+- Fingerprint scope (ADR-008): the ambient tokenizer and serializer
+  (`set_tokenizer`, `scoped`) are not part of a pipeline's fingerprint; a
+  pipeline bound as a parameter value (not as a stage) hashes as the word `run`
+  in Python; a Python container subclass is hashed by value but not copied; a
+  C# lambda that calls another pipeline's `Run` is opaque; and nothing hashes
+  the code inside a stage function, only its name, so two lambdas share
+  `<lambda>`. The fingerprints stay language-local.
 
 ### Tests
 C# tests that asserted the exact exception type

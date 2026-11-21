@@ -53,7 +53,14 @@ awaited, then shaped). `trace()` records what every stage removed;
 `trace(id_field=...)` additionally records *which* records each stage
 dropped, and `t.audit()` emits a JSON-able governance record keyed by the
 pipeline's policy fingerprint — a shaping decision is inspectable and
-attributable instead of silent.
+attributable instead of silent. The fingerprint covers what a stage is bound to
+(lists, dicts, sets, a nested pipeline, a tiktoken encoding), and `stage()`
+keeps a private copy of the plain lists, dicts and sets bound to it, so
+changing yours afterwards changes neither the behavior nor the fingerprint. A
+record that never had the id field is untracked; if a stage strips the id from
+the records it keeps (a `select` without it), the trace explains away only as
+many missing ids as the stage produced extra id-less records and reports the
+rest as dropped, so keep the id field in every `select` for exact attribution.
 
 All of it is stdlib-only Python. No embeddings, no model calls, no
 dependencies — which is what makes the determinism claim checkable: the

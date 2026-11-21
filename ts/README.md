@@ -274,6 +274,12 @@ not catch exactly the same obfuscations:
 - Documented boundaries (see ADR-001): JS collapses `1.0` to `"1"` in
   serialization; Unicode word classes differ at the margins; pipeline
   fingerprints are language-local in v1.
+- Audit: which records a stage dropped is part of the shared vectors. A
+  pipeline's fingerprint hashes a `Set` by its sorted contents and a nested
+  pipeline by its own fingerprint, and `stage()` copies the arrays, plain
+  objects and `Set`s bound to it, so changing yours afterwards changes neither
+  the behavior nor the fingerprint; a class instance, a `Map` and the elements
+  of a `Set` are not copied. There is no tiktoken in this package.
 
 ## Links
 

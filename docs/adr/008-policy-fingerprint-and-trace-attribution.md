@@ -1,6 +1,6 @@
 # ADR-008 — Fingerprint truthfulness and trace drop attribution
 
-**Date:** 2026-11-19 · **Status:** proposed · **Deciders:** Chief Architect + human (audit contract change)
+**Date:** 2026-11-19 · **Status:** accepted (2026-11-20, Slice 3) · **Deciders:** Chief Architect + human (audit contract change)
 
 ## Context
 Verified defects: `allowed={"a"}` and `allowed={"b"}` share a fingerprint (sets hash
@@ -18,6 +18,26 @@ carrying their fingerprint; name tiktoken tokenizers `tiktoken:<encoding|model>`
 A pipeline containing none of these keeps its current fingerprint. In trace, only
 `lost = unidentified_out − unidentified_in` unmatched ids are treated as
 "survivor lost its id"; the rest are reported dropped. Audit keys are unchanged.
+
+## Per-language scope (Slice 3)
+- **Python** implements the decision as written: `stage()` snapshots plain
+  `list`/`tuple`/`dict`/`set` values (exact types, any depth; a `frozenset` is
+  immutable); a subclass or custom object is not copied and stays live. A nested
+  pipeline carries `("pipeline", (fp,))`; a tiktoken tokenizer is named
+  `tiktoken:<encoding|model>`; `disallowed_special=()` is passed so special-token
+  literals are counted.
+- **TypeScript** snapshots arrays, plain objects and `Set` shells (a `Set`'s
+  elements are not copied); a `Set` is hashed by sorted contents; a pipeline used
+  as a stage contributes `pipeline(<fp>)`. No tiktoken exists in this port.
+- **C#** cannot snapshot behavior: a stage is a delegate, and the declared
+  `Stage.Parameters` exist only to feed the fingerprint, so the fingerprint is
+  computed once at construction and a closure over a caller's list can still
+  change behavior (documented, not fixable without an API that owns the data).
+  Sets are hashed by sorted contents at any depth; a stage built from `inner.Run`
+  contributes the inner fingerprint (a lambda wrapper is opaque). No tiktoken.
+- **Trace** attribution (`lost`) is identical in all three and pinned by shared
+  vectors of kind `trace_dropped_ids`. A stage that ADDS id-less records can hide
+  up to that many drops (the bound in the decision above).
 
 ## Alternatives considered
 | Option | Pros | Cons | Why not |

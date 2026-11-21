@@ -118,7 +118,10 @@ def trace(id_field: Optional[str] = None) -> _TraceContext:
     *which* records each stage dropped, by that field — the audit trail for
     "did the relevant context even reach the model?". Attribution is by the
     id value: records lacking the field are untracked, and keeping the id
-    field in every ``select`` gives full attribution. Example::
+    field in every ``select`` gives full attribution. When a stage strips the
+    id from records it keeps, only as many missing ids as the stage produced
+    extra id-less records are explained away; the rest are reported dropped.
+    Example::
 
         with trace(id_field="url") as t:
             r = pipeline([

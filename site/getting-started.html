@@ -78,8 +78,11 @@ field:</p>
     context = shape(raw)          # any pipeline([...]) call
 
 record = t.audit()   # policy fingerprints, per-stage dropped ids, token movement</code></pre>
-<p>Records lacking the id field are untracked, so keep it in every
-<code>select</code> when full attribution matters. Gate untrusted sources
+<p>Records lacking the id field are untracked. If a stage strips the id from
+records it keeps (a <code>select</code> without it), only as many missing ids
+as the stage produced extra id-less records are explained away and the rest
+are reported dropped, so keep the id in every <code>select</code> when you
+need exact attribution. Gate untrusted sources
 before relevance logic with <code>allowlist</code> (and optionally
 <code>quarantine</code>) — see the
 <a href="stages.html#allowlist">stage reference</a>.</p>

@@ -76,6 +76,16 @@ fingerprints, `Trace`/`Audit` for the governance record, and
 `Tokens.Scoped` (AsyncLocal) for concurrency-safe per-tenant token
 accounting.
 
+A pipeline's fingerprint covers each stage's declared `Parameters` (a set, at
+any depth, by its sorted contents) and, for a stage built from another
+pipeline's `Run` method group (`new Stage("inner", inner.Run)`), that
+pipeline's fingerprint. It is computed once, when the pipeline is constructed.
+The stage function itself is opaque: a function that closes over a list or
+dictionary you keep changing can change behavior without changing the
+fingerprint, so keep what a stage reads unchanged or copy it when you build the
+stage. A lambda that calls `inner.Run` is opaque too. There is no tiktoken in
+this package.
+
 ## Errors and strict mode
 
 A control must never be weaker than it looks, so misconfiguration always
