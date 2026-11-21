@@ -111,7 +111,9 @@ def tiktoken_tokenizer(encoding: str = "cl100k_base",
            else tiktoken.get_encoding(encoding))
 
     def count_tokens(text: str) -> int:
-        return len(enc.encode(text))
+        # disallowed_special=(): text such as "<|endoftext|>" is ordinary
+        # text to count here, not a reason to raise
+        return len(enc.encode(text, disallowed_special=()))
 
     # distinct encodings must not share a policy fingerprint
     count_tokens.__name__ = f"tiktoken:{model or encoding}"

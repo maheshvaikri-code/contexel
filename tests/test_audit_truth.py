@@ -10,7 +10,7 @@ import types
 import pytest
 
 from contexel import (allowlist, dedupe, pipeline, select, stage, tokens,
-                      trace, truncate_field)
+                      trace, trim_to_budget, truncate_field)
 from contexel.trace import traced
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -272,3 +272,25 @@ def test_a_stage_gets_the_same_private_copy_on_every_call():
     names.append("b")
     bound([])
     assert sizes == [1, 1]
+
+
+# --- AC 31: tiktoken and special-token literals ----------------------------
+
+def test_tiktoken_tokenizer_asks_for_special_tokens_to_be_ordinary_text(fake_tiktoken):
+    tok = tokens.tiktoken_tokenizer()
+    assert tok("<|endoftext|>") == len("<|endoftext|>")
+    assert fake_tiktoken.kwargs == [{"disallowed_special": ()}]
+
+
+def test_tiktoken_counts_special_token_literals():
+    tiktoken = pytest.importorskip("tiktoken")
+    try:
+        tiktoken.get_encoding("cl100k_base")
+    except Exception as exc:  # the encoding file is fetched on first use
+        pytest.skip(f"cl100k_base is not available here: {exc!r}")
+    tok = tokens.tiktoken_tokenizer()
+    assert tok("a <|endoftext|> b") > 3
+    cut = truncate_field([{"s": "<|endoftext|>" * 8}], "s", 4, tokenizer=tok)
+    assert isinstance(cut[0]["s"], str) and cut[0]["s"]
+    kept = trim_to_budget([{"s": "<|endoftext|>"}] * 3, max_tokens=500, tokenizer=tok)
+    assert len(kept) == 3
