@@ -8,8 +8,13 @@ to make a test pass: a change here is a behavior change that needs an ADR.
 Every shape is written out inline (no shape depends on another module), and
 together they bind every branch of ``_stable_repr``: primitives, lists and
 tuples, dicts (mixed-type keys, nested values), named callables, and the
-type-name fallback for an opaque object.
+type-name fallback for an opaque object, and the two fallbacks for a callable
+that has no ``__name__`` (a ``functools.partial`` or an instance of a class
+with ``__call__``): the type name as a bound parameter, and the word
+``callable`` as a bare stage.
 """
+import functools
+
 import pytest
 
 from contexel import (allowlist, dedupe, pipeline, quarantine, rank, rescore,
@@ -26,6 +31,11 @@ def annotate(records, **_options):  # a NAMED custom stage
 
 class Opaque:  # an opaque object: fingerprints by its type name only
     pass
+
+
+class Scorer:  # a callable object with no __name__
+    def __call__(self, r):
+        return r["a"]
 
 
 SHAPES = {
@@ -60,6 +70,17 @@ SHAPES = {
     "rescore_defaults": (lambda: pipeline([
         stage(rescore, query="a b", fields=("x", "y"))]), "11b53020d9d935bb"),
     "empty_pipeline": (lambda: pipeline([]), "2e38e77b22c314a4"),
+    # a callable WITHOUT a __name__ bound as a parameter: the type name
+    "partial_parameter_without_a_name": (lambda: pipeline([
+        stage(rank, by=functools.partial(key))]), "2b15c203079d2493"),
+    "callable_instance_parameter_without_a_name": (lambda: pipeline([
+        stage(rank, by=Scorer())]), "d183451e1e9263c8"),
+    # ... and as a bare stage: the word "callable", so two different nameless
+    # stages share a fingerprint (documented: name your stages)
+    "bare_partial_stage_without_a_name": (lambda: pipeline([
+        functools.partial(select, fields=["a"])]), "216c659b364587e7"),
+    "bare_callable_instance_stage_without_a_name": (lambda: pipeline([
+        Scorer()]), "216c659b364587e7"),
 }
 
 
