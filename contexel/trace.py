@@ -121,6 +121,12 @@ def trace(id_field: Optional[str] = None) -> _TraceContext:
     field in every ``select`` gives full attribution. When a stage strips the
     id from records it keeps, only as many missing ids as the stage produced
     extra id-less records are explained away; the rest are reported dropped.
+    A survivor that lost its id is attributed by this net count of id-less
+    records: the first that many unmatched input ids, in input order, are
+    treated as that survivor's lost id, and every other unmatched id is
+    reported in ``dropped_ids``. The count is an approximation in both
+    directions for a black-box stage that adds or removes id-less records (see
+    the CHANGELOG).
     Example::
 
         with trace(id_field="url") as t:

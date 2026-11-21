@@ -22,12 +22,16 @@ A pipeline containing none of these keeps its current fingerprint. In trace, onl
 ## Per-language scope (Slice 3)
 - **Python** implements the decision as written: `stage()` snapshots plain
   `list`/`tuple`/`dict`/`set` values (exact types, any depth; a `frozenset` is
-  immutable); a subclass or custom object is not copied and stays live. A nested
+  immutable and returned as it is); a subclass is hashed by its contents at
+  build time but not copied, and a custom object stays live, so a later change
+  to either alters behavior without altering the fingerprint. A nested
   pipeline carries `("pipeline", (fp,))`; a tiktoken tokenizer is named
   `tiktoken:<encoding|model>`; `disallowed_special=()` is passed so special-token
   literals are counted.
-- **TypeScript** snapshots arrays, plain objects and `Set` shells (a `Set`'s
-  elements are not copied); a `Set` is hashed by sorted contents; a pipeline used
+- **TypeScript** snapshots an exact `Array`, plain or null-prototype object and
+  `Set` shell (a `Set`'s elements are not copied); a `Set` or `Array` subclass
+  stays live; an own `__proto__` key (as `JSON.parse` produces) is kept as an
+  own key in the copy; a `Set` is hashed by sorted contents; a pipeline used
   as a stage contributes `pipeline(<fp>)`. No tiktoken exists in this port.
 - **C#** cannot snapshot behavior: a stage is a delegate, and the declared
   `Stage.Parameters` exist only to feed the fingerprint, so the fingerprint is
@@ -36,8 +40,13 @@ A pipeline containing none of these keeps its current fingerprint. In trace, onl
   Sets are hashed by sorted contents at any depth; a stage built from `inner.Run`
   contributes the inner fingerprint (a lambda wrapper is opaque). No tiktoken.
 - **Trace** attribution (`lost`) is identical in all three and pinned by shared
-  vectors of kind `trace_dropped_ids`. A stage that ADDS id-less records can hide
-  up to that many drops (the bound in the decision above).
+  vectors of kind `trace_dropped_ids`. The rule counts id-less records, so it is
+  an approximation in both directions for a black-box stage: one that ADDS
+  id-less records can hide up to that many drops (the bound in the decision
+  above), and one that both strips an id from a survivor AND drops an id-less
+  record can have that survivor reported in `dropped_ids` although it survived
+  (the built-in stages never do either). That is deliberate, since a reported
+  drop is the safe side of the audit; such a stage should keep its ids.
 
 ## Alternatives considered
 | Option | Pros | Cons | Why not |

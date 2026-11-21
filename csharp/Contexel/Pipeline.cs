@@ -21,14 +21,15 @@ public sealed record Stage(string Name, Func<Records, Records> Fn,
 ///
 /// Coverage: parameters are hashed by canonical JSON, a set (any
 /// <c>ISet&lt;T&gt;</c> or <c>IReadOnlySet&lt;T&gt;</c>, at any depth) by its
-/// sorted contents, a delegate by its method name, and a stage built from
-/// another pipeline's <c>Run</c> method group contributes that pipeline's
-/// fingerprint. The fingerprint is computed once, from the declared
-/// <see cref="Stage.Parameters"/>, when the pipeline is constructed; the
-/// stage function itself is opaque, so a function that closes over a list or
-/// dictionary you keep changing can still change behavior without changing
-/// the fingerprint. Keep what a stage reads unchanged, or copy it when you
-/// build the stage.
+/// sorted contents, a delegate that is a top-level parameter or an element of
+/// a set by its method name (inside a list or dictionary it renders as its CLR
+/// type), and a stage whose delegate is bound to a <c>Pipeline</c> (for example
+/// <c>inner.Run</c>) contributes that pipeline's fingerprint. The fingerprint is
+/// computed once, from the declared <see cref="Stage.Parameters"/>, when the
+/// pipeline is constructed; the stage function itself is opaque, so a function
+/// that closes over a list or dictionary you keep changing can still change
+/// behavior without changing the fingerprint. Keep what a stage reads
+/// unchanged, or copy it when you build the stage.
 /// </summary>
 public sealed class Pipeline
 {

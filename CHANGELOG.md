@@ -49,7 +49,7 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   covers sets, nested pipelines and the tiktoken encoding, and a stage keeps a
   private copy of what is bound to it (Behavior changes 8 to 10). The shared
   parity vectors gain a case kind, `trace_dropped_ids`, that asserts each
-  stage's dropped ids in all three languages (74 cases in all).
+  stage's dropped ids in all three languages (77 cases in all).
 - `tools/check_versions.py` (standard library) fails when the seven version
   locations of the three packages disagree (`pyproject.toml`,
   `contexel/__init__.py`, `ts/package.json`, both entries of
@@ -188,7 +188,14 @@ exceptions, all intentional:
    reported dropped. All three languages; the audit keys are unchanged. An
    audit recorded before this change may have under-reported. A stage that
    ADDS id-less records can still hide up to that many drops: a black-box stage
-   leaves that ambiguity, and the bound is the number it added.
+   leaves that ambiguity, and the bound is the number it added. The rule
+   counts id-less records, so it is an approximation in both directions: a
+   black-box stage that both strips an id from a survivor AND drops an id-less
+   record can now cause that survivor to be reported in `dropped_ids` although
+   it survived (the built-in stages never do either; `select` strips ids but
+   never drops id-less records). That is deliberate: a reported drop is the safe
+   side of the audit. A stage that adds or removes id-less records should keep
+   its ids.
 9. Policy fingerprints cover more, so a pipeline that binds one of these has a
    new fingerprint: a `set` or `frozenset` in Python (it used to hash as the
    type name `set`, so every set collided), a `Set` in TypeScript (it used to
@@ -209,7 +216,27 @@ exceptions, all intentional:
     copied: a subclass, a custom object, a function, a TypeScript class
     instance or `Map`, and the elements of a TypeScript `Set` stay live. C#
     cannot copy a closure: its fingerprint is computed once when the pipeline
-    is constructed.
+    is constructed. Further facts:
+    - A stage that writes results into a bound list or dict for the caller to
+      read now writes into its own copy, and two parameters bound to the SAME
+      object are no longer the same object inside the stage. Bind a custom
+      object (it is not copied) to collect output or to share state.
+    - Python `pipeline()` now copies its list of stages, so a pipeline built
+      from a generator of stages runs its stages (before, building the
+      fingerprint consumed the generator and the pipeline silently ran
+      nothing).
+    - Copying is by EXACT type. Python: only an exact list, tuple, dict and set
+      (a frozenset is immutable and returned as it is). TypeScript: only an
+      exact Array, Set (the shell; its elements are not copied) and plain or
+      null-prototype object; a Set or Array SUBCLASS stays live. An own
+      `__proto__` key (as `JSON.parse` produces) is kept as an own key in the
+      copy.
+    - A subclass is hashed by its contents at build time but not copied, so
+      changing it later still changes behavior without changing the
+      fingerprint.
+    - TypeScript: getters on a bound plain object are read once at build, and
+      symbol keys and non-enumerable properties are not copied (they were never
+      hashed either).
 11. Python `tokens.tiktoken_tokenizer()` counts text such as `"<|endoftext|>"`
     as ordinary text (`disallowed_special=()`) instead of raising `ValueError`;
     counts for text without such literals are unchanged.
@@ -295,6 +322,29 @@ same obfuscations.
   C# lambda that calls another pipeline's `Run` is opaque; and nothing hashes
   the code inside a stage function, only its name, so two lambdas share
   `<lambda>`. The fingerprints stay language-local.
+- Python fingerprints: a dict KEY is still rendered by `repr`, so a frozenset
+  used as a dict key is hash-seed dependent and a custom-object key embeds a
+  memory address (pre-existing). The elements of a list, tuple or set are
+  joined by a plain comma, so a callable named "1,2" collides with the elements
+  1 and 2 (pre-existing, contrived).
+- TypeScript fingerprints: a `Map`, `Date` or `RegExp` has no own enumerable
+  entries and renders as `{}`, so they collide with each other and with an
+  empty object. A `Set` that contains a cyclic structure now throws
+  `RangeError` when the stage is built (arrays and objects already did).
+  TypeScript keeps `1` and `true` as different dropped-id keys where Python and
+  C# treat 1, 1.0 and True as one key (outside the shared vectors).
+- C# fingerprints: a set renders as text and so collides with the literal
+  string of the same text (a `HashSet<string>` {"a"} and the string
+  `set{"a"}`; Python does not). A delegate INSIDE a list or dictionary is named
+  by its CLR type, not its method, so different delegates there collide (a
+  delegate as a top-level parameter or inside a set is named by its method). A
+  nested pipeline is detected for any delegate bound to a Pipeline (for example
+  `inner.Run`), a multicast delegate reports only its last target, and a list
+  or set that contains itself overflows the stack (before this slice as well).
+- `tools/check_versions.py` reads the first `<Version>` element of the csproj
+  and the first line-start `__version__` of `contexel/__init__.py`; a
+  commented-out `<Version>` or a `<PackageVersion>`/`<VersionPrefix>` override
+  is not detected (none exist today).
 
 ### Tests
 C# tests that asserted the exact exception type

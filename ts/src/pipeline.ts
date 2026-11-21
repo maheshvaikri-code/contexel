@@ -8,10 +8,10 @@
  * functions by `name`; any other object by its own enumerable entries (so a
  * `Map`, `Date` or `RegExp`, which have none, all render as `{}`). `stage()`
  * takes a private copy of the exact arrays, plain objects and `Set`s bound to
- * it (subclasses are kept as they are; a `Set`'s elements are not copied) and `pipeline()` copies its list of stages, so
- * changing the caller's own array or object afterwards changes neither the
- * behavior nor the fingerprint. Class instances, `Map`s and the elements of a
- * `Set` stay live.
+ * it (subclasses are kept as they are; a `Set`'s elements are not copied) and
+ * `pipeline()` copies its list of stages, so changing the caller's own array
+ * or object afterwards changes neither the behavior nor the fingerprint. Class
+ * instances, `Map`s and the elements of a `Set` stay live.
  */
 import { createHash } from "node:crypto";
 import { checkBool } from "./errors.js";

@@ -236,7 +236,8 @@ def test_pipeline_copies_its_list_of_stages():
 
 def test_a_callable_a_custom_object_and_a_list_subclass_are_not_copied():
     # documented limit: only plain containers are copied; anything else stays
-    # live and is fingerprinted by its name or type name only
+    # live (a list subclass is hashed by its contents at build time but not
+    # copied; a callable or custom object is hashed by its name or type name)
     class Box:
         pass
 

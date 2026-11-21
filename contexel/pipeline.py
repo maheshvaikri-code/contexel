@@ -17,12 +17,15 @@ functions; a tokenizer from :func:`contexel.tokens.tiktoken_tokenizer` is named
 name. Bind parameters through :func:`stage` when the fingerprint should cover
 them; opaque stage callables contribute only their ``__name__``.
 
-The fingerprint cannot go stale: :func:`stage` takes a private copy of the
-plain containers (``list``, ``tuple``, ``dict``, ``set``, ``frozenset``, at any
-depth) bound to it, and :func:`pipeline` copies its list of stages, so changing
-the caller's own list or dict afterwards changes neither the behavior nor the
-fingerprint. Objects that are not plain containers (a subclass, a custom
-class) are not copied: they stay live, and only their type name is hashed.
+For the exact containers listed, the fingerprint cannot go stale:
+:func:`stage` takes a private copy of the plain containers (an exact ``list``,
+``tuple``, ``dict`` or ``set``, at any depth; a ``frozenset`` is immutable and
+is returned as it is) bound to it, and :func:`pipeline` copies its list of
+stages, so changing the caller's own list or dict afterwards changes neither
+the behavior nor the fingerprint. A subclass of those containers is hashed by
+its contents at build time but is not copied, so changing it later changes the
+behavior without changing the fingerprint; a custom object is not copied
+either, and only its type name is hashed.
 """
 from __future__ import annotations
 
@@ -61,8 +64,9 @@ def _stable_repr(value: Any) -> str:
 def _snapshot(value: Any) -> Any:
     """A private copy of the plain containers in ``value`` (any depth).
 
-    Only an exact ``list``, ``tuple``, ``dict``, ``set`` or ``frozenset`` is
-    copied (its elements recursively); everything else is returned as it is.
+    Only an exact ``list``, ``tuple``, ``dict`` or ``set`` is copied (its
+    elements recursively); everything else, a ``frozenset`` (immutable) and any
+    subclass included, is returned as it is.
     """
     kind = type(value)
     if kind is list:
@@ -79,9 +83,13 @@ def _snapshot(value: Any) -> Any:
 def stage(fn: Callable, **kwargs: Any) -> StageFn:
     """Bind keyword args to a stage so it slots into a pipeline as a ``records -> records`` step.
 
-    The stage keeps a private copy of any plain list, tuple, dict or set among
-    the arguments, so changing the caller's own container afterwards cannot
-    change what the stage does or what its fingerprint says.
+    The stage keeps a private copy of any exact list, tuple, dict or set among
+    the arguments, so for those containers changing the caller's own container
+    afterwards cannot change what the stage does or what its fingerprint says
+    (a subclass or custom object is not copied). A stage that writes into a
+    bound list or dict writes into its own copy (bind a custom object to
+    collect output), and two parameters bound to the same object are separate
+    copies inside the stage.
     """
     bound = {k: _snapshot(v) for k, v in kwargs.items()}
 
