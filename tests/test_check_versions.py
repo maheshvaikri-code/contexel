@@ -154,6 +154,21 @@ def test_it_runs_as_the_script_ci_runs(tmp_path):
     assert "csharp/Contexel/Contexel.csproj" in proc.stderr
 
 
+def test_json_nested_too_deeply_fails_loudly_naming_it(tmp_path):
+    # json.loads raises RecursionError on JSON this deep: that must be the
+    # exit-2 message naming the file, not a traceback (run as CI runs it)
+    root = make_tree(tmp_path)
+    depth = 100000
+    (root / "ts/package.json").write_text("[" * depth + "]" * depth, encoding="utf-8")
+    proc = subprocess.run(
+        [sys.executable, str(ROOT / "tools" / "check_versions.py"), "--root", str(root)],
+        capture_output=True, text=True, timeout=60)
+    assert proc.returncode == 2, proc.stderr
+    assert "ts/package.json (npm package)" in proc.stderr
+    assert "nested too deeply" in proc.stderr
+    assert "Traceback" not in proc.stderr
+
+
 NOT_UTF8 = bytes([0xFF, 0xFE, 0x00]) + b" not utf-8 " + bytes([0x80])
 
 

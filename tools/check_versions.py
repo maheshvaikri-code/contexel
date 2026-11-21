@@ -69,6 +69,8 @@ def _json_version(*keys: str) -> Callable[[str], str]:
             value = json.loads(text)
             for key in keys:
                 value = value[key]
+        except RecursionError as exc:  # json.loads on very deeply nested input
+            raise Unreadable("the JSON is nested too deeply to read") from exc
         except (ValueError, KeyError, TypeError) as exc:
             raise Unreadable(f"no {' / '.join(keys)} in the JSON ({exc!r})") from exc
         if not isinstance(value, str) or not value:
