@@ -82,15 +82,18 @@ export function checkStageOutput(out: unknown, stage: string, index: number): vo
  * under a trace instead of the typed one. `needsMapping` is `true` when the
  * stage always indexes items as mappings, or a function of the call's
  * arguments for stages that only sometimes need one (`dedupe` with a `key`,
- * `rank` with a field name).
+ * `rank` with a field name). `always: true` validates in every mode, not only
+ * in strict mode: the payload stages (`split`, `join`) are new, so they have no
+ * lenient behavior to stay compatible with.
  */
 export function checked<A extends unknown[], R>(
   name: string,
   needsMapping: boolean | ((...args: A) => boolean),
-  fn: (records: Rec[], ...args: A) => R
+  fn: (records: Rec[], ...args: A) => R,
+  always = false
 ): (records: Rec[], ...args: A) => R {
   return (records: Rec[], ...args: A): R => {
-    if (isStrict()) {
+    if (always || isStrict()) {
       const need = typeof needsMapping === "function" ? needsMapping(...args) : needsMapping;
       checkRecords(records, name, need);
     }

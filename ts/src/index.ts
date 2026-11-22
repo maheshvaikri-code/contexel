@@ -16,6 +16,7 @@ export {
   type Rec,
   type Records,
 } from "./stages.js";
+export { asRecords, split, join } from "./text.js";
 export { pipeline, stage, type StageFn } from "./pipeline.js";
 export { shaped } from "./shaped.js";
 export {
