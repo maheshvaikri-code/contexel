@@ -3,7 +3,7 @@
     "generated_by": "python contexel (canon)",
     "adr": "docs/adr/001-typescript-parity.md",
     "fixture_records": 6,
-    "case_count": 123
+    "case_count": 128
   },
   "fixture": [
     {
@@ -4183,6 +4183,76 @@
           "b"
         ]
       ]
+    },
+    {
+      "id": "split/shape_error_wins_over_a_bad_by_for_null_input",
+      "stage": "split",
+      "args": {
+        "by": "words"
+      },
+      "input": null,
+      "expect_error": {
+        "code": "input.not_list"
+      }
+    },
+    {
+      "id": "split/shape_error_wins_over_a_bad_by_for_a_null_item",
+      "stage": "split",
+      "args": {
+        "by": "words"
+      },
+      "input": [
+        {
+          "text": "a"
+        },
+        null
+      ],
+      "expect_error": {
+        "code": "input.not_mapping"
+      }
+    },
+    {
+      "id": "as_records/shape_error_wins_over_an_empty_field",
+      "stage": "as_records",
+      "args": {
+        "field": ""
+      },
+      "input": null,
+      "expect_error": {
+        "code": "input.not_list"
+      }
+    },
+    {
+      "id": "split/size_true_is_not_an_integer",
+      "stage": "split",
+      "args": {
+        "by": "size",
+        "size": true
+      },
+      "input": [
+        {
+          "text": "abc"
+        }
+      ],
+      "expect_error": {
+        "code": "config.invalid_value"
+      }
+    },
+    {
+      "id": "split/size_as_a_string_is_not_an_integer",
+      "stage": "split",
+      "args": {
+        "by": "size",
+        "size": "3"
+      },
+      "input": [
+        {
+          "text": "abc"
+        }
+      ],
+      "expect_error": {
+        "code": "config.invalid_value"
+      }
     }
   ]
 }

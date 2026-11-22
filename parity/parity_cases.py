@@ -487,6 +487,19 @@ def _raw_cases() -> List[dict]:
          "stages": [{"stage": "split", "args": {}},
                     {"stage": "dedupe", "args": {"key": "text"}}]},
         [{"id": "a", "text": "x" + NL + "x" + NL + "y"}, {"id": "b", "text": "x" + NL}])
+    # Order of checks: the shape of the input is judged before the configuration,
+    # so a bad payload reports input.* even when the arguments are bad too.
+    add_error("split/shape_error_wins_over_a_bad_by_for_null_input", "split",
+              {"by": "words"}, None, "input.not_list")
+    add_error("split/shape_error_wins_over_a_bad_by_for_a_null_item", "split",
+              {"by": "words"}, [{"text": "a"}, None], "input.not_mapping")
+    add_error("as_records/shape_error_wins_over_an_empty_field", "as_records",
+              {"field": ""}, None, "input.not_list")
+    # JSON-expressible non-integer sizes: true is not 1 and "3" is not 3
+    add_error("split/size_true_is_not_an_integer", "split", {"by": "size", "size": True},
+              [{"text": "abc"}], "config.invalid_value")
+    add_error("split/size_as_a_string_is_not_an_integer", "split", {"by": "size", "size": "3"},
+              [{"text": "abc"}], "config.invalid_value")
     return cases
 
 
