@@ -131,12 +131,32 @@ public class TextTests
 
     private sealed class Opaque;
 
+    // a dictionary that implements only the generic IDictionary<K,V>
+    private static System.Dynamic.ExpandoObject Expando()
+    {
+        var expando = new System.Dynamic.ExpandoObject();
+        ((IDictionary<string, object?>)expando)["text"] = "a";
+        return expando;
+    }
+
     public static IEnumerable<object[]> NotLists() =>
     [
         [null!], [new byte[] { 1, 2 }], [5L], [5], [2.5], [true],
         [new HashSet<long> { 1, 2 }], [new Dictionary<string, string> { ["a"] = "b" }],
         [new Dictionary<int, int> { [1] = 2 }], [new DateTime(2026, 1, 1)], [new Opaque()],
+        [Expando()], [System.Text.Json.Nodes.JsonNode.Parse("{\"text\":\"a\",\"b\":1}")!],
     ];
+
+    [Fact]
+    public void AsRecordsNonGenericEnumerablesAndGenericListsAreLists()
+    {
+        var keep = R("a", 1L);
+        var output = Text.AsRecords(new System.Collections.ArrayList { keep, "s", null });
+        Same(new Records { R("a", 1L), R("text", "s"), R("text", null) }, output);
+        Assert.Same(keep, output[0]);
+        Same(new Records { R("text", "x"), R("a", 1L) },
+             Text.AsRecords(new List<object?> { "x", R("a", 1L) }));
+    }
 
     [Theory]
     [MemberData(nameof(NotLists))]
@@ -278,6 +298,22 @@ public class TextTests
         }, output);
         Assert.Equal(before, Tokens.PythonJson(parent)); // the input is never mutated
         Assert.Equal("a\nb", parent["text"]);
+    }
+
+    [Fact]
+    public void SplitChunksKeepTheParentKeyComparer()
+    {
+        // a case-insensitive record: the chunk replaces the text under its own
+        // key, it does not add a second "text" next to the parent's "TEXT"
+        var parent = new Rec(StringComparer.OrdinalIgnoreCase) { ["TEXT"] = "a\nb" };
+        var output = Text.Split([parent]);
+        Assert.Equal(["a\n", "b"], output.Select(c => (string)c["TEXT"]!).ToArray());
+        foreach (var chunk in output)
+        {
+            Assert.Equal(parent.Count + 1, chunk.Count); // the text entry and the chunk
+            Assert.Equal(chunk["TEXT"], chunk["text"]);
+        }
+        Assert.Equal("a\nb", parent["TEXT"]);
     }
 
     [Fact]

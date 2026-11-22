@@ -55,6 +55,7 @@ public static class Text
     {
         bool isList = x is IEnumerable && x is not (string or byte[] or IDictionary)
             && !Implements(x, typeof(ISet<>)) && !Implements(x, typeof(IReadOnlySet<>))
+            && !Implements(x, typeof(IDictionary<,>))
             && !Implements(x, typeof(IReadOnlyDictionary<,>));
         if (x is not (string or Rec) && !isList)
             throw new InputShapeException("input.not_list",
@@ -206,7 +207,9 @@ public static class Text
                 foreach (int end in Ends(text, by, cut))
                 {
                     long length = CodePoints(text, start, end);
-                    output.Add(new Rec(r)
+                    // keep the parent's key comparer: the chunk text replaces the
+                    // field in place instead of landing next to it
+                    output.Add(new Rec(r, r.Comparer)
                     {
                         [field] = text[start..end],
                         [into] = new Rec
