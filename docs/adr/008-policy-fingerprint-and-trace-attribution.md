@@ -55,6 +55,13 @@ A pipeline containing none of these keeps its current fingerprint. In trace, onl
   record can have that survivor reported in `dropped_ids` although it survived
   (the built-in stages never do either). That is deliberate, since a reported
   drop is the safe side of the audit; such a stage should keep its ids.
+- **Stages that keep ids (Slice 4).** A stage that never removes the id field from a
+  record it keeps can declare it (Python `traced(keeps_ids=True)`, TypeScript
+  `traced(name, fn, { keepsIds: true })`, C# `Trace.Traced(..., keepsIds: true)`), and
+  `lost` is then 0: every input id with no surviving record is reported dropped.
+  Only `split` declares it, because it turns one record into several: an id-less
+  parent's extra chunks would otherwise be read as ids lost by survivors and hide a
+  real drop. All other stages keep the rule above.
 
 ## Alternatives considered
 | Option | Pros | Cons | Why not |

@@ -1,7 +1,7 @@
 """The README's runnable examples are executed from the README itself (brief
 AC 34): every ```python block in the section is run and its printed output must
 equal the ```text block that follows it, so documentation cannot drift from
-behavior. Slices 4 and 5 add their sections to SECTIONS."""
+behavior. Slice 5 adds its section to SECTIONS."""
 import contextlib
 import io
 import os
@@ -14,16 +14,20 @@ NL = chr(10)
 FENCE = re.compile("```(python|text)" + NL + "(.*?)```", re.S)
 
 #: (README heading, number of runnable examples the section must contain)
-SECTIONS = [("### Errors and strict mode", 2)]
+SECTIONS = [("### Text, logs and web pages", 2),
+            ("### Errors and strict mode", 2)]
 
 with open(os.path.join(ROOT, "README.md"), encoding="utf-8") as fh:
     README = fh.read()
 
 
 def _section(heading):
+    # a section runs to the next heading of its own level or a higher one
     start = README.index(heading)
-    end = README.find(NL + "## ", start)
-    return README[start:end if end != -1 else len(README)]
+    level = len(heading.split(" ")[0])
+    stops = [NL + "#" * n + " " for n in range(2, level + 1)]
+    found = [i for i in (README.find(s, start + len(heading)) for s in stops) if i != -1]
+    return README[start:min(found) if found else len(README)]
 
 
 def _examples(heading):

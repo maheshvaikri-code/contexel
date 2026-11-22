@@ -71,7 +71,7 @@ var searchCode = Shaped.Wrap(pipe, (string query) => Repo.Search(query));
 | `TruncateField` | cut one field to a token budget, `…` suffix |
 | `TrimToBudget` | keep records until the budget is spent; `minRecords` guarantees the best records survive a too-small budget |
 
-Plus `Merge` for combining sources, `Pipeline`/`Stage` with stable policy
+Plus `Text.AsRecords`, `Text.Split` and `Text.Join` for text (below), `Merge` for combining sources, `Pipeline`/`Stage` with stable policy
 fingerprints, `Trace`/`Audit` for the governance record, and
 `Tokens.Scoped` (AsyncLocal) for concurrency-safe per-tenant token
 accounting.
@@ -85,6 +85,83 @@ dictionary you keep changing can change behavior without changing the
 fingerprint, so keep what a stage reads unchanged or copy it when you build the
 stage. A lambda that calls `inner.Run` is opaque too. There is no tiktoken in
 this package.
+
+## Text, logs and web pages
+
+Stages take a `List<Dictionary<string, object?>>`, and a log, a web page or a plain
+string is none of that. Three small static methods convert at the edges:
+`Text.AsRecords` turns a string (or one record, or a list) into records,
+`Text.Split` cuts the text of each record into chunk records, and `Text.Join`
+turns records back into one string. Everything in between is an ordinary stage.
+Call `AsRecords` and `Join` outside a `Pipeline`, as you call `Merge`: a pipeline
+hands every stage a list, and a strict pipeline rejects a stage that returns
+something else.
+
+```csharp
+using Contexel;
+
+var log = "INFO started\nWARN retry limit reached\nINFO ok\nINFO ok\nERROR timeout after retry\n";
+
+var pipe = new Pipeline(
+    new Stage("split", r => Text.Split(r, by: "lines")),                      // one record per line
+    new Stage("dedupe", r => Stages.Dedupe(r, "text")),                       // the repeated "INFO ok" goes
+    new Stage("rescore", r => Stages.Rescore(r, "retry timeout", new[] { "text" })),
+    new Stage("rank", r => Stages.Rank(r, "score")),
+    new Stage("trim_to_budget", r => Stages.TrimToBudget(r, 60)));
+var best = pipe.Run(Text.AsRecords(log));
+Console.Write(Text.Join(best));
+Console.WriteLine(Tokens.PythonJson(best.Select(c => ((Dictionary<string, object?>)c["chunk"]!)["start"]).ToList()));
+
+// rank again on the offset to restore reading order before Join
+var reading = Stages.Rank(best, r => ((Dictionary<string, object?>)r["chunk"]!)["start"], desc: false);
+Console.Write(Text.Join(reading));
+```
+
+```text
+ERROR timeout after retry
+WARN retry limit reached
+[54, 13]
+WARN retry limit reached
+ERROR timeout after retry
+```
+
+The cuts are the same as in Python and TypeScript: `by: "lines"` (the default)
+ends a chunk after each `\n` (`\r\n` is one boundary, a lone `\r` is none),
+`by: "paragraphs"` after each run of two or more newlines, `by: "size"` every
+`size` code points (a required positive integer, valid only with this mode).
+Every chunk keeps its trailing separator, so `Text.Join(Text.Split(Text.AsRecords(text)))`
+returns `text` exactly; each chunk is a copy of its parent with the text replaced
+and `{ index, start, end }` (all `long`) stored under `into` (default `"chunk"`).
+Offsets and sizes count code points: a surrogate pair is one, never two. A record
+whose field is not a string passes through untouched; an empty text produces no
+chunks; a record that already has the `into` key throws `input.field_conflict`.
+These methods check their input in every mode, not only inside `Strict.Begin()`:
+a null list throws `input.not_list` and a null item `input.not_mapping`.
+`AsRecords` accepts a string, a `Dictionary<string, object?>` or a list (any
+non-string, non-`byte[]`, non-set, non-dictionary `IEnumerable`); `null`, `byte[]`,
+a set or any other dictionary type throws `input.not_list`. `size` is an `int?`,
+so the `size` errors that need a non-integer (a fraction, a bool) are reachable
+only through the shared vectors, not through this signature.
+
+`Rank` reorders the chunks by score. To restore reading order before `Join`, rank
+again on the offset with a key function, as the example does (`desc: false`).
+
+```csharp
+using Contexel;
+
+var paras = Text.Split(Text.AsRecords("intro\n\nbody one\nbody two\n\nend"), by: "paragraphs");
+Console.WriteLine(Tokens.PythonJson(paras.Select(c => c["text"]).ToList()));
+Console.WriteLine(Tokens.PythonJson(paras.Select(c =>
+{
+    var at = (Dictionary<string, object?>)c["chunk"]!;
+    return new List<object?> { at["start"], at["end"] };
+}).ToList()));
+```
+
+```text
+["intro\n\n", "body one\nbody two\n\n", "end"]
+[[0, 7], [7, 26], [26, 29]]
+```
 
 ## Errors and strict mode
 
