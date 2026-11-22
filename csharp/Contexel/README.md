@@ -134,7 +134,8 @@ returns `text` exactly; each chunk is a copy of its parent with the text replace
 and `{ index, start, end }` (all `long`) stored under `into` (default `"chunk"`).
 Offsets and sizes count code points: a surrogate pair is one, never two. A record
 whose field is not a string passes through untouched; an empty text produces no
-chunks; a record that already has the `into` key throws `input.field_conflict`.
+chunks; a record whose field is a string and that already has the `into` key
+throws `input.field_conflict`.
 These methods check their input in every mode, not only inside `Strict.Begin()`:
 a null list throws `input.not_list` and a null item `input.not_mapping`.
 `AsRecords` accepts a string, a `Dictionary<string, object?>` or a list (any

@@ -124,7 +124,8 @@ returns `text` exactly; each chunk is a copy of its parent with the text replace
 and `{ index, start, end }` stored under `into` (default `"chunk"`). Offsets and
 sizes count code points, never UTF-16 units. A record whose own text field is not
 a string passes through untouched; an empty text produces no chunks; a record
-that already has its own `into` property throws `input.field_conflict`. These
+whose text field is a string and that already has its own `into` property
+throws `input.field_conflict`. These
 stages check their input in every mode, not only inside `strict(...)`: a
 non-array throws `input.not_list` and a non-record item `input.not_mapping`.
 `asRecords` accepts only a string, a plain object or an array: `null`, a number,

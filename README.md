@@ -291,8 +291,8 @@ The cuts are the same in Python, TypeScript and C#:
   `"chunk"`): `text[start:end]` is the chunk, and offsets and sizes count code
   points in every language.
 - A record whose text field is not a string passes through untouched; an empty
-  text produces no chunks, so that record disappears; a record that already has
-  the `into` key raises `input.field_conflict`.
+  text produces no chunks, so that record disappears; a record whose text is a
+  string and that already has the `into` key raises `input.field_conflict`.
 - These stages check their input in every mode, not only in strict mode: a
   non-list raises `input.not_list` and a non-mapping item `input.not_mapping`.
 - `join` renders a value that is not a string the way the token budget priced it

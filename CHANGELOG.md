@@ -77,8 +77,8 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   count code points.
 - They are new, so they check their input in every mode, not only in strict
   mode: a non-list raises `input.not_list`, a non-mapping item
-  `input.not_mapping`, and a record that already has the `into` key raises
-  `input.field_conflict`. `as_records` and `join` are the entry and exit
+  `input.not_mapping`, and a record whose text is a string and that already has the `into` key
+  raises `input.field_conflict`. `as_records` and `join` are the entry and exit
   points: call them outside `pipeline` (a strict pipeline rejects a stage that
   returns a string, naming it); `split` is an ordinary traced stage.
 - Under `trace(id_field=...)`, `split` is attributed exactly: it keeps every id,

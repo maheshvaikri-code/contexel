@@ -212,8 +212,8 @@ chunk keeps its trailing separator, so joining the chunks with
 </ul>
 <p>The boundaries are the same in Python, TypeScript and C#. A record whose
 field is not a string passes through; an empty text produces no chunks, so that
-record disappears; a record that already has the <code>into</code> key raises
-<code>input.field_conflict</code>. Unlike the original stages it checks its
+record disappears; a record whose text is a string and that already has the
+<code>into</code> key raises <code>input.field_conflict</code>. Unlike the original stages it checks its
 input in every mode: a non-list raises <code>input.not_list</code>, a
 non-mapping item <code>input.not_mapping</code>. It is auto-traced and keeps
 every id, so under <code>trace(id_field=...)</code> an empty-text record that
@@ -287,7 +287,7 @@ for humans and may differ between the Python, TypeScript and C# ports.</p>
   <tr><td><code>config.invalid_pattern</code></td><td>a pattern fails to compile; the message names the pattern</td></tr>
   <tr><td><code>input.not_list</code></td><td>(strict) records are not a list; <code>split</code>, <code>join</code> and <code>as_records</code> raise it in every mode</td></tr>
   <tr><td><code>input.not_mapping</code></td><td>(strict) an item is not a mapping; the message names the stage and index. <code>quarantine</code> always raises it, strict or not, because a screen that skips what it cannot read would keep the attack</td></tr>
-  <tr><td><code>input.field_conflict</code></td><td>an output field already exists (<code>quarantine</code> flag <code>into</code>, <code>split</code> <code>into</code>) — always raised, because continuing would destroy data</td></tr>
+  <tr><td><code>input.field_conflict</code></td><td>an output field already exists: the <code>quarantine</code> flag <code>into</code> (always raised), or the <code>split</code> <code>into</code> when the record's text is a string — raised because continuing would destroy data</td></tr>
 </table>
 </div>
 <p><code>ConfigError</code> is also a <code>ValueError</code> and
