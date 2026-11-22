@@ -8,7 +8,9 @@ import assert from "node:assert/strict";
 import {
   ContexelError,
   allowlist,
+  asRecords,
   dedupe,
+  join,
   merge,
   pipeline,
   quarantine,
@@ -16,6 +18,7 @@ import {
   rescore,
   select,
   shaped,
+  split,
   stage,
   strict,
   trace,
@@ -65,6 +68,7 @@ export const RECORD_STAGES: Record<string, RecordStage> = {
   rank,
   truncate_field: truncateField,
   trim_to_budget: trimToBudget,
+  split,
 };
 
 /** The argument names a JSON case may use, per stage kind (snake_case, as in
@@ -80,6 +84,10 @@ export const ARG_NAMES: Record<string, readonly string[]> = {
   rank: ["by", "desc"],
   truncate_field: ["field", "max_tokens", "suffix"],
   trim_to_budget: ["max_tokens", "min_records"],
+  split: ["field", "by", "size", "into"],
+  as_records: ["field"],
+  join: ["field", "sep"],
+  text_pipeline: ["stages", "field", "sep"],
   merge: ["schema", "dedupe_key"],
   pipeline: ["stages"],
   shaped: ["stages"],
@@ -90,8 +98,8 @@ export const ARG_NAMES: Record<string, readonly string[]> = {
 const SPEC_KEYS = new Set(["stage", "args"]);
 
 /** Throw unless `spec` is a known stage kind whose arguments are all known —
- * and, for pipeline/shaped/trace_report/trace_dropped_ids, so is every nested
- * stage spec. */
+ * and, for pipeline/shaped/text_pipeline/trace_report/trace_dropped_ids, so is
+ * every nested stage spec. */
 export function validateSpec(spec: Spec, where: string): void {
   assert.ok(
     Object.hasOwn(ARG_NAMES, spec.stage),
@@ -137,6 +145,16 @@ function execute(c: Case, fixture: Records): unknown {
   switch (c.stage) {
     case "merge":
       return merge(input as Records[], toOptions(c.args));
+    case "as_records":
+      return asRecords(input, toOptions(c.args));
+    case "join":
+      return join(records, toOptions(c.args));
+    case "text_pipeline": {
+      // raw payload -> asRecords -> the stages -> join, the shape of a README example
+      const field = (c.args.field as string | undefined) ?? "text";
+      const sep = (c.args.sep as string | undefined) ?? "";
+      return join(build(stages)(asRecords(input, { field })), { field, sep });
+    }
     case "pipeline":
       return build(stages)(records);
     case "shaped":

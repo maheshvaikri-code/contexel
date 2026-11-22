@@ -3,7 +3,7 @@
     "generated_by": "python contexel (canon)",
     "adr": "docs/adr/001-typescript-parity.md",
     "fixture_records": 6,
-    "case_count": 79
+    "case_count": 123
   },
   "fixture": [
     {
@@ -2896,6 +2896,1291 @@
       "expect": [
         [
           "1"
+        ]
+      ]
+    },
+    {
+      "id": "as_records/wraps_a_string",
+      "stage": "as_records",
+      "args": {},
+      "input": "hello",
+      "expect": [
+        {
+          "text": "hello"
+        }
+      ]
+    },
+    {
+      "id": "as_records/uses_the_named_field",
+      "stage": "as_records",
+      "args": {
+        "field": "body"
+      },
+      "input": "hello",
+      "expect": [
+        {
+          "body": "hello"
+        }
+      ]
+    },
+    {
+      "id": "as_records/an_empty_string_is_one_record",
+      "stage": "as_records",
+      "args": {},
+      "input": "",
+      "expect": [
+        {
+          "text": ""
+        }
+      ]
+    },
+    {
+      "id": "as_records/a_single_mapping_is_one_record",
+      "stage": "as_records",
+      "args": {},
+      "input": {
+        "a": 1,
+        "n": {
+          "z": [
+            1,
+            2
+          ]
+        }
+      },
+      "expect": [
+        {
+          "a": 1,
+          "n": {
+            "z": [
+              1,
+              2
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "as_records/list_keeps_mappings_and_wraps_everything_else",
+      "stage": "as_records",
+      "args": {},
+      "input": [
+        {
+          "a": 1
+        },
+        "s",
+        5,
+        null,
+        [
+          "n",
+          1
+        ],
+        {
+          "k": {
+            "z": [
+              1,
+              2
+            ]
+          }
+        },
+        true,
+        2.5
+      ],
+      "expect": [
+        {
+          "a": 1
+        },
+        {
+          "text": "s"
+        },
+        {
+          "text": 5
+        },
+        {
+          "text": null
+        },
+        {
+          "text": [
+            "n",
+            1
+          ]
+        },
+        {
+          "k": {
+            "z": [
+              1,
+              2
+            ]
+          }
+        },
+        {
+          "text": true
+        },
+        {
+          "text": 2.5
+        }
+      ]
+    },
+    {
+      "id": "as_records/an_empty_list_is_no_records",
+      "stage": "as_records",
+      "args": {},
+      "input": [],
+      "expect": []
+    },
+    {
+      "id": "as_records/null_is_not_a_list",
+      "stage": "as_records",
+      "args": {},
+      "input": null,
+      "expect_error": {
+        "code": "input.not_list"
+      }
+    },
+    {
+      "id": "as_records/a_number_is_not_a_list",
+      "stage": "as_records",
+      "args": {},
+      "input": 5,
+      "expect_error": {
+        "code": "input.not_list"
+      }
+    },
+    {
+      "id": "as_records/an_empty_field_name_raises",
+      "stage": "as_records",
+      "args": {
+        "field": ""
+      },
+      "input": "x",
+      "expect_error": {
+        "code": "config.invalid_value"
+      }
+    },
+    {
+      "id": "split/empty_input",
+      "stage": "split",
+      "args": {},
+      "input": [],
+      "expect": []
+    },
+    {
+      "id": "split/lines_keep_their_separators",
+      "stage": "split",
+      "args": {},
+      "input": [
+        {
+          "id": 1,
+          "text": "one\ntwo\nthree"
+        },
+        {
+          "id": 2,
+          "text": "tail\n"
+        }
+      ],
+      "expect": [
+        {
+          "id": 1,
+          "text": "one\n",
+          "chunk": {
+            "index": 0,
+            "start": 0,
+            "end": 4
+          }
+        },
+        {
+          "id": 1,
+          "text": "two\n",
+          "chunk": {
+            "index": 1,
+            "start": 4,
+            "end": 8
+          }
+        },
+        {
+          "id": 1,
+          "text": "three",
+          "chunk": {
+            "index": 2,
+            "start": 8,
+            "end": 13
+          }
+        },
+        {
+          "id": 2,
+          "text": "tail\n",
+          "chunk": {
+            "index": 0,
+            "start": 0,
+            "end": 5
+          }
+        }
+      ]
+    },
+    {
+      "id": "split/lines_crlf_is_one_boundary_and_a_lone_cr_is_not",
+      "stage": "split",
+      "args": {},
+      "input": [
+        {
+          "id": 1,
+          "text": "a\r\nb\rc\nd"
+        },
+        {
+          "id": 2,
+          "text": "\r"
+        },
+        {
+          "id": 3,
+          "text": "\n\n"
+        }
+      ],
+      "expect": [
+        {
+          "id": 1,
+          "text": "a\r\n",
+          "chunk": {
+            "index": 0,
+            "start": 0,
+            "end": 3
+          }
+        },
+        {
+          "id": 1,
+          "text": "b\rc\n",
+          "chunk": {
+            "index": 1,
+            "start": 3,
+            "end": 7
+          }
+        },
+        {
+          "id": 1,
+          "text": "d",
+          "chunk": {
+            "index": 2,
+            "start": 7,
+            "end": 8
+          }
+        },
+        {
+          "id": 2,
+          "text": "\r",
+          "chunk": {
+            "index": 0,
+            "start": 0,
+            "end": 1
+          }
+        },
+        {
+          "id": 3,
+          "text": "\n",
+          "chunk": {
+            "index": 0,
+            "start": 0,
+            "end": 1
+          }
+        },
+        {
+          "id": 3,
+          "text": "\n",
+          "chunk": {
+            "index": 1,
+            "start": 1,
+            "end": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "split/lines_ignore_the_wider_splitlines_separators",
+      "stage": "split",
+      "args": {},
+      "input": [
+        {
+          "id": 1,
+          "text": "a\u000b\f\u001c  b\nc"
+        }
+      ],
+      "expect": [
+        {
+          "id": 1,
+          "text": "a\u000b\f\u001c  b\n",
+          "chunk": {
+            "index": 0,
+            "start": 0,
+            "end": 9
+          }
+        },
+        {
+          "id": 1,
+          "text": "c",
+          "chunk": {
+            "index": 1,
+            "start": 9,
+            "end": 10
+          }
+        }
+      ]
+    },
+    {
+      "id": "split/paragraphs_mixed_newlines",
+      "stage": "split",
+      "args": {
+        "by": "paragraphs"
+      },
+      "input": [
+        {
+          "id": 1,
+          "text": "a\n\nb\r\n\r\nc\n\r\nd\ne"
+        },
+        {
+          "id": 2,
+          "text": "x\r\r\n\ny"
+        }
+      ],
+      "expect": [
+        {
+          "id": 1,
+          "text": "a\n\n",
+          "chunk": {
+            "index": 0,
+            "start": 0,
+            "end": 3
+          }
+        },
+        {
+          "id": 1,
+          "text": "b\r\n\r\n",
+          "chunk": {
+            "index": 1,
+            "start": 3,
+            "end": 8
+          }
+        },
+        {
+          "id": 1,
+          "text": "c\n\r\n",
+          "chunk": {
+            "index": 2,
+            "start": 8,
+            "end": 12
+          }
+        },
+        {
+          "id": 1,
+          "text": "d\ne",
+          "chunk": {
+            "index": 3,
+            "start": 12,
+            "end": 15
+          }
+        },
+        {
+          "id": 2,
+          "text": "x\r\r\n\n",
+          "chunk": {
+            "index": 0,
+            "start": 0,
+            "end": 5
+          }
+        },
+        {
+          "id": 2,
+          "text": "y",
+          "chunk": {
+            "index": 1,
+            "start": 5,
+            "end": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "split/paragraph_runs_at_the_edges_and_single_newlines",
+      "stage": "split",
+      "args": {
+        "by": "paragraphs"
+      },
+      "input": [
+        {
+          "id": 1,
+          "text": "\n\nabc"
+        },
+        {
+          "id": 2,
+          "text": "abc\n\n"
+        },
+        {
+          "id": 3,
+          "text": "a\nb\r\nc"
+        },
+        {
+          "id": 4,
+          "text": "a\n \nb"
+        },
+        {
+          "id": 5,
+          "text": "\n\n\n\n"
+        }
+      ],
+      "expect": [
+        {
+          "id": 1,
+          "text": "\n\n",
+          "chunk": {
+            "index": 0,
+            "start": 0,
+            "end": 2
+          }
+        },
+        {
+          "id": 1,
+          "text": "abc",
+          "chunk": {
+            "index": 1,
+            "start": 2,
+            "end": 5
+          }
+        },
+        {
+          "id": 2,
+          "text": "abc\n\n",
+          "chunk": {
+            "index": 0,
+            "start": 0,
+            "end": 5
+          }
+        },
+        {
+          "id": 3,
+          "text": "a\nb\r\nc",
+          "chunk": {
+            "index": 0,
+            "start": 0,
+            "end": 6
+          }
+        },
+        {
+          "id": 4,
+          "text": "a\n \nb",
+          "chunk": {
+            "index": 0,
+            "start": 0,
+            "end": 5
+          }
+        },
+        {
+          "id": 5,
+          "text": "\n\n\n\n",
+          "chunk": {
+            "index": 0,
+            "start": 0,
+            "end": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "split/size_astral",
+      "stage": "split",
+      "args": {
+        "by": "size",
+        "size": 2
+      },
+      "input": [
+        {
+          "id": 1,
+          "text": "ab😀😀😀c"
+        },
+        {
+          "id": 2,
+          "text": "é😀"
+        }
+      ],
+      "expect": [
+        {
+          "id": 1,
+          "text": "ab",
+          "chunk": {
+            "index": 0,
+            "start": 0,
+            "end": 2
+          }
+        },
+        {
+          "id": 1,
+          "text": "😀😀",
+          "chunk": {
+            "index": 1,
+            "start": 2,
+            "end": 4
+          }
+        },
+        {
+          "id": 1,
+          "text": "😀c",
+          "chunk": {
+            "index": 2,
+            "start": 4,
+            "end": 6
+          }
+        },
+        {
+          "id": 2,
+          "text": "é😀",
+          "chunk": {
+            "index": 0,
+            "start": 0,
+            "end": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "split/size_exact_multiple_and_larger_than_the_text",
+      "stage": "split",
+      "args": {
+        "by": "size",
+        "size": 3
+      },
+      "input": [
+        {
+          "id": 1,
+          "text": "abcdef"
+        },
+        {
+          "id": 2,
+          "text": "ab"
+        },
+        {
+          "id": 3,
+          "text": "abc"
+        }
+      ],
+      "expect": [
+        {
+          "id": 1,
+          "text": "abc",
+          "chunk": {
+            "index": 0,
+            "start": 0,
+            "end": 3
+          }
+        },
+        {
+          "id": 1,
+          "text": "def",
+          "chunk": {
+            "index": 1,
+            "start": 3,
+            "end": 6
+          }
+        },
+        {
+          "id": 2,
+          "text": "ab",
+          "chunk": {
+            "index": 0,
+            "start": 0,
+            "end": 2
+          }
+        },
+        {
+          "id": 3,
+          "text": "abc",
+          "chunk": {
+            "index": 0,
+            "start": 0,
+            "end": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "split/an_empty_text_yields_no_chunks_and_its_neighbours_stay",
+      "stage": "split",
+      "args": {},
+      "input": [
+        {
+          "id": 1,
+          "text": "a\nb"
+        },
+        {
+          "id": 2,
+          "text": ""
+        },
+        {
+          "id": 3,
+          "text": "c"
+        }
+      ],
+      "expect": [
+        {
+          "id": 1,
+          "text": "a\n",
+          "chunk": {
+            "index": 0,
+            "start": 0,
+            "end": 2
+          }
+        },
+        {
+          "id": 1,
+          "text": "b",
+          "chunk": {
+            "index": 1,
+            "start": 2,
+            "end": 3
+          }
+        },
+        {
+          "id": 3,
+          "text": "c",
+          "chunk": {
+            "index": 0,
+            "start": 0,
+            "end": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "split/non_string_values_pass_through_untouched",
+      "stage": "split",
+      "args": {},
+      "input": [
+        {
+          "id": 1
+        },
+        {
+          "id": 2,
+          "text": null
+        },
+        {
+          "id": 3,
+          "text": 5
+        },
+        {
+          "id": 4,
+          "text": [
+            "a\nb"
+          ],
+          "chunk": "kept"
+        },
+        {
+          "id": 5,
+          "text": "k\nl"
+        }
+      ],
+      "expect": [
+        {
+          "id": 1
+        },
+        {
+          "id": 2,
+          "text": null
+        },
+        {
+          "id": 3,
+          "text": 5
+        },
+        {
+          "id": 4,
+          "text": [
+            "a\nb"
+          ],
+          "chunk": "kept"
+        },
+        {
+          "id": 5,
+          "text": "k\n",
+          "chunk": {
+            "index": 0,
+            "start": 0,
+            "end": 2
+          }
+        },
+        {
+          "id": 5,
+          "text": "l",
+          "chunk": {
+            "index": 1,
+            "start": 2,
+            "end": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "split/parent_fields_are_carried_and_the_index_restarts",
+      "stage": "split",
+      "args": {
+        "field": "body",
+        "into": "part"
+      },
+      "input": [
+        {
+          "id": "a",
+          "body": "1\n2\n",
+          "meta": {
+            "k": [
+              1,
+              null
+            ]
+          },
+          "text": "other"
+        },
+        {
+          "id": "b",
+          "body": "x\ny\nz",
+          "meta": {}
+        }
+      ],
+      "expect": [
+        {
+          "id": "a",
+          "body": "1\n",
+          "meta": {
+            "k": [
+              1,
+              null
+            ]
+          },
+          "text": "other",
+          "part": {
+            "index": 0,
+            "start": 0,
+            "end": 2
+          }
+        },
+        {
+          "id": "a",
+          "body": "2\n",
+          "meta": {
+            "k": [
+              1,
+              null
+            ]
+          },
+          "text": "other",
+          "part": {
+            "index": 1,
+            "start": 2,
+            "end": 4
+          }
+        },
+        {
+          "id": "b",
+          "body": "x\n",
+          "meta": {},
+          "part": {
+            "index": 0,
+            "start": 0,
+            "end": 2
+          }
+        },
+        {
+          "id": "b",
+          "body": "y\n",
+          "meta": {},
+          "part": {
+            "index": 1,
+            "start": 2,
+            "end": 4
+          }
+        },
+        {
+          "id": "b",
+          "body": "z",
+          "meta": {},
+          "part": {
+            "index": 2,
+            "start": 4,
+            "end": 5
+          }
+        }
+      ]
+    },
+    {
+      "id": "split/a_custom_into_name_clears_an_existing_chunk_field",
+      "stage": "split",
+      "args": {
+        "into": "part"
+      },
+      "input": [
+        {
+          "id": 1,
+          "text": "a\nb",
+          "chunk": "old"
+        }
+      ],
+      "expect": [
+        {
+          "id": 1,
+          "text": "a\n",
+          "chunk": "old",
+          "part": {
+            "index": 0,
+            "start": 0,
+            "end": 2
+          }
+        },
+        {
+          "id": 1,
+          "text": "b",
+          "chunk": "old",
+          "part": {
+            "index": 1,
+            "start": 2,
+            "end": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "split/an_existing_into_key_raises",
+      "stage": "split",
+      "args": {},
+      "input": [
+        {
+          "text": "ok\nok"
+        },
+        {
+          "text": "a\nb",
+          "chunk": 1
+        }
+      ],
+      "expect_error": {
+        "code": "input.field_conflict"
+      }
+    },
+    {
+      "id": "split/an_empty_text_with_an_existing_into_key_raises",
+      "stage": "split",
+      "args": {},
+      "input": [
+        {
+          "text": "",
+          "chunk": 1
+        }
+      ],
+      "expect_error": {
+        "code": "input.field_conflict"
+      }
+    },
+    {
+      "id": "split/null_input_is_not_a_list",
+      "stage": "split",
+      "args": {},
+      "input": null,
+      "expect_error": {
+        "code": "input.not_list"
+      }
+    },
+    {
+      "id": "split/null_item_is_not_a_mapping",
+      "stage": "split",
+      "args": {},
+      "input": [
+        {
+          "text": "a"
+        },
+        null
+      ],
+      "expect_error": {
+        "code": "input.not_mapping"
+      }
+    },
+    {
+      "id": "split/unknown_by_raises",
+      "stage": "split",
+      "args": {
+        "by": "words"
+      },
+      "input": [
+        {
+          "text": "a"
+        }
+      ],
+      "expect_error": {
+        "code": "config.invalid_value"
+      }
+    },
+    {
+      "id": "split/size_with_lines_is_contradictory",
+      "stage": "split",
+      "args": {
+        "size": 3
+      },
+      "input": [
+        {
+          "text": "a"
+        }
+      ],
+      "expect_error": {
+        "code": "config.contradictory"
+      }
+    },
+    {
+      "id": "split/size_with_paragraphs_is_contradictory",
+      "stage": "split",
+      "args": {
+        "by": "paragraphs",
+        "size": 0
+      },
+      "input": [
+        {
+          "text": "a"
+        }
+      ],
+      "expect_error": {
+        "code": "config.contradictory"
+      }
+    },
+    {
+      "id": "split/by_size_without_a_size_raises",
+      "stage": "split",
+      "args": {
+        "by": "size"
+      },
+      "input": [
+        {
+          "text": "a"
+        }
+      ],
+      "expect_error": {
+        "code": "config.invalid_value"
+      }
+    },
+    {
+      "id": "split/a_zero_size_raises",
+      "stage": "split",
+      "args": {
+        "by": "size",
+        "size": 0
+      },
+      "input": [
+        {
+          "text": "a"
+        }
+      ],
+      "expect_error": {
+        "code": "config.invalid_value"
+      }
+    },
+    {
+      "id": "split/a_negative_size_raises",
+      "stage": "split",
+      "args": {
+        "by": "size",
+        "size": -2
+      },
+      "input": [
+        {
+          "text": "a"
+        }
+      ],
+      "expect_error": {
+        "code": "config.invalid_value"
+      }
+    },
+    {
+      "id": "split/a_fractional_size_raises",
+      "stage": "split",
+      "args": {
+        "by": "size",
+        "size": 2.5
+      },
+      "input": [
+        {
+          "text": "a"
+        }
+      ],
+      "expect_error": {
+        "code": "config.invalid_value"
+      }
+    },
+    {
+      "id": "join/skips_missing_keeps_strings_and_serializes_the_rest",
+      "stage": "join",
+      "args": {
+        "sep": "|"
+      },
+      "input": [
+        {
+          "text": "a"
+        },
+        {
+          "other": 1
+        },
+        {
+          "text": {
+            "k": 1,
+            "a": [
+              1,
+              "x"
+            ]
+          }
+        },
+        {
+          "text": [
+            1,
+            "x"
+          ]
+        },
+        {
+          "text": null
+        },
+        {
+          "text": true
+        },
+        {
+          "text": 2.5
+        },
+        {
+          "text": "é😀"
+        }
+      ],
+      "expect": "a|{\"a\": [1, \"x\"], \"k\": 1}|[1, \"x\"]|null|true|2.5|é😀"
+    },
+    {
+      "id": "join/uses_the_named_field_and_separator",
+      "stage": "join",
+      "args": {
+        "field": "body",
+        "sep": "\n"
+      },
+      "input": [
+        {
+          "body": "x"
+        },
+        {
+          "text": "no"
+        },
+        {
+          "body": "y"
+        }
+      ],
+      "expect": "x\ny"
+    },
+    {
+      "id": "join/an_empty_list_is_an_empty_string",
+      "stage": "join",
+      "args": {},
+      "input": [],
+      "expect": ""
+    },
+    {
+      "id": "join/empty_strings_still_take_a_separator",
+      "stage": "join",
+      "args": {
+        "sep": "-"
+      },
+      "input": [
+        {
+          "text": ""
+        },
+        {
+          "text": ""
+        }
+      ],
+      "expect": "-"
+    },
+    {
+      "id": "join/null_input_is_not_a_list",
+      "stage": "join",
+      "args": {},
+      "input": null,
+      "expect_error": {
+        "code": "input.not_list"
+      }
+    },
+    {
+      "id": "join/null_item_is_not_a_mapping",
+      "stage": "join",
+      "args": {},
+      "input": [
+        {
+          "text": "a"
+        },
+        null
+      ],
+      "expect_error": {
+        "code": "input.not_mapping"
+      }
+    },
+    {
+      "id": "text_pipeline/log_text_end_to_end",
+      "stage": "text_pipeline",
+      "args": {
+        "stages": [
+          {
+            "stage": "split",
+            "args": {
+              "by": "lines"
+            }
+          },
+          {
+            "stage": "dedupe",
+            "args": {
+              "key": "text"
+            }
+          },
+          {
+            "stage": "rescore",
+            "args": {
+              "query": "retry backoff timeout",
+              "fields": [
+                "text"
+              ]
+            }
+          },
+          {
+            "stage": "rank",
+            "args": {
+              "by": "score",
+              "desc": true
+            }
+          },
+          {
+            "stage": "trim_to_budget",
+            "args": {
+              "max_tokens": 150
+            }
+          }
+        ]
+      },
+      "input": "2026-11-19 10:00:01 INFO  service started\n2026-11-19 10:00:02 WARN  retry backoff jitter exceeded for upstream\r\n2026-11-19 10:00:03 INFO  health check ok\n2026-11-19 10:00:03 INFO  health check ok\n2026-11-19 10:00:04 ERROR timeout after retry with exponential backoff\r\n2026-11-19 10:00:05 INFO  cache warmed\n2026-11-19 10:00:06 WARN  retry limit reached, backoff doubled\n2026-11-19 10:00:07 INFO  health check ok\n2026-11-19 10:00:08 INFO  événement queued 😀\n",
+      "expect": "2026-11-19 10:00:04 ERROR timeout after retry with exponential backoff\r\n2026-11-19 10:00:02 WARN  retry backoff jitter exceeded for upstream\r\n2026-11-19 10:00:06 WARN  retry limit reached, backoff doubled\n2026-11-19 10:00:01 INFO  service started\n"
+    },
+    {
+      "id": "text_pipeline/a_list_of_strings_is_split_and_deduplicated",
+      "stage": "text_pipeline",
+      "args": {
+        "stages": [
+          {
+            "stage": "split",
+            "args": {
+              "by": "lines"
+            }
+          },
+          {
+            "stage": "dedupe",
+            "args": {
+              "key": "text"
+            }
+          }
+        ]
+      },
+      "input": [
+        "alpha\nbeta\n",
+        "alpha\nbeta\n",
+        "gamma"
+      ],
+      "expect": "alpha\nbeta\ngamma"
+    },
+    {
+      "id": "text_pipeline/a_named_field_and_a_separator",
+      "stage": "text_pipeline",
+      "args": {
+        "field": "body",
+        "sep": "|",
+        "stages": [
+          {
+            "stage": "split",
+            "args": {
+              "field": "body",
+              "by": "size",
+              "size": 2
+            }
+          }
+        ]
+      },
+      "input": "abcde",
+      "expect": "ab|cd|e"
+    },
+    {
+      "id": "text_pipeline/an_empty_text_joins_to_nothing",
+      "stage": "text_pipeline",
+      "args": {
+        "stages": [
+          {
+            "stage": "split",
+            "args": {}
+          }
+        ]
+      },
+      "input": "",
+      "expect": ""
+    },
+    {
+      "id": "trace_dropped_ids/an_expanding_split_never_hides_a_dropped_id",
+      "stage": "trace_dropped_ids",
+      "args": {
+        "id_field": "id",
+        "stages": [
+          {
+            "stage": "split",
+            "args": {}
+          }
+        ]
+      },
+      "input": [
+        {
+          "id": "a",
+          "text": "1\n2\n3"
+        },
+        {
+          "id": "b",
+          "text": ""
+        },
+        {
+          "id": "c",
+          "text": "z"
+        },
+        {
+          "text": "no id\nhere"
+        }
+      ],
+      "expect": [
+        [
+          "b"
+        ]
+      ]
+    },
+    {
+      "id": "trace_dropped_ids/a_chunk_dropped_by_dedupe_is_reported_by_its_parents_id",
+      "stage": "trace_dropped_ids",
+      "args": {
+        "id_field": "id",
+        "stages": [
+          {
+            "stage": "split",
+            "args": {}
+          },
+          {
+            "stage": "dedupe",
+            "args": {
+              "key": "text"
+            }
+          }
+        ]
+      },
+      "input": [
+        {
+          "id": "a",
+          "text": "x\nx\ny"
+        },
+        {
+          "id": "b",
+          "text": "x\n"
+        }
+      ],
+      "expect": [
+        [],
+        [
+          "a",
+          "b"
         ]
       ]
     }

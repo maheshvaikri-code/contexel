@@ -34,15 +34,19 @@ public class CaseTests
         ["shaped"] = ["stages"],
         ["trace_report"] = ["stages", "id_field"],
         ["trace_dropped_ids"] = ["stages", "id_field"],
+        ["split"] = ["field", "by", "size", "into"],
+        ["as_records"] = ["field"],
+        ["join"] = ["field", "sep"],
+        ["text_pipeline"] = ["stages", "field", "sep"],
     };
 
     private static readonly HashSet<string> NestingKinds =
-        ["pipeline", "shaped", "trace_report", "trace_dropped_ids"];
+        ["pipeline", "shaped", "trace_report", "trace_dropped_ids", "text_pipeline"];
     private static readonly HashSet<string> SpecKeys = ["stage", "args"];
 
     /// <summary>Reject an unknown option name in a case's args and, for
-    /// pipeline/shaped/trace_report/trace_dropped_ids, in every nested stage
-    /// spec.</summary>
+    /// pipeline/shaped/trace_report/trace_dropped_ids/text_pipeline, in every
+    /// nested stage spec.</summary>
     internal static void ValidateArgs(string kind, Rec args, string where)
     {
         if (!ArgNames.TryGetValue(kind, out var allowed))
@@ -125,12 +129,16 @@ public class CaseTests
         "truncate_field" => Stages.TruncateField(r, (string)a["field"]!, (int)(long)a["max_tokens"]!),
         "trim_to_budget" => Stages.TrimToBudget(r, (int)(long)a["max_tokens"]!,
             minRecords: a.TryGetValue("min_records", out var m) ? (int)(long)m! : 0),
+        // size goes in as the raw JSON value (SplitCore): a bool, a fraction or a
+        // string is not an int?, and must reach the library's own validation
+        "split" => Text.SplitCore(r, Str(a, "field", "text"), Str(a, "by", "lines"),
+            a.GetValueOrDefault("size"), Str(a, "into", "chunk")),
         _ => throw new ArgumentException($"unknown stage {kind}"),
     };
 
     private static readonly HashSet<string> RecordStages =
         ["select", "dedupe", "allowlist", "quarantine", "rescore", "rank",
-         "truncate_field", "trim_to_budget"];
+         "truncate_field", "trim_to_budget", "split"];
 
     private static Stage Bind(Rec spec)
     {
@@ -156,6 +164,18 @@ public class CaseTests
                             kv => (object)(kv.Value is string s ? s : Strs(kv.Value)))
                         : null,
                     args.TryGetValue("dedupe_key", out var dk) ? (string?)dk : null);
+            // the entry and exit points take the raw JSON payload and sit outside
+            // the pipeline, like merge: asRecords -> pipeline(stages) -> join
+            case "as_records":
+                return Text.AsRecords(c["input"], Str(args, "field", "text"));
+            case "join":
+                return Text.Join(Input(c), Str(args, "field", "text"), Str(args, "sep", ""));
+            case "text_pipeline":
+            {
+                string field = Str(args, "field", "text");
+                return Text.Join(Build(args).Run(Text.AsRecords(c["input"], field)),
+                    field, Str(args, "sep", ""));
+            }
             case "pipeline":
                 return Build(args).Run(Input(c));
             case "shaped":

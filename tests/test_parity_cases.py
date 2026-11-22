@@ -33,6 +33,24 @@ def test_committed_case_matches_canon(case):
         committed, sort_keys=True, ensure_ascii=False)
 
 
+def test_the_end_to_end_log_case_fits_its_budget_and_keeps_the_best_lines_first():
+    from contexel import tokens
+
+    case = next(c for c in VECTORS["cases"] if c["id"] == "text_pipeline/log_text_end_to_end")
+    budget = next(s["args"]["max_tokens"] for s in case["args"]["stages"]
+                  if s["stage"] == "trim_to_budget")
+    out = case["expect"]
+    # the stated budget is a ceiling on the text that is handed to the model
+    assert tokens.count(out) <= budget
+    # the duplicate "health check ok" lines were dropped by dedupe, the lines that
+    # mention the query come first (the line with all three words leads), and
+    # the budget cut the rest
+    assert "health check ok" not in out
+    assert out.startswith("2026-11-19 10:00:04 ERROR timeout after retry")
+    assert out.count("retry") >= 3
+    assert len(out) < len(case["input"])
+
+
 def test_error_cases_use_only_documented_codes_and_strict_is_true_or_absent():
     from contexel import errors
     error_cases = [c for c in VECTORS["cases"] if "expect_error" in c]

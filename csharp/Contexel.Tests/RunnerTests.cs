@@ -215,6 +215,120 @@ public class RunnerTests
         CaseTests.AssertCase(c);
     }
 
+    // ----------------------- payload stages (as_records, split, join) -----------------------
+
+    [Theory]
+    [InlineData("as_records", "fields")]
+    [InlineData("split", "sizes")]
+    [InlineData("split", "into_")]
+    [InlineData("join", "separator")]
+    [InlineData("text_pipeline", "stage")]
+    public void AnUnknownArgKeyIsRejectedForTheNewPayloadKinds(string kind, string typo)
+    {
+        var args = new Rec { [typo] = 1L };
+        if (kind == "text_pipeline") args["stages"] = Items();
+        var c = Case(kind, args, Items(), ("expect", Items()));
+        var e = Assert.Throws<ArgumentException>(() => CaseTests.AssertCase(c));
+        Assert.Contains(typo, e.Message);
+    }
+
+    [Fact]
+    public void AnUnknownArgKeyInANestedSplitSpecOfATextPipelineIsRejected()
+    {
+        var stages = Items(
+            Spec("split", new Rec { ["by"] = "size", ["size"] = 2L }),
+            Spec("split", new Rec { ["byy"] = "lines" })); // typo of "by"
+        var c = Case("text_pipeline", new Rec { ["stages"] = stages }, "abc", ("expect", "abc"));
+        var e = Assert.Throws<ArgumentException>(() => CaseTests.AssertCase(c));
+        Assert.Contains("byy", e.Message);
+        Assert.Contains("stages[1]", e.Message);
+    }
+
+    [Fact]
+    public void ATextPipelineWithAnUnknownNestedStageIsRejected()
+    {
+        foreach (var inner in new[] { "selekt", "as_records", "join", "text_pipeline" })
+        {
+            var c = Case("text_pipeline",
+                new Rec { ["stages"] = Items(Spec(inner, new Rec())) }, "abc", ("expect", "abc"));
+            var e = Assert.Throws<ArgumentException>(() => CaseTests.AssertCase(c));
+            Assert.Contains($"unknown stage {inner}", e.Message); // only record stages nest
+        }
+        var badKey = Items(new Rec { ["stage"] = "split", ["args"] = new Rec(), ["note"] = "x" });
+        Assert.Throws<ArgumentException>(() => CaseTests.AssertCase(
+            Case("text_pipeline", new Rec { ["stages"] = badKey }, "abc", ("expect", "abc"))));
+    }
+
+    [Fact]
+    public void ValidArgsOfTheNewKindsAreAccepted()
+    {
+        CaseTests.ValidateArgs("as_records", new Rec { ["field"] = "body" }, "ok");
+        CaseTests.ValidateArgs("join", new Rec { ["field"] = "body", ["sep"] = "|" }, "ok");
+        CaseTests.ValidateArgs("split", new Rec
+        {
+            ["field"] = "body", ["by"] = "size", ["size"] = 3L, ["into"] = "part",
+        }, "ok");
+        CaseTests.ValidateArgs("text_pipeline", new Rec
+        {
+            ["field"] = "body", ["sep"] = "|",
+            ["stages"] = Items(Spec("split", new Rec { ["field"] = "body", ["by"] = "size", ["size"] = 2L })),
+        }, "ok");
+    }
+
+    [Fact]
+    public void ATextPipelineRunsAsRecordsThenThePipelineThenJoin()
+    {
+        var stages = Items(Spec("split", new Rec { ["field"] = "body", ["by"] = "size", ["size"] = 2L }));
+        CaseTests.AssertCase(Case("text_pipeline",
+            new Rec { ["field"] = "body", ["sep"] = "|", ["stages"] = stages }, "abcde",
+            ("expect", "ab|cd|e")));
+        // a wrong expectation fails: the runner really compares the joined text
+        Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => CaseTests.AssertCase(Case("text_pipeline",
+            new Rec { ["field"] = "body", ["sep"] = "|", ["stages"] = stages }, "abcde",
+            ("expect", "abcde"))));
+    }
+
+    [Fact]
+    public void AnAsRecordsCaseTakesTheRawPayloadAndItsErrorCodeIsChecked()
+    {
+        CaseTests.AssertCase(Case("as_records", new Rec(), "hello",
+            ("expect", Items(new Rec { ["text"] = "hello" }))));
+        CaseTests.AssertCase(Case("as_records", new Rec(), null, ("expect_error", Err("input.not_list"))));
+        var wrong = Case("as_records", new Rec(), null, ("expect_error", Err("config.invalid_value")));
+        var e = Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => CaseTests.AssertCase(wrong));
+        Assert.Contains("input.not_list", e.Message);
+    }
+
+    [Fact]
+    public void ASplitCaseWhoseSizeIsNotAnIntReachesTheLibrarysOwnCheck()
+    {
+        foreach (object? bad in new object?[] { 2.5, true, "3", null })
+            CaseTests.AssertCase(Case("split", new Rec { ["by"] = "size", ["size"] = bad },
+                Items(new Rec { ["text"] = "abc" }), ("expect_error", Err("config.invalid_value"))));
+        CaseTests.AssertCase(Case("split", new Rec { ["size"] = 2.5 },
+            Items(new Rec { ["text"] = "abc" }), ("expect_error", Err("config.contradictory"))));
+    }
+
+    [Fact]
+    public void ASplitCaseChecksItsInputWithoutStrictMode()
+    {
+        CaseTests.AssertCase(Case("split", new Rec(), null, ("expect_error", Err("input.not_list"))));
+        CaseTests.AssertCase(Case("join", new Rec(), Items(new Rec { ["text"] = "a" }, null),
+            ("expect_error", Err("input.not_mapping"))));
+    }
+
+    [Fact]
+    public void TheRealVectorFileCarriesThePayloadStageCases()
+    {
+        var cases = AsList(Vectors["cases"]).Select(AsRec).ToList();
+        foreach (var kind in new[] { "as_records", "split", "join", "text_pipeline" })
+            Assert.Contains(cases, c => (string)c["stage"]! == kind);
+        // trace_dropped_ids reaches split too
+        Assert.Contains(cases, c => (string)c["stage"]! == "trace_dropped_ids"
+            && AsList(AsRec(c["args"])["stages"]).Any(s => (string)AsRec(s)["stage"]! == "split"));
+        Assert.Contains(cases, c => (string)c["stage"]! == "split" && c.ContainsKey("expect_error"));
+    }
+
     [Fact]
     public void TheRealVectorFileCarriesBothNewCaseKeys()
     {
