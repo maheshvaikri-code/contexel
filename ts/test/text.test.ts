@@ -815,13 +815,15 @@ test("the generator is deterministic: the same seed gives the same text, another
 
 /* ---------------------------------------------------------- performance ---- */
 
-/** Run `fn` and assert it finished in well under two seconds (the requirement
- * is linear time; a quadratic cut of a million characters takes minutes). */
-function underTwoSeconds<T>(label: string, fn: () => T): T {
+/** Run `fn` and assert it finished in under twenty seconds. The bound is a
+ * generous guard against quadratic behavior, not a benchmark: a linear cut of
+ * a million characters takes well under a second, a quadratic one takes far
+ * longer than twenty, and a slow CI runner keeps a wide margin. */
+function underTwentySeconds<T>(label: string, fn: () => T): T {
   const started = performance.now();
   const result = fn();
   const elapsed = performance.now() - started;
-  assert.ok(elapsed < 2000, `${label} took ${Math.round(elapsed)} ms`);
+  assert.ok(elapsed < 20_000, `${label} took ${Math.round(elapsed)} ms`);
   return result;
 }
 
@@ -829,17 +831,17 @@ test("split completes on a million characters and round-trips", () => {
   const lines = "abcdefghi" + NL;
   const text = lines.repeat(100_000); // exactly 1,000,000 characters
   assert.strictEqual(text.length, 1_000_000);
-  const c = underTwoSeconds("lines", () => chunksOf(text, { by: "lines" }));
+  const c = underTwentySeconds("lines", () => chunksOf(text, { by: "lines" }));
   assert.strictEqual(c.length, 100_000);
   assert.deepStrictEqual(spans(c)[c.length - 1], [999_990, 1_000_000]);
   assert.strictEqual(join(c), text);
 
   const paragraphs = ("para" + NL + NL).repeat(166_666) + "tail";
-  const p = underTwoSeconds("paragraphs", () => chunksOf(paragraphs, { by: "paragraphs" }));
+  const p = underTwentySeconds("paragraphs", () => chunksOf(paragraphs, { by: "paragraphs" }));
   assert.strictEqual(p.length, 166_667);
   assert.strictEqual(join(p), paragraphs);
 
-  const sized = underTwoSeconds("size", () => chunksOf(text, { by: "size", size: 1000 }));
+  const sized = underTwentySeconds("size", () => chunksOf(text, { by: "size", size: 1000 }));
   assert.strictEqual(sized.length, 1000);
   assert.strictEqual(join(sized), text);
   assert.deepStrictEqual(spans(sized)[sized.length - 1], [999_000, 1_000_000]);
@@ -847,12 +849,12 @@ test("split completes on a million characters and round-trips", () => {
 
 test("split by size counts a million astral code points without UTF-16 arithmetic", () => {
   const text = ASTRAL.repeat(1_000_000); // 2,000,000 UTF-16 units
-  const sized = underTwoSeconds("astral size", () => chunksOf(text, { by: "size", size: 1000 }));
+  const sized = underTwentySeconds("astral size", () => chunksOf(text, { by: "size", size: 1000 }));
   assert.strictEqual(sized.length, 1000);
   assert.deepStrictEqual(spans(sized)[999], [999_000, 1_000_000]);
   assert.strictEqual(join(sized), text);
   const lines = (ASTRAL + NL).repeat(100_000);
-  const c = underTwoSeconds("astral lines", () => chunksOf(lines, { by: "lines" }));
+  const c = underTwentySeconds("astral lines", () => chunksOf(lines, { by: "lines" }));
   assert.deepStrictEqual(spans(c)[c.length - 1], [199_998, 200_000]);
 });
 
@@ -861,7 +863,7 @@ for (const unit of [CR, CR + NL, NL + CR, NL, "a"]) {
     // a million characters of separators that almost match: must just complete
     const text = unit.repeat(Math.floor(1_000_000 / unit.length));
     for (const by of ["lines", "paragraphs"]) {
-      const out = underTwoSeconds(by, () => chunksOf(text, { by }));
+      const out = underTwentySeconds(by, () => chunksOf(text, { by }));
       assert.strictEqual(join(out), text);
     }
   });

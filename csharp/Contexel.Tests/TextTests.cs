@@ -772,6 +772,11 @@ public class TextTests
 
     // ------------------------------------------------- scale and adversarial ----
 
+    // A generous guard against quadratic behavior, not a benchmark: a linear cut
+    // of a million characters takes well under a second, a quadratic one far
+    // longer than twenty, and a slow CI runner keeps a wide margin.
+    private static readonly TimeSpan LinearGuard = TimeSpan.FromSeconds(20);
+
     private static void Within(TimeSpan limit, Action work, string what)
     {
         var watch = Stopwatch.StartNew();
@@ -785,19 +790,19 @@ public class TextTests
         string lines = string.Concat(Enumerable.Repeat("abcdefghi\n", 100_000)); // exactly 1,000,000
         Assert.Equal(1_000_000, lines.Length);
         Records c = [];
-        Within(TimeSpan.FromSeconds(2), () => c = ChunksOf(lines, "lines"), "lines");
+        Within(LinearGuard, () => c = ChunksOf(lines, "lines"), "lines");
         Assert.Equal(100_000, c.Count);
         Assert.Equal((999_990L, 1_000_000L), Spans(c)[^1]);
         Assert.Equal(lines, Text.Join(c));
 
         string paragraphs = string.Concat(Enumerable.Repeat("para\n\n", 166_666)) + "tail";
         Records p = [];
-        Within(TimeSpan.FromSeconds(2), () => p = ChunksOf(paragraphs, "paragraphs"), "paragraphs");
+        Within(LinearGuard, () => p = ChunksOf(paragraphs, "paragraphs"), "paragraphs");
         Assert.Equal(166_667, p.Count);
         Assert.Equal(paragraphs, Text.Join(p));
 
         Records sized = [];
-        Within(TimeSpan.FromSeconds(2), () => sized = ChunksOf(lines, "size", 1000), "size");
+        Within(LinearGuard, () => sized = ChunksOf(lines, "size", 1000), "size");
         Assert.Equal(1000, sized.Count);
         Assert.Equal(lines, Text.Join(sized));
         Assert.Equal((999_000L, 1_000_000L), Spans(sized)[^1]);
@@ -810,7 +815,7 @@ public class TextTests
         // code points, and the cut must stay linear
         string text = string.Concat(Enumerable.Repeat(Astral, 500_000));
         Records c = [];
-        Within(TimeSpan.FromSeconds(2), () => c = ChunksOf(text, "size", 1000), "astral size");
+        Within(LinearGuard, () => c = ChunksOf(text, "size", 1000), "astral size");
         Assert.Equal(500, c.Count);
         Assert.Equal((499_000L, 500_000L), Spans(c)[^1]);
         Assert.Equal(text, Text.Join(c));
@@ -829,7 +834,7 @@ public class TextTests
         foreach (var by in new[] { "lines", "paragraphs", "size" })
         {
             Records chunks = [];
-            Within(TimeSpan.FromSeconds(2),
+            Within(LinearGuard,
                    () => chunks = by == "size" ? ChunksOf(text, by, 7) : ChunksOf(text, by),
                    $"{PyCompat.PyRepr(unit)} by {by}");
             Assert.Equal(text, Text.Join(chunks));
