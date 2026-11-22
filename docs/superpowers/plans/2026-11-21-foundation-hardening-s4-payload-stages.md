@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Execution record (2026-11-22):** this plan was executed as written, with the deviations listed in the master plan's deviation log (`docs/plans/foundation-hardening.md`) and the evidence in `docs/reviews/foundation-hardening-s4-code-review.md`. The counts quoted below are the plan-time targets; the final totals are Python 685, TypeScript 536, C# 475 and 130 shared vector cases (review-driven additions: 51 new cases instead of 44, a one-pass Python paragraph scanner, C# `AsRecords` and key-comparer fixes, corrected documentation wording).
+
 **Goal:** Let text (a log, a web page, a plain string) go through every existing stage and back, by adding three stages, `as_records`, `split` and `join`, whose boundaries are lossless and identical in Python, TypeScript and C#.
 
 **Architecture:** Python is the canon and each port follows it, held together by the shared vectors (new case kinds `as_records`, `join` and `text_pipeline`, and `split` as a stage vocabulary entry). Two small internals support the new stages: an `always` option on the existing strict wrapper (the new stages check their input in every mode) and a `keeps_ids` declaration on the trace wrapper (exact dropped-id attribution for the one stage that turns one record into several). Five task groups: the Python canon (Task 1), TypeScript (Task 2), C# (Task 3), the shared vectors and the runners that replay them (Task 4), documentation (Task 5).

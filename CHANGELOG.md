@@ -88,7 +88,7 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   Behavior change 8 would have hidden that drop.) The shared vectors pin it in
   all three languages.
 - The shared vectors gain `as_records`, `join` and `text_pipeline` cases and
-  accept `split` as a stage: 49 new cases (128 in all), among them raw log text
+  accept `split` as a stage: 51 new cases (130 in all), among them raw log text
   through `as_records`, `split`, `dedupe`, `rescore`, `rank`, `trim_to_budget`
   and `join`, identical in all three languages and inside its token budget.
 
