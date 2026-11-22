@@ -6,6 +6,7 @@ Non-ASCII text is built with ``chr`` so no editor can rewrite it."""
 import copy
 import random
 import re
+import tracemalloc
 
 import pytest
 
@@ -483,6 +484,51 @@ def test_the_split_check_rejects_a_broken_split(corrupt):
     raise AssertionError("no seed produced a text the corruption could change")
 
 
+PARAGRAPH_ALPHABET = ["a", " ", "\n", "\r", "\r\n", "\n\n", "\r\n\r\n", "\r\r\n", ASTRAL, E_ACUTE]
+
+
+def paragraph_ends_by_regex(text, run=r"(?:\r?\n){2,}"):
+    """The paragraph ends an independent oracle gives: the end of every
+    leftmost, greedy match of ``run``, then the end of the text."""
+    ends = [m.end() for m in re.finditer(run, text)]
+    if (ends[-1] if ends else 0) < len(text):
+        ends.append(len(text))
+    return ends
+
+
+def paragraph_ends_by_split(text):
+    return [c["chunk"]["end"] for c in chunks_of(text, by="paragraphs")]
+
+
+def first_paragraph_mismatch(cut, oracle, seed_list):
+    """The first random text on which ``cut`` and ``oracle`` disagree, or None."""
+    for seed in seed_list:
+        rng = random.Random(seed)
+        for _ in range(15):
+            text = "".join(rng.choices(PARAGRAPH_ALPHABET, k=rng.randint(0, 300)))
+            got, want = cut(text), oracle(text)
+            if got != want:
+                return f"seed {seed} text={text!r}: cut {got}, oracle {want}"
+    return None
+
+
+def test_the_paragraph_cut_agrees_with_the_regex_oracle_on_random_texts():
+    # 15 texts per seed: a few thousand texts at the default case count
+    mismatch = first_paragraph_mismatch(paragraph_ends_by_split, paragraph_ends_by_regex,
+                                        seeds())
+    assert mismatch is None, mismatch
+
+
+@pytest.mark.parametrize("wrong_run", [
+    r"(?:\r?\n|\r){2,}",  # a lone \r taken as a newline unit
+    r"(?:\r?\n)+",  # a single newline taken as a paragraph end
+])
+def test_the_paragraph_comparison_catches_a_wrong_cut(wrong_run):
+    def wrong(text):
+        return paragraph_ends_by_regex(text, wrong_run)
+    assert first_paragraph_mismatch(wrong, paragraph_ends_by_regex, canary_seeds()) is not None
+
+
 def test_split_completes_on_a_million_characters_and_round_trips():
     lines = "abcdefghi\n" * 100_000  # exactly 1,000,000 characters
     assert len(lines) == 1_000_000
@@ -505,3 +551,19 @@ def test_split_stays_linear_on_adversarial_separators(unit):
     text = unit * (1_000_000 // len(unit))
     for by in ("lines", "paragraphs"):
         assert join(chunks_of(text, by=by)) == text
+
+
+@pytest.mark.parametrize("unit", ["\n", "\r\n"])
+def test_the_paragraph_cut_memory_does_not_grow_with_a_newline_run(unit):
+    # 4,000,000 characters that are one long newline run: a backtracking regex
+    # keeps state for every newline in the run (hundreds of MB here), a
+    # one-pass scan keeps none. The text and the one chunk it yields are ~8 MB.
+    text = unit * (4_000_000 // len(unit))
+    tracemalloc.start()
+    try:
+        chunks = chunks_of(text, by="paragraphs")
+        peak = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+    assert texts(chunks) == [text]
+    assert peak < 100 * 2 ** 20, f"peak {peak / 2 ** 20:.0f} MB"

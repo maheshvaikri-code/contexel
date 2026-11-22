@@ -24,7 +24,6 @@ code points.
 """
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping
 from typing import Any, Dict, Iterator, List, Optional, cast
 
@@ -42,8 +41,6 @@ from .validate import checked
 
 Record = Dict[str, Any]
 Records = List[Record]
-
-_PARAGRAPH_RUN = re.compile(r"(?:\r?\n){2,}")
 
 
 def as_records(x: Any, field: str = "text") -> Records:
@@ -89,9 +86,27 @@ def _ends(text: str, by: str, size: Optional[int]) -> Iterator[int]:
             yield last
             pos = text.find("\n", last)
     else:
-        for match in _PARAGRAPH_RUN.finditer(text):
-            last = match.end()
-            yield last
+        # the leftmost run of two or more newline units ("\n" or "\r\n"), taken
+        # as long as possible: (?:\r?\n){2,}, in one pass with no backtracking
+        # state (a regex keeps some for every unit of a run). Every unit holds a
+        # "\n", so the scan jumps from one "\n" to the next; a "\r" just before
+        # it would start the same run and end it at the same place. A run of two
+        # or more units ends a chunk, a run of one is skipped.
+        pos = text.find("\n")
+        while pos != -1:
+            j, units = pos, 0
+            while j < n:
+                if text[j] == "\n":
+                    j += 1
+                elif text[j] == "\r" and j + 1 < n and text[j + 1] == "\n":
+                    j += 2
+                else:
+                    break
+                units += 1
+            if units >= 2:
+                last = j
+                yield last
+            pos = text.find("\n", j)
     if last < n:  # the remainder after the last boundary is a chunk
         yield n
 
