@@ -500,6 +500,12 @@ def _raw_cases() -> List[dict]:
               [{"text": "abc"}], "config.invalid_value")
     add_error("split/size_as_a_string_is_not_an_integer", "split", {"by": "size", "size": "3"},
               [{"text": "abc"}], "config.invalid_value")
+    # code-point offsets in lines and paragraphs mode (an astral character is
+    # one code point but two UTF-16 units)
+    add("split/lines_offsets_count_code_points", "split", {"by": "lines"},
+        [{"id": 1, "text": "a" + ASTRAL + NL + ASTRAL + "b" + NL + "c"}])
+    add("split/paragraphs_offsets_count_code_points", "split", {"by": "paragraphs"},
+        [{"id": 1, "text": "x" + ASTRAL + NL + NL + "y"}])
     return cases
 
 

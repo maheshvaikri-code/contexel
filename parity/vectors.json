@@ -3,7 +3,7 @@
     "generated_by": "python contexel (canon)",
     "adr": "docs/adr/001-typescript-parity.md",
     "fixture_records": 6,
-    "case_count": 128
+    "case_count": 130
   },
   "fixture": [
     {
@@ -4253,6 +4253,81 @@
       "expect_error": {
         "code": "config.invalid_value"
       }
+    },
+    {
+      "id": "split/lines_offsets_count_code_points",
+      "stage": "split",
+      "args": {
+        "by": "lines"
+      },
+      "input": [
+        {
+          "id": 1,
+          "text": "a😀\n😀b\nc"
+        }
+      ],
+      "expect": [
+        {
+          "id": 1,
+          "text": "a😀\n",
+          "chunk": {
+            "index": 0,
+            "start": 0,
+            "end": 3
+          }
+        },
+        {
+          "id": 1,
+          "text": "😀b\n",
+          "chunk": {
+            "index": 1,
+            "start": 3,
+            "end": 6
+          }
+        },
+        {
+          "id": 1,
+          "text": "c",
+          "chunk": {
+            "index": 2,
+            "start": 6,
+            "end": 7
+          }
+        }
+      ]
+    },
+    {
+      "id": "split/paragraphs_offsets_count_code_points",
+      "stage": "split",
+      "args": {
+        "by": "paragraphs"
+      },
+      "input": [
+        {
+          "id": 1,
+          "text": "x😀\n\ny"
+        }
+      ],
+      "expect": [
+        {
+          "id": 1,
+          "text": "x😀\n\n",
+          "chunk": {
+            "index": 0,
+            "start": 0,
+            "end": 4
+          }
+        },
+        {
+          "id": 1,
+          "text": "y",
+          "chunk": {
+            "index": 1,
+            "start": 4,
+            "end": 5
+          }
+        }
+      ]
     }
   ]
 }

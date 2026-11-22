@@ -245,6 +245,14 @@ test("split counts a lone surrogate as one code point, as an iterating string do
   assert.deepStrictEqual(spans(lines), [[0, 3], [3, 4]]);
 });
 
+test("split does not pair a high surrogate with a following high surrogate", () => {
+  const high = String.fromCharCode(0xd83d);
+  const low = String.fromCharCode(0xde00);
+  const c = splitOf([{ text: high + high + low }], { by: "size", size: 1 });
+  assert.deepStrictEqual(texts(c), [high, String.fromCodePoint(0x1f600)]);
+  assert.deepStrictEqual(spans(c), [[0, 1], [1, 2]]);
+});
+
 const MODES: Array<[string, SplitOptions]> = [
   ["lines", { by: "lines" }],
   ["paragraphs", { by: "paragraphs" }],
