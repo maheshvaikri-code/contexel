@@ -84,12 +84,14 @@ export const ARG_NAMES: Record<string, readonly string[]> = {
   pipeline: ["stages"],
   shaped: ["stages"],
   trace_report: ["stages", "id_field"],
+  trace_dropped_ids: ["stages", "id_field"],
 };
 
 const SPEC_KEYS = new Set(["stage", "args"]);
 
 /** Throw unless `spec` is a known stage kind whose arguments are all known —
- * and, for pipeline/shaped/trace_report, so is every nested stage spec. */
+ * and, for pipeline/shaped/trace_report/trace_dropped_ids, so is every nested
+ * stage spec. */
 export function validateSpec(spec: Spec, where: string): void {
   assert.ok(
     Object.hasOwn(ARG_NAMES, spec.stage),
@@ -144,6 +146,18 @@ function execute(c: Case, fixture: Records): unknown {
         build(stages)(records)
       );
       return tr.report();
+    }
+    case "trace_dropped_ids": {
+      // without an id field nothing is attributed, so every expectation of
+      // empty lists would pass vacuously: refuse the case instead
+      const idField = c.args.id_field;
+      if (typeof idField !== "string" || idField === "") {
+        throw new Error(`case ${c.id}: trace_dropped_ids needs a non-empty string id_field`);
+      }
+      const [, tr] = trace({ idField }, () =>
+        build(stages)(records)
+      );
+      return (tr.audit().stages as { dropped_ids: unknown[] }[]).map((e) => e.dropped_ids);
     }
     default:
       throw new Error(`unknown case kind ${c.stage}`);

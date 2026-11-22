@@ -33,13 +33,16 @@ public class CaseTests
         ["pipeline"] = ["stages"],
         ["shaped"] = ["stages"],
         ["trace_report"] = ["stages", "id_field"],
+        ["trace_dropped_ids"] = ["stages", "id_field"],
     };
 
-    private static readonly HashSet<string> NestingKinds = ["pipeline", "shaped", "trace_report"];
+    private static readonly HashSet<string> NestingKinds =
+        ["pipeline", "shaped", "trace_report", "trace_dropped_ids"];
     private static readonly HashSet<string> SpecKeys = ["stage", "args"];
 
     /// <summary>Reject an unknown option name in a case's args and, for
-    /// pipeline/shaped/trace_report, in every nested stage spec.</summary>
+    /// pipeline/shaped/trace_report/trace_dropped_ids, in every nested stage
+    /// spec.</summary>
     internal static void ValidateArgs(string kind, Rec args, string where)
     {
         if (!ArgNames.TryGetValue(kind, out var allowed))
@@ -165,6 +168,13 @@ public class CaseTests
                 using var t = Trace.Begin(args.TryGetValue("id_field", out var f) ? (string?)f : null);
                 Build(args).Run(Input(c));
                 return t.Report();
+            }
+            case "trace_dropped_ids":
+            {
+                using var t = Trace.Begin((string)args["id_field"]!);
+                Build(args).Run(Input(c));
+                return ((List<object?>)t.Audit()["stages"]!)
+                    .Select(s => ((Rec)s!)["dropped_ids"]).ToList();
             }
             default:
                 throw new ArgumentException($"unknown case kind {kind}");

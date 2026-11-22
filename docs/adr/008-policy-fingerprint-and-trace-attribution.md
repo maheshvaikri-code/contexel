@@ -1,6 +1,6 @@
 # ADR-008 — Fingerprint truthfulness and trace drop attribution
 
-**Date:** 2026-11-19 · **Status:** proposed · **Deciders:** Chief Architect + human (audit contract change)
+**Date:** 2026-11-19 · **Status:** accepted (2026-11-20, Slice 3) · **Deciders:** Chief Architect + human (audit contract change)
 
 ## Context
 Verified defects: `allowed={"a"}` and `allowed={"b"}` share a fingerprint (sets hash
@@ -18,6 +18,43 @@ carrying their fingerprint; name tiktoken tokenizers `tiktoken:<encoding|model>`
 A pipeline containing none of these keeps its current fingerprint. In trace, only
 `lost = unidentified_out − unidentified_in` unmatched ids are treated as
 "survivor lost its id"; the rest are reported dropped. Audit keys are unchanged.
+
+## Per-language scope (Slice 3)
+- **Python** implements the decision as written: `stage()` snapshots plain
+  `list`/`tuple`/`dict`/`set` values (exact types, any depth; a `frozenset` is
+  immutable and returned as it is); a subclass is hashed by its contents at
+  build time but not copied, and a custom object stays live, so a later change
+  to either alters behavior without altering the fingerprint. A nested
+  pipeline carries `("pipeline", (fp,))`; a tiktoken tokenizer is named
+  `tiktoken:<encoding|model>`; `disallowed_special=()` is passed so special-token
+  literals are counted.
+- **TypeScript** snapshots an exact `Array`, plain or null-prototype object and
+  `Set` shell (a `Set`'s elements are not copied); a `Set` or `Array` subclass
+  stays live; an own `__proto__` key (as `JSON.parse` produces) is kept as an
+  own key in the copy; typed arrays, `Buffer`, objects from another realm and
+  any other non-plain object are not copied; a `Set` is hashed by sorted
+  contents; a pipeline used directly as a stage contributes `pipeline(<fp>)`
+  (one wrapped by `stage(inner, {})` hashes as `run`). No tiktoken exists in
+  this port.
+- **C#** cannot snapshot behavior: a stage is a delegate, and the declared
+  `Stage.Parameters` exist only to feed the fingerprint, so the fingerprint is
+  computed once at construction and a closure over a caller's list can still
+  change behavior (documented, not fixable without an API that owns the data).
+  Sets are hashed by sorted contents at any depth; a stage built from `inner.Run`
+  contributes the inner fingerprint (a lambda wrapper is opaque). No tiktoken.
+- **Trace** attribution (`lost`) is identical in all three, up to id-key
+  equality, and pinned by shared vectors of kind `trace_dropped_ids`. Ids are
+  compared by equality and the languages differ on it: Python and C# treat 1,
+  1.0 and True as one id (and 0 and False), TypeScript keeps them apart, and a
+  list-valued id collides with the string of its `repr` (Python) or JSON
+  (TypeScript); the integer 1 and the string "1" are different ids in all
+  three. The rule counts id-less records, so it is
+  an approximation in both directions for a black-box stage: one that ADDS
+  id-less records can hide up to that many drops (the bound in the decision
+  above), and one that both strips an id from a survivor AND drops an id-less
+  record can have that survivor reported in `dropped_ids` although it survived
+  (the built-in stages never do either). That is deliberate, since a reported
+  drop is the safe side of the audit; such a stage should keep its ids.
 
 ## Alternatives considered
 | Option | Pros | Cons | Why not |

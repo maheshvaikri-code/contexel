@@ -3705,4 +3705,6 @@ The blocks in this file were applied, in order, to a fresh checkout of `main` at
 | 9 | Python 2 failed, 527 passed | Python 529 passed |
 | 10 | (documents only) | Python 529, TypeScript 347, C# 312 |
 
+**Execution note (2026-11-20):** the plan was then executed by subagents. Two plan defects were found by per-task review and corrected in second commits, so on the branch `ts/src/pipeline.ts`, `ts/test/fingerprint.test.ts`, `tools/check_versions.py` and `tests/test_check_versions.py` differ from this plan's blocks by design (Task 6: own `__proto__` keys and exact `Array`/`Set` prototypes; Task 8: exit 2 on a non-UTF-8 file), and the final totals are Python 537, TypeScript 354, C# 315 and 79 vector cases. See the Slice 3 entries in the deviation log of `docs/plans/foundation-hardening.md`.
+
 After Task 10 the 35 files the plan creates or edits (including the regenerated `parity/vectors.json`) were byte-identical, modulo line endings, to the scratch tree the code was verified in. Not covered by this replay: the first CI run of the new `hygiene` job, Linux and macOS, Python 3.10, Node 18 and 20, and `pip-audit`.

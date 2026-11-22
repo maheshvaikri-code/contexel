@@ -193,8 +193,14 @@ transform — the one stage that is not auto-traced.</p>
   <code>@shaped(pipe, strict=True)</code> also requires the tool to return a
   list.</li>
   <li><code>pipeline([...])</code> exposes <code>.fingerprint</code> — a
-  stable policy hash of stage names and bound parameters, recorded into any
-  active trace so an audit can say which policy version shaped a context.</li>
+  stable policy hash of stage names and bound parameters (a set by its sorted
+  contents, a nested pipeline used directly as a stage by its own fingerprint,
+  a tiktoken tokenizer by its encoding), recorded into any active trace so an
+  audit can say which policy version shaped a context. For the exact
+  containers it copies, the fingerprint cannot go stale: <code>stage()</code>
+  keeps a private copy of the exact lists, tuples, dicts and sets bound to it
+  (not of a container subclass or a custom object, nor of the elements of a
+  TypeScript <code>Set</code>; C# copies no bound parameter).</li>
   <li><code>trace(id_field=...)</code> — context manager; every stage
   records records-in/out and tokens-before/after, and with
   <code>id_field</code> also <em>which</em> records each stage dropped

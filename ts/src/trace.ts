@@ -114,29 +114,39 @@ export function traced<A extends unknown[]>(
     const beforeN = records.length;
     const beforeTok = tokens.count(records);
     const out = fn(records, ...args);
-    const dropped: unknown[] = [];
+    let dropped: unknown[] = [];
     const fid = tr.idField;
     if (fid) {
       const remaining = new Map<unknown, number>();
-      let unidentified = 0; // survivors without the id field absorb drops
+      let unidentifiedOut = 0; // surviving records without the id field
       for (const r of out) {
         if (r !== null && typeof r === "object" && Object.hasOwn(r, fid)) {
           const k = idKey((r as Rec)[fid]);
           remaining.set(k, (remaining.get(k) ?? 0) + 1);
         } else {
-          unidentified++;
+          unidentifiedOut++;
         }
       }
+      let unidentifiedIn = 0; // input records that never had the id field
+      const unmatched: unknown[] = []; // input ids with no surviving record
       for (const r of records) {
         if (r !== null && typeof r === "object" && Object.hasOwn(r, fid)) {
           const original = (r as Rec)[fid];
           const k = idKey(original);
           const left = remaining.get(k) ?? 0;
           if (left > 0) remaining.set(k, left - 1);
-          else if (unidentified > 0) unidentified--;
-          else dropped.push(original);
+          else unmatched.push(original);
+        } else {
+          unidentifiedIn++;
         }
       }
+      // A survivor can lose its id (select drops the field), and that is not a
+      // drop. Only the id-less survivors the stage ADDED beyond the id-less
+      // records it was given can be that, so at most `lost` unmatched ids are
+      // explained away; every other one is reported dropped (the first `lost`
+      // in input order are the ones absorbed).
+      const lost = Math.max(0, unidentifiedOut - unidentifiedIn);
+      dropped = unmatched.slice(lost);
     }
     tr.entries.push({
       stage: name,

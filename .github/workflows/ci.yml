@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -34,6 +36,31 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev]"
       - run: python -m pytest -q
+
+  # Release hygiene (brief AC 32-33), on every push to main and every pull
+  # request, not only when a tag is cut: the seven version copies agree, the
+  # package is typed and lint-clean, and the wheel really ships py.typed. mypy
+  # 2.x needs Python 3.10 or newer, so this runs on 3.12; the test matrix
+  # covers 3.9.
+  hygiene:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - name: The seven version locations agree
+        run: python tools/check_versions.py
+      - run: pip install -e ".[lint]"
+      - run: ruff check contexel
+      - run: mypy
+      - name: The wheel ships py.typed
+        run: |
+          pip wheel . --no-deps -w dist
+          python -c "import glob, zipfile; names = zipfile.ZipFile(glob.glob('dist/*.whl')[0]).namelist(); assert 'contexel/py.typed' in names, names"
 
   # Cross-language parity (ADR-001): Python is canon. Regenerate the golden
   # vectors, fail if the committed file is stale, then hold the TypeScript

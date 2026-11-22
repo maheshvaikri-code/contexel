@@ -28,6 +28,9 @@ dependencies = []
 [project.optional-dependencies]
 accurate = ["tiktoken>=0.5"]
 dev = ["pytest>=7"]
+# Lint and type gate (CI job "hygiene"; dev-only, never shipped). mypy 2.x
+# cannot target Python 3.9, so install this extra on Python 3.10 or newer.
+lint = ["ruff>=0.15,<1", "mypy>=2.3,<3"]
 benchmarks = [
     "tiktoken>=0.5",
     "requests",
@@ -47,3 +50,24 @@ Issues = "https://github.com/maheshvaikri-code/contexel/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["contexel"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B"]
+
+[tool.mypy]
+files = ["contexel"]
+# mypy 2.x refuses a 3.9 target. The 3.9 CI legs run the tests on a real 3.9;
+# mypy checks the types against 3.10, the oldest version it supports.
+python_version = "3.10"
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+# tiktoken is an optional runtime dependency and the CI hygiene job installs
+# only the lint extra, so mypy must not require it to be present.
+[[tool.mypy.overrides]]
+module = "tiktoken"
+ignore_missing_imports = true
