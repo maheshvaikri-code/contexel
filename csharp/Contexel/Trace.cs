@@ -90,8 +90,14 @@ public sealed class Trace : IDisposable
     };
 
     /// <summary>Wrap a stage body so an active trace records its effect
-    /// (including dropped ids, with the unidentified-survivor wildcard).</summary>
-    internal static Records Traced(string name, Records records, Func<Records> fn)
+    /// (including dropped ids, with the unidentified-survivor wildcard).
+    /// <paramref name="keepsIds"/> declares that the stage never removes the id
+    /// field from a record it keeps (it may still emit several records for one
+    /// input, as <see cref="Text.Split(Records, string, string, int?, string)"/>
+    /// does): attribution is then exact, every input id with no surviving record
+    /// is reported dropped, and the id-less-record allowance is not applied.</summary>
+    internal static Records Traced(string name, Records records, Func<Records> fn,
+                                   bool keepsIds = false)
     {
         var tr = Current;
         if (tr is null) return fn();
@@ -131,7 +137,7 @@ public sealed class Trace : IDisposable
             // id-less records it was given can be that, so at most `lost`
             // unmatched ids are explained away; every other one is reported
             // dropped (the first `lost` in input order are the ones absorbed).
-            int lost = Math.Max(0, unidentifiedOut - unidentifiedIn);
+            int lost = keepsIds ? 0 : Math.Max(0, unidentifiedOut - unidentifiedIn);
             dropped.AddRange(unmatched.Skip(lost));
         }
         tr.Entries.Add(new Entry(name, beforeN, output.Count, beforeTok,
