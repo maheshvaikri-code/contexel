@@ -130,7 +130,16 @@ stages check their input in every mode, not only inside `strict(...)`: a
 non-array throws `input.not_list` and a non-record item `input.not_mapping`.
 `asRecords` accepts only a string, a plain object or an array: `null`, a number,
 a `Map`, a `Set`, a `Date`, a `Buffer` or a class instance throws
-`input.not_list`.
+`input.not_list`. `split` and `join` check their items as every TypeScript stage
+does: any object that is not an array counts as a record and is read through its
+own properties, so a `Map` or `Date` item makes `split` pass it through untouched
+and `join` skip it. Typed callers are protected by the type system.
+`split` has no cap: it makes one record per boundary, each a copy of its parent,
+so a 1,000,000-character text cut into one-character chunks retains roughly
+140 MB here (measured on a development machine), and every chunk carries the
+parent's other fields into `trace` and `trimToBudget`. Cap untrusted text and
+keep only the fields you need (`select`) before `split`; the main README's
+payload section has the measurements.
 
 `rank` reorders the chunks by score. To restore reading order before `join`, rank
 again on the offset with a key function:
@@ -334,8 +343,9 @@ not catch exactly the same obfuscations:
 ## Parity, precisely
 
 - Shaped output is structurally identical to Python's for JSON-safe records —
-  enforced by golden vectors covering every stage, the composed contract, the
-  audit record, canonical serialization, and token counts.
+  enforced by golden vectors covering every stage (the eight record stages,
+  `merge`, and the payload stages `asRecords`, `split` and `join`), the composed
+  contract, the audit record, canonical serialization, and token counts.
 - Token counting is per Unicode **code point** (matches Python `len`), not
   UTF-16 units — `"café"` costs the same in both languages.
 - Documented boundaries (see ADR-001): JS collapses `1.0` to `"1"` in

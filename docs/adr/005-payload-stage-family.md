@@ -28,6 +28,7 @@ shape always. Boundaries are explicit and language-independent: lines end after
 ## Consequences
 - Positive: logs and pages flow through dedupe/rescore/rank/trim unchanged.
 - Negative / debt: `rank` loses reading order (docs show re-ranking by `chunk.start`); no overlap windows; an empty text record vanishes on `split`.
+- Resources (measured on a development machine after Slice 4; orders of magnitude, not guarantees): `split` has no cap and makes one record per boundary, so at one chunk per input character a 1,000,000-character text retains roughly 440 MB in Python, 140 MB in TypeScript and 540 MB in C#, with linear time (about 0.4 to 2 seconds per million chunks). Each chunk copies its parent, so anything that prices or serializes each chunk in full (a `trace`, `trim_to_budget`) costs about the number of chunks times the size of the parent's other fields (a 50,000-character side field and 4,000 chunks: about 0.6 to 2 seconds traced), growing with both. Callers cap untrusted input before `split` and `select` the fields they need; the memory of the paragraph cut does not grow with a newline run. A cap option may be considered later.
 - Invalidation triggers: a user need for overlap or token-sized chunks; a portable tokenizer.
 
 ## Amendments at G2 (Slice 4 plan, 2026-11-21)
@@ -41,7 +42,7 @@ Decisions the design left open, each recorded in the Slice 4 plan as S4-1 to S4-
 - **A string-valued parent that already has `into` raises `input.field_conflict`,
   even when its text is empty; a record passed through (its field is not a
   string) is never checked** (S4-3).
-- **`split` is attributed exactly under `trace`** (S4-4). Found while planning: the
+- **`split` is attributed exactly under `trace`, per distinct id value** (S4-4; the limits are in the ADR-008 amendment). Found while planning: the
   Slice 3 rule (`lost = max(0, unidentified_out - unidentified_in)`) read the
   id-less chunks of an expanded id-less record as ids lost by survivors and hid a
   real drop (ADR-008). `split` never removes an id, so it declares `keeps_ids`

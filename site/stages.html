@@ -45,9 +45,11 @@
 
 <main class="page">
 <h1>Stage reference</h1>
-<p class="lead">Every stage: <code>(records, **params) → records</code> over
+<p class="lead">Every record stage: <code>(records, **params) → records</code> over
 plain <code>list[dict]</code>, deterministic, non-mutating, auto-traced when
-a <code>trace()</code> is active. Contract, not implementation — inputs,
+a <code>trace()</code> is active. The entry and exit points
+<code>as_records</code> (payload → records) and <code>join</code>
+(records → string) are not that shape. Contract, not implementation — inputs,
 outputs, and the invariants held.</p>
 
 <h2 id="select">select(records, fields)</h2>
@@ -218,7 +220,10 @@ input in every mode: a non-list raises <code>input.not_list</code>, a
 non-mapping item <code>input.not_mapping</code>. It is auto-traced and keeps
 every id, so under <code>trace(id_field=...)</code> an empty-text record that
 vanishes is reported as dropped and a chunk dropped later is reported under its
-parent's id. <code>rank</code> reorders chunks by score: to restore reading
+parent's id. That is exact per distinct id value: with duplicate ids a record
+that vanished can be hidden by a sibling's chunks of the same id, and an
+<code>id_field</code> that is the split <code>field</code> itself is rewritten by
+the split, so a parent cut into several chunks is reported dropped. <code>rank</code> reorders chunks by score: to restore reading
 order before <code>join</code>, rank again on the offset with a named key
 function (<code>by=lambda r: r["chunk"]["start"], desc=False</code>).
 Overlapping windows and token-sized chunks are not offered.</p>
@@ -286,7 +291,7 @@ for humans and may differ between the Python, TypeScript and C# ports.</p>
   <tr><td><code>config.contradictory</code></td><td><code>replace_patterns=True</code> without <code>patterns</code>, or <code>size</code> given to <code>split</code> with a <code>by</code> other than <code>"size"</code></td></tr>
   <tr><td><code>config.invalid_pattern</code></td><td>a pattern fails to compile; the message names the pattern</td></tr>
   <tr><td><code>input.not_list</code></td><td>(strict) records are not a list; <code>split</code>, <code>join</code> and <code>as_records</code> raise it in every mode</td></tr>
-  <tr><td><code>input.not_mapping</code></td><td>(strict) an item is not a mapping; the message names the stage and index. <code>quarantine</code> always raises it, strict or not, because a screen that skips what it cannot read would keep the attack</td></tr>
+  <tr><td><code>input.not_mapping</code></td><td>(strict) an item is not a mapping; the message names the stage and index. <code>quarantine</code> always raises it, strict or not, because a screen that skips what it cannot read would keep the attack; <code>split</code> and <code>join</code> raise it in every mode</td></tr>
   <tr><td><code>input.field_conflict</code></td><td>an output field already exists: the <code>quarantine</code> flag <code>into</code> (always raised), or the <code>split</code> <code>into</code> when the record's text is a string — raised because continuing would destroy data</td></tr>
 </table>
 </div>

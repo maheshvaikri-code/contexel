@@ -143,6 +143,12 @@ non-string, non-`byte[]`, non-set, non-dictionary `IEnumerable`); `null`, `byte[
 a set or any other dictionary type throws `input.not_list`. `size` is an `int?`,
 so the `size` errors that need a non-integer (a fraction, a bool) are reachable
 only through the shared vectors, not through this signature.
+`Split` has no cap: it makes one record per boundary, each a copy of its parent,
+so a 1,000,000-character text cut into one-character chunks retains roughly
+540 MB here (measured on a development machine), and every chunk carries the
+parent's other fields into `Trace` and `TrimToBudget`. Cap untrusted text and
+keep only the fields you need (`Select`) before `Split`; the main README's
+payload section has the measurements.
 
 `Rank` reorders the chunks by score. To restore reading order before `Join`, rank
 again on the offset with a key function, as the example does (`desc: false`).

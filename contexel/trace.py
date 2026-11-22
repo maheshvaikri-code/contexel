@@ -128,8 +128,9 @@ def trace(id_field: Optional[str] = None) -> _TraceContext:
     directions for a black-box stage that adds or removes id-less records (see
     the CHANGELOG).
     A stage that never removes the id field can declare it with
-    ``traced(keeps_ids=True)`` and is then attributed exactly (``split``, which
-    turns one record into several, does).
+    ``traced(keeps_ids=True)`` and is then attributed exactly per distinct id
+    value (``split``, which turns one record into several, does; the limits
+    are under :func:`traced`).
     Example::
 
         with trace(id_field="url") as t:
@@ -153,9 +154,15 @@ def traced(fn: Optional[Callable] = None, *, keeps_ids: bool = False) -> Any:
 
     ``keeps_ids=True`` declares that the stage never removes the id field from a
     record it keeps (it may still emit several records for one input, as
-    :func:`contexel.split` does). Attribution is then exact: every input id
-    with no surviving record is reported dropped, and the id-less-record
-    allowance described under :func:`trace` is not applied. Use it as
+    :func:`contexel.split` does). Attribution is then exact per distinct id
+    value: every input id with no surviving record is reported dropped, and the
+    id-less-record allowance described under :func:`trace` is not applied. Two
+    limits: ids are counted by value, so with duplicate input ids a record that
+    vanished can be hidden by a sibling's records of the same id (``split`` of
+    an empty-text record next to a two-line record with the same id reports
+    nothing dropped); and a stage that rewrites the id field itself (``split``
+    when ``id_field`` is its ``field``) changes the id value, so a parent cut
+    into several chunks is reported dropped (the safe side). Use it as
     ``@traced(keeps_ids=True)``; plain ``@traced`` is unchanged.
     """
 
@@ -210,7 +217,9 @@ def _traced(fn: Callable, keeps_ids: bool) -> Callable:
             # id-less records it was given can be that, so at most ``lost``
             # unmatched ids are explained away; every other one is reported
             # dropped. (Black-box stages leave which ones ambiguous: the first
-            # ``lost`` in input order are the ones absorbed.)
+            # ``lost`` in input order are the ones absorbed.) A keeps_ids stage
+            # gets no allowance; its attribution is exact per distinct id value
+            # only, since ``remaining`` counts survivors by value.
             lost = 0 if keeps_ids else max(0, unidentified_out - unidentified_in)
             dropped = unmatched[lost:]
         tr._add(getattr(fn, "__name__", "stage"),

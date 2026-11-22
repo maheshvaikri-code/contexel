@@ -66,8 +66,12 @@ the records it keeps (a `select` without it), the trace explains away only as
 many missing ids as the stage produced extra id-less records and reports the
 rest as dropped, so keep the id field in every `select` for exact attribution.
 `split` keeps every id (each chunk carries its parent's fields), so it is attributed
-exactly: an empty-text record that vanishes is reported, a chunk dropped later is
-reported under its parent's id.
+exactly per distinct id value: an empty-text record that vanishes is reported, a
+chunk dropped later is reported under its parent's id. Two limits: ids are counted
+by value, so with duplicate ids a record that vanished can be hidden by a sibling's
+chunks of the same id; and an `id_field` that is the split `field` itself is
+rewritten by the split, so a parent cut into several chunks is reported dropped
+(the safe side).
 
 All of it is stdlib-only Python. No embeddings, no model calls, no
 dependencies — which is what makes the determinism claim checkable: the
@@ -319,6 +323,19 @@ print(repr(join(in_order)))
 Overlapping windows and token-sized chunks are not offered: they either break
 losslessness or need a tokenizer every language shares.
 
+**Limits.** `split` has no cap: it makes one record per boundary, and each chunk
+is a copy of its parent record. Measured on a development machine (orders of
+magnitude, not guarantees): at one chunk per input character, a 1,000,000-character
+text retains roughly 440 MB in Python, 140 MB in TypeScript and 540 MB in C#, and
+time is linear (about 0.4 to 2 seconds per million chunks). Every chunk carries the
+parent's other fields, so anything that prices or serializes each chunk in full (a
+`trace`, `trim_to_budget`) costs about the number of chunks times the size of those
+fields: with a 50,000-character side field and 4,000 chunks a traced `split` took
+about 0.6 to 2 seconds, and the cost grows with both. When the text is untrusted,
+cap its size before `split`, and keep only the fields you need (`select`) before
+it. The memory of the paragraph cut does not grow with the length of a newline
+run. A cap option may be considered later.
+
 ### Errors and strict mode
 
 A control must never be weaker than it looks, so misconfiguration always
@@ -557,7 +574,8 @@ the composed contract pipeline, the audit record, canonical serialization,
 token counts, and a growing block of adversarial edge cases must match or
 the build is red, on Linux, Windows, and macOS.
 
-What carries over exactly: all eight stages plus `merge`,
+What carries over exactly: all eight record stages, `merge` and the
+payload stages `as_records`, `split` and `join`,
 pipeline composition with policy fingerprints, `shaped` (async tools are
 awaited, then shaped), `trace`/`audit`, code-point token counting
 (`"café"` costs the same everywhere), and scoped per-tenant token

@@ -59,11 +59,16 @@ A pipeline containing none of these keeps its current fingerprint. In trace, onl
   record it keeps can declare it, and `lost` is then 0: every input id with no surviving record is reported dropped.
   Only `split` declares it, because it turns one record into several: an id-less
   parent's extra chunks would otherwise be read as ids lost by survivors and hide a
-  real drop. All other stages keep the rule above. The declaration is an option of the
-  trace wrapper and public only in Python (`contexel.trace.traced(keeps_ids=True)`); in
-  TypeScript (`traced(name, fn, { keepsIds: true })`, not exported from the package
-  index) and C# (`Trace.Traced(..., keepsIds: true)`, `internal`) it is internal and
-  used by `split`.
+  real drop. All other stages keep the rule above. The attribution is exact per
+  distinct id value only: ids are counted by value, so with duplicate input ids a
+  record that vanished can be hidden by a sibling's chunks of the same id, and an
+  `id_field` that is the split `field` itself is rewritten by the split, so a parent
+  cut into several chunks is reported dropped (the safe side). The declaration is an
+  option of the trace wrapper: importable in Python as
+  `contexel.trace.traced(keeps_ids=True)` but not part of the documented API (not in
+  `contexel.__all__`, the README or the site); internal in TypeScript
+  (`traced(name, fn, { keepsIds: true })`, not exported from the package index) and
+  C# (`Trace.Traced(..., keepsIds: true)`, `internal`). Only `split` uses it.
 
 ## Alternatives considered
 | Option | Pros | Cons | Why not |
