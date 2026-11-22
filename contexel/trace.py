@@ -127,6 +127,9 @@ def trace(id_field: Optional[str] = None) -> _TraceContext:
     reported in ``dropped_ids``. The count is an approximation in both
     directions for a black-box stage that adds or removes id-less records (see
     the CHANGELOG).
+    A stage that never removes the id field can declare it with
+    ``traced(keeps_ids=True)`` and is then attributed exactly (``split``, which
+    turns one record into several, does).
     Example::
 
         with trace(id_field="url") as t:
@@ -145,9 +148,24 @@ def current_trace() -> Optional[Trace]:
     return _current.get()
 
 
-def traced(fn: Callable) -> Callable:
-    """Decorator: auto-record a stage's effect when a trace is active; zero cost otherwise."""
+def traced(fn: Optional[Callable] = None, *, keeps_ids: bool = False) -> Any:
+    """Decorator: auto-record a stage's effect when a trace is active; zero cost otherwise.
 
+    ``keeps_ids=True`` declares that the stage never removes the id field from a
+    record it keeps (it may still emit several records for one input, as
+    :func:`contexel.split` does). Attribution is then exact: every input id
+    with no surviving record is reported dropped, and the id-less-record
+    allowance described under :func:`trace` is not applied. Use it as
+    ``@traced(keeps_ids=True)``; plain ``@traced`` is unchanged.
+    """
+
+    def decorate(fn: Callable) -> Callable:
+        return _traced(fn, keeps_ids)
+
+    return decorate if fn is None else decorate(fn)
+
+
+def _traced(fn: Callable, keeps_ids: bool) -> Callable:
     @functools.wraps(fn)
     def wrapper(records, *args: Any, **kwargs: Any):
         tr = _current.get()
@@ -193,7 +211,7 @@ def traced(fn: Callable) -> Callable:
             # unmatched ids are explained away; every other one is reported
             # dropped. (Black-box stages leave which ones ambiguous: the first
             # ``lost`` in input order are the ones absorbed.)
-            lost = max(0, unidentified_out - unidentified_in)
+            lost = 0 if keeps_ids else max(0, unidentified_out - unidentified_in)
             dropped = unmatched[lost:]
         tr._add(getattr(fn, "__name__", "stage"),
                 before_n, len(out), before_tok, tokens.count(out), dropped)

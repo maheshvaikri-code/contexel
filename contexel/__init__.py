@@ -19,6 +19,7 @@ from .stages import (
     trim_to_budget,
     truncate_field,
 )
+from .text import as_records, join, split
 from .trace import Trace, trace
 from .validate import strict
 
@@ -38,6 +39,9 @@ __all__ = [
     "truncate_field",
     "trim_to_budget",
     "merge",
+    "as_records",
+    "split",
+    "join",
     "pipeline",
     "stage",
     "shaped",

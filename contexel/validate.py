@@ -90,7 +90,8 @@ def check_stage_output(out: Any, stage: str, index: int) -> None:
 NeedsMapping = Union[bool, Callable[[Dict[str, Any]], bool]]
 
 
-def checked(mapping: NeedsMapping = False) -> Callable[[Callable], Callable]:
+def checked(mapping: NeedsMapping = False,
+            always: bool = False) -> Callable[[Callable], Callable]:
     """Decorator for a record stage: in strict mode, validate its input before
     the stage (and ``traced``) touches it.
 
@@ -99,7 +100,9 @@ def checked(mapping: NeedsMapping = False) -> Callable[[Callable], Callable]:
     typed one. ``mapping`` is ``True`` when the stage always indexes items as
     mappings, or a callable taking the bound arguments (``{"key": ...}``) for
     stages that only sometimes need one (``dedupe`` with a ``key``, ``rank``
-    with a field name).
+    with a field name). ``always=True`` validates in every mode, not only in
+    strict mode: the payload stages (:mod:`contexel.text`) are new, so they have
+    no lenient behavior to stay compatible with.
     """
 
     def decorate(fn: Callable) -> Callable:
@@ -107,7 +110,7 @@ def checked(mapping: NeedsMapping = False) -> Callable[[Callable], Callable]:
 
         @functools.wraps(fn)
         def wrapper(records: Any, *args: Any, **kwargs: Any) -> Any:
-            if _strict.get():
+            if always or _strict.get():
                 need = mapping
                 if callable(mapping):
                     try:
