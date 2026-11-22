@@ -103,11 +103,21 @@ function idKey(value: unknown): unknown {
   return value;
 }
 
-/** Wrap a stage so an active trace records its effect (incl. dropped ids). */
+/**
+ * Wrap a stage so an active trace records its effect (incl. dropped ids).
+ *
+ * `keepsIds: true` declares that the stage never removes the id field from a
+ * record it keeps (it may still emit several records for one input, as `split`
+ * does). Attribution is then exact: every input id with no surviving record is
+ * reported dropped, and the id-less-record allowance described under `trace` is
+ * not applied. The default is unchanged.
+ */
 export function traced<A extends unknown[]>(
   name: string,
-  fn: (records: Rec[], ...args: A) => Rec[]
+  fn: (records: Rec[], ...args: A) => Rec[],
+  options: { keepsIds?: boolean } = {}
 ): (records: Rec[], ...args: A) => Rec[] {
+  const keepsIds = options.keepsIds === true;
   return (records: Rec[], ...args: A): Rec[] => {
     const tr = currentTrace();
     if (!tr) return fn(records, ...args);
@@ -145,7 +155,7 @@ export function traced<A extends unknown[]>(
       // records it was given can be that, so at most `lost` unmatched ids are
       // explained away; every other one is reported dropped (the first `lost`
       // in input order are the ones absorbed).
-      const lost = Math.max(0, unidentifiedOut - unidentifiedIn);
+      const lost = keepsIds ? 0 : Math.max(0, unidentifiedOut - unidentifiedIn);
       dropped = unmatched.slice(lost);
     }
     tr.entries.push({

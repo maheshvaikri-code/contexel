@@ -36,16 +36,20 @@
     <a href="#rescore">rescore</a><a href="#rank">rank</a>
     <a href="#truncate_field">truncate_field</a>
     <a href="#trim_to_budget">trim_to_budget</a>
-    <a href="#merge">merge</a><a href="#compose">pipeline · shaped · trace</a>
+    <a href="#merge">merge</a><a href="#as_records">as_records</a>
+    <a href="#split">split</a><a href="#join">join</a>
+    <a href="#compose">pipeline · shaped · trace</a>
     <a href="#errors">errors · strict mode</a>
   </div>
 </nav>
 
 <main class="page">
 <h1>Stage reference</h1>
-<p class="lead">Every stage: <code>(records, **params) → records</code> over
+<p class="lead">Every record stage: <code>(records, **params) → records</code> over
 plain <code>list[dict]</code>, deterministic, non-mutating, auto-traced when
-a <code>trace()</code> is active. Contract, not implementation — inputs,
+a <code>trace()</code> is active. The entry and exit points
+<code>as_records</code> (payload → records) and <code>join</code>
+(records → string) are not that shape. Contract, not implementation — inputs,
 outputs, and the invariants held.</p>
 
 <h2 id="select">select(records, fields)</h2>
@@ -177,6 +181,64 @@ transform — the one stage that is not auto-traced.</p>
 <pre><code>merge(web, docs, schema={"title": ["title", "name", "headline"],
                          "url":   ["url", "link", "href"]})</code></pre>
 
+<h2 id="as_records">as_records(x, field="text")</h2>
+<p><strong>Turns</strong> a payload into records, the shape every other stage
+takes, so a log, a web page or a plain string can go through
+<code>dedupe</code>, <code>rescore</code>, <code>rank</code> and
+<code>trim_to_budget</code>. A string becomes <code>[{field: x}]</code>; a
+mapping becomes <code>[x]</code> (the same object); a list keeps each mapping
+item and wraps every other item as <code>{field: item}</code> (nested JSON
+values are fine). <code>None</code>, bytes and every other type raise
+<code>input.not_list</code>, and <code>field</code> must be a non-empty string.
+An entry point, like <code>merge</code>: call it outside
+<code>pipeline</code>; it is not auto-traced and it checks its input in every
+mode, not only in strict mode.</p>
+
+<h2 id="split">split(records, field="text", by="lines", size=None, into="chunk")</h2>
+<p><strong>Cuts</strong> the text in <code>field</code> into chunk records. A
+chunk is a copy of its parent record with the text replaced and
+<code>{"index", "start", "end"}</code> stored under <code>into</code>:
+<code>index</code> counts from 0 within the parent and <code>[start, end)</code>
+are code-point offsets, so <code>text[start:end]</code> is the chunk. Every
+chunk keeps its trailing separator, so joining the chunks with
+<code>""</code> returns the text exactly.</p>
+<ul>
+  <li><code>by="lines"</code>: a chunk ends after each <code>\n</code>
+  (<code>\r\n</code> is one boundary, a lone <code>\r</code> is none, and
+  Python's wider <code>splitlines</code> set is not used).</li>
+  <li><code>by="paragraphs"</code>: after each run of two or more newlines,
+  <code>(?:\r?\n){2,}</code>.</li>
+  <li><code>by="size"</code>: every <code>size</code> code points;
+  <code>size</code> is a required positive integer here and an error with any
+  other mode (<code>config.contradictory</code>).</li>
+</ul>
+<p>The boundaries are the same in Python, TypeScript and C#. A record whose
+field is not a string passes through; an empty text produces no chunks, so that
+record disappears; a record whose text is a string and that already has the
+<code>into</code> key raises <code>input.field_conflict</code>. Unlike the original stages it checks its
+input in every mode: a non-list raises <code>input.not_list</code>, a
+non-mapping item <code>input.not_mapping</code>. It is auto-traced and keeps
+every id, so under <code>trace(id_field=...)</code> an empty-text record that
+vanishes is reported as dropped and a chunk dropped later is reported under its
+parent's id. That is exact per distinct id value: with duplicate ids a record
+that vanished can be hidden by a sibling's chunks of the same id, and an
+<code>id_field</code> that is the split <code>field</code> itself is rewritten by
+the split, so a parent cut into several chunks is reported dropped. <code>rank</code> reorders chunks by score: to restore reading
+order before <code>join</code>, rank again on the offset with a named key
+function (<code>by=lambda r: r["chunk"]["start"], desc=False</code>).
+Overlapping windows and token-sized chunks are not offered.</p>
+<pre><code>chunks = split(as_records(log), by="lines")
+text = join(chunks)                  # == log, byte for byte</code></pre>
+
+<h2 id="join">join(records, field="text", sep="")</h2>
+<p><strong>Turns</strong> records back into one string. A record without
+<code>field</code> is skipped; a string value is used as it is; any other value
+is rendered the way the token budget priced it
+(<code>tokens.serialize</code>); the parts are joined with <code>sep</code>.
+An exit point, like <code>merge</code>: call it outside <code>pipeline</code>
+(a strict pipeline rejects a stage that returns a string, naming it); it is not
+auto-traced and it checks its input in every mode.</p>
+
 <h2 id="compose">pipeline · stage · shaped · trace · tokens</h2>
 <ul>
   <li><code>pipeline([...])</code> — plain left-to-right function
@@ -226,11 +288,11 @@ for humans and may differ between the Python, TypeScript and C# ports.</p>
   <tr><th>code</th><th>raised when</th></tr>
   <tr><td><code>config.invalid_value</code></td><td>an unsupported option value or a wrong-typed parameter (<code>match</code>, <code>action</code>, <code>by</code>, a negative or non-integer <code>max_tokens</code>)</td></tr>
   <tr><td><code>config.empty</code></td><td>the call would silently do nothing or everything: an empty pattern fragment, an empty replacement list, <code>fields=[]</code> for <code>quarantine</code> and <code>rescore</code></td></tr>
-  <tr><td><code>config.contradictory</code></td><td><code>replace_patterns=True</code> without <code>patterns</code></td></tr>
+  <tr><td><code>config.contradictory</code></td><td><code>replace_patterns=True</code> without <code>patterns</code>, or <code>size</code> given to <code>split</code> with a <code>by</code> other than <code>"size"</code></td></tr>
   <tr><td><code>config.invalid_pattern</code></td><td>a pattern fails to compile; the message names the pattern</td></tr>
-  <tr><td><code>input.not_list</code></td><td>(strict) records are not a list</td></tr>
-  <tr><td><code>input.not_mapping</code></td><td>(strict) an item is not a mapping; the message names the stage and index. <code>quarantine</code> always raises it, strict or not, because a screen that skips what it cannot read would keep the attack</td></tr>
-  <tr><td><code>input.field_conflict</code></td><td>an output field already exists (<code>quarantine</code> flag <code>into</code>) — always raised, because continuing would destroy data</td></tr>
+  <tr><td><code>input.not_list</code></td><td>(strict) records are not a list; <code>split</code>, <code>join</code> and <code>as_records</code> raise it in every mode</td></tr>
+  <tr><td><code>input.not_mapping</code></td><td>(strict) an item is not a mapping; the message names the stage and index. <code>quarantine</code> always raises it, strict or not, because a screen that skips what it cannot read would keep the attack; <code>split</code> and <code>join</code> raise it in every mode</td></tr>
+  <tr><td><code>input.field_conflict</code></td><td>an output field already exists: the <code>quarantine</code> flag <code>into</code> (always raised), or the <code>split</code> <code>into</code> when the record's text is a string — raised because continuing would destroy data</td></tr>
 </table>
 </div>
 <p><code>ConfigError</code> is also a <code>ValueError</code> and
@@ -246,7 +308,7 @@ a stage keeps its lenient behavior, so valid input is byte-identical to
 before, but <code>input.field_conflict</code> and <code>quarantine</code>'s
 <code>input.not_mapping</code> are raised whether or not strict mode is on.
 Strict mode covers the eight record stages and the pipeline or
-<code>shaped</code> output check, not <code>merge</code>.</p>
+<code>shaped</code> output check, not <code>merge</code>; the payload stages (<code>as_records</code>, <code>split</code>, <code>join</code>) are new and check their input in every mode.</p>
 <pre><code>with contexel.strict():                         # ambient, this context only
     select(records, ["a"])                      # InputShapeError names stage + item
 

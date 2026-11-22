@@ -45,6 +45,9 @@ never mutates its input, and composes with the others:
 | `allowlist(records, field, allowed)` | provenance gate — refuse unapproved sources | keeps records whose `field` value is in the allowed set; missing or unhashable values are dropped (fail closed); apply *before* any relevance logic |
 | `quarantine(records, fields=...)` | tripwire for literal injection markers | case-insensitive pattern screen ("ignore previous instructions", role resets, system tags); `drop` or `flag` — not a security boundary: paraphrase passes, provenance gating is the stronger control |
 | `merge(*sources, schema=...)` | unify differently-shaped tool outputs | maps candidate field names onto one schema, first match wins; optional cross-source dedupe |
+| `as_records(x, field="text")` | turn a string, a mapping or a list into records | entry point (outside `pipeline`): a string becomes `[{field: x}]`, a mapping `[x]`, a list keeps its mappings and wraps every other item; `None` and bytes raise `input.not_list` |
+| `split(records, field="text", by="lines")` | cut text into chunk records | by lines (after each `\n`), paragraphs (after a run of two or more newlines) or `size` code points; every chunk keeps its separator and an `{index, start, end}` offset, so joining the chunks rebuilds the text exactly |
+| `join(records, field="text", sep="")` | turn records back into one string | exit point (outside `pipeline`): strings as they are, anything else rendered the way the budget priced it; records without the field are skipped |
 
 Compose them with `pipeline([...])` — plain function composition, any
 `records -> records` callable is a valid stage — or attach a pipeline to a
@@ -62,6 +65,13 @@ record that never had the id field is untracked; if a stage strips the id from
 the records it keeps (a `select` without it), the trace explains away only as
 many missing ids as the stage produced extra id-less records and reports the
 rest as dropped, so keep the id field in every `select` for exact attribution.
+`split` keeps every id (each chunk carries its parent's fields), so it is attributed
+exactly per distinct id value: an empty-text record that vanishes is reported, a
+chunk dropped later is reported under its parent's id. Two limits: ids are counted
+by value, so with duplicate ids a record that vanished can be hidden by a sibling's
+chunks of the same id; and an `id_field` that is the split `field` itself is
+rewritten by the split, so a parent cut into several chunks is reported dropped
+(the safe side).
 
 All of it is stdlib-only Python. No embeddings, no model calls, no
 dependencies — which is what makes the determinism claim checkable: the
@@ -237,6 +247,95 @@ axes can be overridden per task with `tokens.scoped(...)` — a context-local
 overlay that never touches other tasks (bare threads start fresh and fall
 back to the process default).
 
+### Text, logs and web pages
+
+Stages take a list of mappings, and a log, a web page or a plain string is
+none of that. Three small stages convert at the edges: `as_records` turns a
+string (or one mapping, or a list) into records, `split` cuts the text of each
+record into chunk records, and `join` turns records back into one string.
+Everything in between is an ordinary stage. Call `as_records` and `join`
+outside `pipeline`, as you call `merge`: a pipeline hands every stage a list,
+and a strict pipeline rejects `join`'s string, naming the stage.
+
+```python
+from contexel import (as_records, dedupe, join, pipeline, rank, rescore,
+                      split, stage, trim_to_budget)
+
+log = "INFO started\nWARN retry limit reached\nINFO ok\nINFO ok\nERROR timeout after retry\n"
+
+pipe = pipeline([
+    stage(split, by="lines"),                              # one record per line
+    stage(dedupe, key="text"),                             # the repeated "INFO ok" goes
+    stage(rescore, query="retry timeout", fields=["text"]),
+    stage(rank, by="score"),
+    stage(trim_to_budget, max_tokens=60),
+])
+best = pipe(as_records(log))
+print(join(best), end="")
+print([c["chunk"]["start"] for c in best])                 # offsets into the log
+```
+
+```text
+ERROR timeout after retry
+WARN retry limit reached
+[54, 13]
+```
+
+The cuts are the same in Python, TypeScript and C#:
+
+| `by` | a chunk ends |
+|---|---|
+| `"lines"` (default) | after each `\n`: `\r\n` is one boundary and a lone `\r` is none (Python's wider `splitlines` set is not used) |
+| `"paragraphs"` | after each run of two or more newlines, `(?:\r?\n){2,}` |
+| `"size"` | every `size` code points (`size` is a required positive integer, and only valid with this mode) |
+
+- Every chunk keeps its trailing separator, so `join(split(as_records(text)))`
+  returns `text` exactly. Each chunk is a copy of its parent record with the
+  text replaced and `{"index", "start", "end"}` stored under `into` (default
+  `"chunk"`): `text[start:end]` is the chunk, and offsets and sizes count code
+  points in every language.
+- A record whose text field is not a string passes through untouched; an empty
+  text produces no chunks, so that record disappears; a record whose text is a
+  string and that already has the `into` key raises `input.field_conflict`.
+- These stages check their input in every mode, not only in strict mode: a
+  non-list raises `input.not_list` and a non-mapping item `input.not_mapping`.
+- `join` renders a value that is not a string the way the token budget priced it
+  (`tokens.serialize`) and skips records that lack the field.
+- `rank` reorders the chunks by score. To restore reading order before `join`,
+  rank again on the offset with a named key function (a dotted path such as
+  `"chunk.start"` is not supported):
+
+```python
+from contexel import as_records, join, rank, split
+
+chunks = split(as_records("one\ntwo\nthree\n"), by="lines")
+by_length = rank(chunks, by=lambda r: len(r["text"]))
+in_order = rank(by_length, by=lambda r: r["chunk"]["start"], desc=False)
+print(repr(join(by_length)))
+print(repr(join(in_order)))
+```
+
+```text
+'three\none\ntwo\n'
+'one\ntwo\nthree\n'
+```
+
+Overlapping windows and token-sized chunks are not offered: they either break
+losslessness or need a tokenizer every language shares.
+
+**Limits.** `split` has no cap: it makes one record per boundary, and each chunk
+is a copy of its parent record. Measured on a development machine (orders of
+magnitude, not guarantees): at one chunk per input character, a 1,000,000-character
+text retains roughly 440 MB in Python, 140 MB in TypeScript and 540 MB in C#, and
+time is linear (about 0.4 to 2 seconds per million chunks). Every chunk carries the
+parent's other fields, so anything that prices or serializes each chunk in full (a
+`trace`, `trim_to_budget`) costs about the number of chunks times the size of those
+fields: with a 50,000-character side field and 4,000 chunks a traced `split` took
+about 0.6 to 2 seconds, and the cost grows with both. When the text is untrusted,
+cap its size before `split`, and keep only the fields you need (`select`) before
+it. The memory of the paragraph cut does not grow with the length of a newline
+run. A cap option may be considered later.
+
 ### Errors and strict mode
 
 A control must never be weaker than it looks, so misconfiguration always
@@ -315,6 +414,9 @@ which still accepts anything iterable (`merge("ab")` returns `['a', 'b']`, stric
 or not). A tuple is accepted wherever a list is. `fields=[]` raises
 `config.empty` for `quarantine` and `rescore` only; `select(records, [])` still
 returns `[{}, ...]`.
+
+The payload stages (`as_records`, `split`, `join`) are new, so they check their input
+in every mode instead of only in strict mode (see [Text, logs and web pages](#text-logs-and-web-pages)).
 
 A `strict()` object keeps its own token stack, so one object can be entered
 again, nested or one use after another, and each exit restores the previous
@@ -472,7 +574,8 @@ the composed contract pipeline, the audit record, canonical serialization,
 token counts, and a growing block of adversarial edge cases must match or
 the build is red, on Linux, Windows, and macOS.
 
-What carries over exactly: all eight stages plus `merge`,
+What carries over exactly: all eight record stages, `merge` and the
+payload stages `as_records`, `split` and `join`,
 pipeline composition with policy fingerprints, `shaped` (async tools are
 awaited, then shaped), `trace`/`audit`, code-point token counting
 (`"café"` costs the same everywhere), and scoped per-tenant token

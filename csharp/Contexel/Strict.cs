@@ -45,10 +45,14 @@ public static class Strict
 
     /// <summary>In strict mode only: records must be non-null and, when
     /// <paramref name="mapping"/>, every item non-null. Called BEFORE
-    /// <c>Trace.Traced</c>, which reads <c>records.Count</c> first.</summary>
-    internal static void CheckRecords<T>(List<T>? records, string stage, bool mapping)
+    /// <c>Trace.Traced</c>, which reads <c>records.Count</c> first.
+    /// <paramref name="always"/> validates in every mode, not only in strict
+    /// mode: the payload stages (<see cref="Text"/>) are new, so they have no
+    /// lenient behavior to stay compatible with.</summary>
+    internal static void CheckRecords<T>(List<T>? records, string stage, bool mapping,
+                                         bool always = false)
     {
-        if (!Flag.Value) return;
+        if (!always && !Flag.Value) return;
         if (records is null)
             throw new InputShapeException("input.not_list",
                 $"{stage}: records must be a list, got null", stage);

@@ -64,6 +64,34 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   2.x cannot target Python 3.9, so it checks against 3.10 and the Python 3.9
   test legs prove the runtime.
 
+### Added — payload stages (ADR-005, all three languages)
+- `as_records`, `split` and `join` (TypeScript `asRecords`, `split`, `join`; C#
+  `Text.AsRecords`, `Text.Split`, `Text.Join`) carry a log, a web page or a plain
+  string through every existing stage and back. `as_records` turns a string, a
+  mapping or a list into records; `split` cuts the text of each record into chunk
+  records by lines, paragraphs or code points, keeping the trailing separator,
+  the parent's fields and an `{index, start, end}` offset, so joining the chunks
+  rebuilds the text byte for byte; `join` turns records back into one string.
+  The boundaries are the same in all three languages: a line ends after `\n`
+  only, a paragraph after a run of two or more newlines, and offsets and sizes
+  count code points.
+- They are new, so they check their input in every mode, not only in strict
+  mode: a non-list raises `input.not_list`, a non-mapping item
+  `input.not_mapping`, and a record whose text is a string and that already has the `into` key
+  raises `input.field_conflict`. `as_records` and `join` are the entry and exit
+  points: call them outside `pipeline` (a strict pipeline rejects a stage that
+  returns a string, naming it); `split` is an ordinary traced stage.
+- Under `trace(id_field=...)`, `split` is attributed exactly per distinct id
+  value (two limits are under Known limitations): it keeps every id,
+  so an empty-text record that vanishes is reported as dropped even beside
+  id-less records that `split` expanded. (Without this the id-less allowance of
+  Behavior change 8 would have hidden that drop.) The shared vectors pin it in
+  all three languages.
+- The shared vectors gain `as_records`, `join` and `text_pipeline` cases and
+  accept `split` as a stage: 51 new cases (130 in all), among them raw log text
+  through `as_records`, `split`, `dedupe`, `rescore`, `rank`, `trim_to_budget`
+  and `join`, identical in all three languages and inside its token budget.
+
 ### Behavior changes
 Valid input with strict mode off keeps byte-identical output; these are the
 exceptions, all intentional:
@@ -380,6 +408,44 @@ same obfuscations.
   and the first line-start `__version__` of `contexel/__init__.py`; a
   commented-out `<Version>` or a `<PackageVersion>`/`<VersionPrefix>` override
   is not detected (none exist today).
+- Payload stages: the chunks of one parent share its id, so under
+  `trace(id_field=...)` a chunk dropped by a later stage is reported under its
+  parent's id and one stage's `dropped_ids` can list the same id more than once.
+  `rank` reorders chunks by score; restoring reading order needs a key function
+  over `chunk.start` (a dotted `rank` path is not supported). There are no
+  overlapping windows and no token-sized chunks: they break losslessness or need
+  a tokenizer all three languages share.
+- Payload stages, per language: a "mapping" is a `Mapping` in Python, a plain
+  object in TypeScript (a `Map`, `Set`, `Date`, typed array or class instance
+  is `input.not_list` for `as_records`) and a `Dictionary<string, object?>` in
+  C#; TypeScript has one number type, so it accepts `size: 2.0` as 2 where
+  Python rejects the float; a lone surrogate counts as one code point in every
+  language but lies outside the parity vectors.
+- Payload stages, trace: `split` is attributed exactly per distinct id value
+  only. Ids are counted by value, so with duplicate input ids a record that
+  vanished can be hidden by a sibling's chunks of the same id (an empty-text
+  record next to a two-line record with the same id reports nothing dropped);
+  and an `id_field` that is the split `field` itself is rewritten by the split,
+  so a parent cut into several chunks is reported dropped (the safe side).
+- Payload stages, resources (measured on a development machine; orders of
+  magnitude, not guarantees): `split` has no cap and makes one record per
+  boundary. At one chunk per input character a 1,000,000-character text retains
+  roughly 440 MB in Python, 140 MB in TypeScript and 540 MB in C#, and time is
+  linear (about 0.4 to 2 seconds per million chunks). Each chunk is a copy of its
+  parent record, so anything that prices or serializes each chunk in full (a
+  `trace`, `trim_to_budget`) costs about the number of chunks times the size of
+  the parent's other fields: with a 50,000-character side field and 4,000 chunks
+  a traced `split` took about 0.6 to 2 seconds, and the cost grows with both.
+  Cap the input size before `split` when the text is untrusted, and keep only
+  the fields you need (`select`) before it. The memory of the Python paragraph
+  cut no longer grows with the length of a newline run (it used a backtracking
+  regex earlier in this slice). A cap option may be considered later.
+- TypeScript `split` and `join` check their items as every TypeScript stage
+  does: any object that is not an array counts as a record and is read through
+  its own properties, so a `Map` or `Date` item makes `split` pass it through
+  untouched and `join` skip it, while `asRecords` accepts only plain objects as
+  the whole input (a `Map` there raises `input.not_list`). Typed callers are
+  protected by the type system.
 
 ### Tests
 C# tests that asserted the exact exception type

@@ -15,8 +15,11 @@ case inside strict mode. Error cases use only values every port can express:
 C# is statically typed, so a wrong-typed argument (``max_tokens=None``) is a
 per-language test, not a shared case.
 
-Kinds: the eight record stages, ``merge`` (input = list of sources),
-``pipeline`` / ``shaped`` (args.stages = [{"stage", "args"}, ...]), and
+Kinds: the eight record stages and ``split``, ``merge`` (input = list of sources),
+``as_records`` (input = any JSON payload) and ``join`` (input = records; expect =
+the joined string), ``text_pipeline`` (input = a payload; args.stages + optional
+args.field / args.sep; ``as_records`` -> the stages -> ``join``, the shape of
+brief AC 15), ``pipeline`` / ``shaped`` (args.stages = [{"stage", "args"}, ...]), and
 ``trace_report`` (args.stages + optional args.id_field; expect = report text) and
 ``trace_dropped_ids`` (args.stages + args.id_field; expect = the ``dropped_ids`` of
 each traced stage, in stage order).
@@ -26,17 +29,23 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from contexel import (ContexelError, allowlist, dedupe, merge, pipeline,
-                      quarantine, rank, rescore, select, shaped, stage, strict,
-                      trace, trim_to_budget, truncate_field)
+from contexel import (ContexelError, allowlist, as_records, dedupe, join, merge,
+                      pipeline, quarantine, rank, rescore, select, shaped, split,
+                      stage, strict, trace, trim_to_budget, truncate_field)
 
 RECORD_STAGES = {
     "select": select, "dedupe": dedupe, "allowlist": allowlist,
     "quarantine": quarantine, "rescore": rescore, "rank": rank,
     "truncate_field": truncate_field, "trim_to_budget": trim_to_budget,
+    "split": split,
 }
 ALLOWED_KEYS = {"id", "stage", "args", "input", "expect", "expect_error", "strict"}
 NL = chr(10)  # a real newline, written without a backslash escape
+CR = chr(13)
+ASTRAL = chr(0x1F600)  # one code point, two UTF-16 units
+E_ACUTE = chr(0xE9)
+# characters str.splitlines() cuts at but split(by="lines") must not
+WIDE_LINE_ENDS = "".join(chr(c) for c in (0x0B, 0x0C, 0x1C, 0x85, 0x2028, 0x2029))
 
 # Arguments that make each record stage valid on an empty list (AC 20/22: the
 # empty-input class had no cross-language coverage).
@@ -92,6 +101,14 @@ def _run(case: dict, fixture: List[dict]) -> Any:
         with trace(id_field=args["id_field"]) as t:
             _pipe(args["stages"])(records)
         return [stage_entry["dropped_ids"] for stage_entry in t.audit()["stages"]]
+    if kind == "as_records":
+        return as_records(records, **args)
+    if kind == "join":
+        return join(records, **args)
+    if kind == "text_pipeline":
+        field, sep = args.get("field", "text"), args.get("sep", "")
+        chunks = _pipe(args["stages"])(as_records(records, field=field))
+        return join(chunks, field=field, sep=sep)
     raise ValueError(f"unknown case kind {kind!r}")
 
 
@@ -345,6 +362,150 @@ def _raw_cases() -> List[dict]:
     add("trace_dropped_ids/the_integer_1_and_the_string_1_are_different_ids",
         "trace_dropped_ids", keep_only,
         [{"id": "1", "k": "drop"}, {"id": 1, "k": "keep"}])
+    # --- Slice 4: payload stages (ADR-005, brief AC 10-15) ---
+    # as_records: the on-ramp. Nested JSON values are legal list items.
+    add("as_records/wraps_a_string", "as_records", {}, "hello")
+    add("as_records/uses_the_named_field", "as_records", {"field": "body"}, "hello")
+    add("as_records/an_empty_string_is_one_record", "as_records", {}, "")
+    add("as_records/a_single_mapping_is_one_record", "as_records", {}, {"a": 1, "n": {"z": [1, 2]}})
+    add("as_records/list_keeps_mappings_and_wraps_everything_else", "as_records", {},
+        [{"a": 1}, "s", 5, None, ["n", 1], {"k": {"z": [1, 2]}}, True, 2.5])
+    add("as_records/an_empty_list_is_no_records", "as_records", {}, [])
+    add_error("as_records/null_is_not_a_list", "as_records", {}, None, "input.not_list")
+    add_error("as_records/a_number_is_not_a_list", "as_records", {}, 5, "input.not_list")
+    add_error("as_records/an_empty_field_name_raises", "as_records", {"field": ""}, "x",
+              "config.invalid_value")
+
+    # split: boundaries are identical in every language (lines end after a
+    # newline only; paragraphs after a run of two or more; sizes in code points)
+    add("split/empty_input", "split", {}, [])
+    add("split/lines_keep_their_separators", "split", {},
+        [{"id": 1, "text": "one" + NL + "two" + NL + "three"}, {"id": 2, "text": "tail" + NL}])
+    add("split/lines_crlf_is_one_boundary_and_a_lone_cr_is_not", "split", {},
+        [{"id": 1, "text": "a" + CR + NL + "b" + CR + "c" + NL + "d"},
+         {"id": 2, "text": CR}, {"id": 3, "text": NL + NL}])
+    add("split/lines_ignore_the_wider_splitlines_separators", "split", {},
+        [{"id": 1, "text": "a" + WIDE_LINE_ENDS + "b" + NL + "c"}])
+    add("split/paragraphs_mixed_newlines", "split", {"by": "paragraphs"},
+        [{"id": 1, "text": "a" + NL + NL + "b" + CR + NL + CR + NL + "c" + NL + CR + NL + "d"
+          + NL + "e"},
+         {"id": 2, "text": "x" + CR + CR + NL + NL + "y"}])
+    add("split/paragraph_runs_at_the_edges_and_single_newlines", "split", {"by": "paragraphs"},
+        [{"id": 1, "text": NL + NL + "abc"}, {"id": 2, "text": "abc" + NL + NL},
+         {"id": 3, "text": "a" + NL + "b" + CR + NL + "c"}, {"id": 4, "text": "a" + NL + " " + NL + "b"},
+         {"id": 5, "text": NL + NL + NL + NL}])
+    add("split/size_astral", "split", {"by": "size", "size": 2},
+        [{"id": 1, "text": "ab" + ASTRAL * 3 + "c"}, {"id": 2, "text": E_ACUTE + ASTRAL}])
+    add("split/size_exact_multiple_and_larger_than_the_text", "split", {"by": "size", "size": 3},
+        [{"id": 1, "text": "abcdef"}, {"id": 2, "text": "ab"}, {"id": 3, "text": "abc"}])
+    add("split/an_empty_text_yields_no_chunks_and_its_neighbours_stay", "split", {},
+        [{"id": 1, "text": "a" + NL + "b"}, {"id": 2, "text": ""}, {"id": 3, "text": "c"}])
+    add("split/non_string_values_pass_through_untouched", "split", {},
+        [{"id": 1}, {"id": 2, "text": None}, {"id": 3, "text": 5},
+         {"id": 4, "text": ["a" + NL + "b"], "chunk": "kept"}, {"id": 5, "text": "k" + NL + "l"}])
+    add("split/parent_fields_are_carried_and_the_index_restarts", "split", {"field": "body", "into": "part"},
+        [{"id": "a", "body": "1" + NL + "2" + NL, "meta": {"k": [1, None]}, "text": "other"},
+         {"id": "b", "body": "x" + NL + "y" + NL + "z", "meta": {}}])
+    add("split/a_custom_into_name_clears_an_existing_chunk_field", "split", {"into": "part"},
+        [{"id": 1, "text": "a" + NL + "b", "chunk": "old"}])
+    add_error("split/an_existing_into_key_raises", "split", {},
+              [{"text": "ok" + NL + "ok"}, {"text": "a" + NL + "b", "chunk": 1}],
+              "input.field_conflict")
+    add_error("split/an_empty_text_with_an_existing_into_key_raises", "split", {},
+              [{"text": "", "chunk": 1}], "input.field_conflict")
+    add_error("split/null_input_is_not_a_list", "split", {}, None, "input.not_list")
+    add_error("split/null_item_is_not_a_mapping", "split", {}, [{"text": "a"}, None],
+              "input.not_mapping")
+    add_error("split/unknown_by_raises", "split", {"by": "words"}, [{"text": "a"}],
+              "config.invalid_value")
+    add_error("split/size_with_lines_is_contradictory", "split", {"size": 3}, [{"text": "a"}],
+              "config.contradictory")
+    add_error("split/size_with_paragraphs_is_contradictory", "split",
+              {"by": "paragraphs", "size": 0}, [{"text": "a"}], "config.contradictory")
+    add_error("split/by_size_without_a_size_raises", "split", {"by": "size"}, [{"text": "a"}],
+              "config.invalid_value")
+    add_error("split/a_zero_size_raises", "split", {"by": "size", "size": 0}, [{"text": "a"}],
+              "config.invalid_value")
+    add_error("split/a_negative_size_raises", "split", {"by": "size", "size": -2}, [{"text": "a"}],
+              "config.invalid_value")
+    add_error("split/a_fractional_size_raises", "split", {"by": "size", "size": 2.5},
+              [{"text": "a"}], "config.invalid_value")
+
+    # join: the off-ramp. Non-strings are rendered the way the budget prices them.
+    add("join/skips_missing_keeps_strings_and_serializes_the_rest", "join", {"sep": "|"},
+        [{"text": "a"}, {"other": 1}, {"text": {"k": 1, "a": [1, "x"]}}, {"text": [1, "x"]},
+         {"text": None}, {"text": True}, {"text": 2.5}, {"text": E_ACUTE + ASTRAL}])
+    add("join/uses_the_named_field_and_separator", "join", {"field": "body", "sep": NL},
+        [{"body": "x"}, {"text": "no"}, {"body": "y"}])
+    add("join/an_empty_list_is_an_empty_string", "join", {}, [])
+    add("join/empty_strings_still_take_a_separator", "join", {"sep": "-"},
+        [{"text": ""}, {"text": ""}])
+    add_error("join/null_input_is_not_a_list", "join", {}, None, "input.not_list")
+    add_error("join/null_item_is_not_a_mapping", "join", {}, [{"text": "a"}, None],
+              "input.not_mapping")
+
+    # text_pipeline: raw text -> as_records -> split -> dedupe -> rescore -> rank
+    # -> trim_to_budget -> join (brief AC 15). The budget is a hard ceiling on
+    # the joined text (tests/test_parity_cases.py measures it).
+    log = ("2026-11-19 10:00:01 INFO  service started" + NL
+           + "2026-11-19 10:00:02 WARN  retry backoff jitter exceeded for upstream" + CR + NL
+           + "2026-11-19 10:00:03 INFO  health check ok" + NL
+           + "2026-11-19 10:00:03 INFO  health check ok" + NL
+           + "2026-11-19 10:00:04 ERROR timeout after retry with exponential backoff" + CR + NL
+           + "2026-11-19 10:00:05 INFO  cache warmed" + NL
+           + "2026-11-19 10:00:06 WARN  retry limit reached, backoff doubled" + NL
+           + "2026-11-19 10:00:07 INFO  health check ok" + NL
+           + "2026-11-19 10:00:08 INFO  " + E_ACUTE + "v" + E_ACUTE + "nement queued " + ASTRAL + NL)
+    add("text_pipeline/log_text_end_to_end", "text_pipeline",
+        {"stages": [{"stage": "split", "args": {"by": "lines"}},
+                    {"stage": "dedupe", "args": {"key": "text"}},
+                    {"stage": "rescore", "args": {"query": "retry backoff timeout", "fields": ["text"]}},
+                    {"stage": "rank", "args": {"by": "score", "desc": True}},
+                    {"stage": "trim_to_budget", "args": {"max_tokens": 150}}]},
+        log)
+    add("text_pipeline/a_list_of_strings_is_split_and_deduplicated", "text_pipeline",
+        {"stages": [{"stage": "split", "args": {"by": "lines"}},
+                    {"stage": "dedupe", "args": {"key": "text"}}]},
+        ["alpha" + NL + "beta" + NL, "alpha" + NL + "beta" + NL, "gamma"])
+    add("text_pipeline/a_named_field_and_a_separator", "text_pipeline",
+        {"field": "body", "sep": "|",
+         "stages": [{"stage": "split", "args": {"field": "body", "by": "size", "size": 2}}]},
+        "abcde")
+    add("text_pipeline/an_empty_text_joins_to_nothing", "text_pipeline",
+        {"stages": [{"stage": "split", "args": {}}]}, "")
+
+    # An expanding split is exact under trace: the empty-text parent "b" is a
+    # real drop and the id-less parent's two chunks must not hide it.
+    add("trace_dropped_ids/an_expanding_split_never_hides_a_dropped_id", "trace_dropped_ids",
+        {"id_field": "id", "stages": [{"stage": "split", "args": {}}]},
+        [{"id": "a", "text": "1" + NL + "2" + NL + "3"}, {"id": "b", "text": ""},
+         {"id": "c", "text": "z"}, {"text": "no id" + NL + "here"}])
+    # chunks share their parent's id, so a dropped chunk is reported by it
+    add("trace_dropped_ids/a_chunk_dropped_by_dedupe_is_reported_by_its_parents_id",
+        "trace_dropped_ids",
+        {"id_field": "id",
+         "stages": [{"stage": "split", "args": {}},
+                    {"stage": "dedupe", "args": {"key": "text"}}]},
+        [{"id": "a", "text": "x" + NL + "x" + NL + "y"}, {"id": "b", "text": "x" + NL}])
+    # Order of checks: the shape of the input is judged before the configuration,
+    # so a bad payload reports input.* even when the arguments are bad too.
+    add_error("split/shape_error_wins_over_a_bad_by_for_null_input", "split",
+              {"by": "words"}, None, "input.not_list")
+    add_error("split/shape_error_wins_over_a_bad_by_for_a_null_item", "split",
+              {"by": "words"}, [{"text": "a"}, None], "input.not_mapping")
+    add_error("as_records/shape_error_wins_over_an_empty_field", "as_records",
+              {"field": ""}, None, "input.not_list")
+    # JSON-expressible non-integer sizes: true is not 1 and "3" is not 3
+    add_error("split/size_true_is_not_an_integer", "split", {"by": "size", "size": True},
+              [{"text": "abc"}], "config.invalid_value")
+    add_error("split/size_as_a_string_is_not_an_integer", "split", {"by": "size", "size": "3"},
+              [{"text": "abc"}], "config.invalid_value")
+    # code-point offsets in lines and paragraphs mode (an astral character is
+    # one code point but two UTF-16 units)
+    add("split/lines_offsets_count_code_points", "split", {"by": "lines"},
+        [{"id": 1, "text": "a" + ASTRAL + NL + ASTRAL + "b" + NL + "c"}])
+    add("split/paragraphs_offsets_count_code_points", "split", {"by": "paragraphs"},
+        [{"id": 1, "text": "x" + ASTRAL + NL + NL + "y"}])
     return cases
 
 

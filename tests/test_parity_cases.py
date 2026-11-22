@@ -33,6 +33,52 @@ def test_committed_case_matches_canon(case):
         committed, sort_keys=True, ensure_ascii=False)
 
 
+def _check_the_budget_bites(ranked, kept, out):
+    """What the budget must have done to the end-to-end log case: `ranked` is
+    the record list handed to trim_to_budget, `kept` what it returned, `out`
+    the joined text of `kept`."""
+    # the budget dropped records: fewer remain after trim_to_budget than before
+    assert len(kept) < len(ranked)
+    # the lines it cut reached trim_to_budget and are absent from the output:
+    # both "health check ok" lines dedupe left, "cache warmed" and the line with
+    # accented characters (all four score 0 and rank last)
+    before = "".join(r["text"] for r in ranked)
+    for cut in ("health check ok", "cache warmed", chr(0xE9) + "v" + chr(0xE9) + "nement"):
+        assert cut in before
+        assert cut not in out
+    # the best lines lead: ERROR (all three query words), then the two WARN lines
+    lines = out.splitlines()
+    assert " ERROR timeout after retry" in lines[0]
+    assert " WARN  retry backoff jitter" in lines[1]
+    assert " WARN  retry limit reached" in lines[2]
+
+
+def test_the_end_to_end_log_case_fits_its_budget_and_keeps_the_best_lines_first():
+    from contexel import as_records, join, tokens, trim_to_budget
+
+    case = next(c for c in VECTORS["cases"] if c["id"] == "text_pipeline/log_text_end_to_end")
+    stages = case["args"]["stages"]
+    assert stages[-1]["stage"] == "trim_to_budget"
+    budget = stages[-1]["args"]["max_tokens"]
+    out = case["expect"]
+    # split makes one record per line; dedupe drops only the exact duplicate
+    # (the second "10:00:03 health check ok" line; the 10:00:07 one differs by
+    # its timestamp and stays); rescore scores the lines that mention the query
+    # and gives the others 0; rank puts the best first (ties keep their order);
+    # trim_to_budget then keeps records from the front while their cost, each
+    # record with its metadata, stays within the budget
+    ranked = parity_cases._pipe(stages[:-1])(as_records(case["input"]))
+    kept = trim_to_budget(ranked, max_tokens=budget)
+    assert join(kept) == out
+    assert sum(tokens.count(r) + 2 for r in kept) <= budget
+    _check_the_budget_bites(ranked, kept, out)
+    # the joined text is smaller still than the records it came from
+    assert tokens.count(out) <= budget
+    assert out.startswith("2026-11-19 10:00:04 ERROR timeout after retry")
+    assert out.count("retry") >= 3
+    assert len(out) < len(case["input"])
+
+
 def test_error_cases_use_only_documented_codes_and_strict_is_true_or_absent():
     from contexel import errors
     error_cases = [c for c in VECTORS["cases"] if "expect_error" in c]

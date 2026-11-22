@@ -78,10 +78,86 @@ const searchCode = shaped([
 | `truncateField` | cut one field to a token budget, `…` suffix |
 | `trimToBudget` | keep records until the total token budget is spent; `minRecords` guarantees the best records survive a too-small budget instead of returning `[]` |
 
-Plus `merge` for combining multiple sources under one schema, `pipeline`/`stage`
+Plus `asRecords`, `split` and `join` for text (below), `merge` for combining multiple sources under one schema, `pipeline`/`stage`
 for composition with a stable policy fingerprint, `trace`/`audit` for the
 governance record, and `tokens.scoped` for concurrency-safe (AsyncLocalStorage)
 tokenizer and serializer overrides per tenant.
+
+## Text, logs and web pages
+
+Stages take an array of records, and a log, a web page or a plain string is none
+of that. Three small stages convert at the edges: `asRecords` turns a string (or
+one record, or an array) into records, `split` cuts the text of each record into
+chunk records, and `join` turns records back into one string. Everything in
+between is an ordinary stage. Call `asRecords` and `join` outside `pipeline`, as
+you call `merge`: a pipeline hands every stage an array, and a strict pipeline
+rejects `join`'s string.
+
+```ts
+import { asRecords, dedupe, join, pipeline, rank, rescore, split, stage, trimToBudget } from "contexel";
+
+const log = "INFO started\nWARN retry limit reached\nINFO ok\nINFO ok\nERROR timeout after retry\n";
+
+const pipe = pipeline([
+  stage(split, { by: "lines" }),                            // one record per line
+  stage(dedupe, { key: "text" }),                           // the repeated "INFO ok" goes
+  stage(rescore, { query: "retry timeout", fields: ["text"] }),
+  stage(rank, { by: "score" }),
+  stage(trimToBudget, { maxTokens: 60 }),
+]);
+const best = pipe(asRecords(log));
+console.log(JSON.stringify(join(best)));
+console.log(JSON.stringify(best.map((c) => c.chunk)));      // offsets into the log
+```
+
+```text
+"ERROR timeout after retry\nWARN retry limit reached\n"
+[{"index":4,"start":54,"end":80},{"index":1,"start":13,"end":38}]
+```
+
+The cuts are the same as in Python and C#: `by: "lines"` (the default) ends a
+chunk after each `\n` (`\r\n` is one boundary, a lone `\r` is none),
+`by: "paragraphs"` after each run of two or more newlines, `by: "size"` every
+`size` code points (a required positive integer, valid only with this mode).
+Every chunk keeps its trailing separator, so `join(split(asRecords(text)))`
+returns `text` exactly; each chunk is a copy of its parent with the text replaced
+and `{ index, start, end }` stored under `into` (default `"chunk"`). Offsets and
+sizes count code points, never UTF-16 units. A record whose own text field is not
+a string passes through untouched; an empty text produces no chunks; a record
+whose text field is a string and that already has its own `into` property
+throws `input.field_conflict`. These
+stages check their input in every mode, not only inside `strict(...)`: a
+non-array throws `input.not_list` and a non-record item `input.not_mapping`.
+`asRecords` accepts only a string, a plain object or an array: `null`, a number,
+a `Map`, a `Set`, a `Date`, a `Buffer` or a class instance throws
+`input.not_list`. `split` and `join` check their items as every TypeScript stage
+does: any object that is not an array counts as a record and is read through its
+own properties, so a `Map` or `Date` item makes `split` pass it through untouched
+and `join` skip it. Typed callers are protected by the type system.
+`split` has no cap: it makes one record per boundary, each a copy of its parent,
+so a 1,000,000-character text cut into one-character chunks retains roughly
+140 MB here (measured on a development machine), and every chunk carries the
+parent's other fields into `trace` and `trimToBudget`. Cap untrusted text and
+keep only the fields you need (`select`) before `split`; the main README's
+payload section has the measurements.
+
+`rank` reorders the chunks by score. To restore reading order before `join`, rank
+again on the offset with a key function:
+
+```ts
+import { asRecords, join, rank, split } from "contexel";
+
+const chunks = split(asRecords("one\ntwo\nthree\n"), { by: "lines" });
+const byLength = rank(chunks, { by: (r) => String(r.text).length });
+const inOrder = rank(byLength, { by: (r) => Object(r.chunk).start, desc: false });
+console.log(JSON.stringify(join(byLength)));
+console.log(JSON.stringify(join(inOrder)));
+```
+
+```text
+"three\none\ntwo\n"
+"one\ntwo\nthree\n"
+```
 
 ## Errors and strict mode
 
@@ -267,8 +343,9 @@ not catch exactly the same obfuscations:
 ## Parity, precisely
 
 - Shaped output is structurally identical to Python's for JSON-safe records —
-  enforced by golden vectors covering every stage, the composed contract, the
-  audit record, canonical serialization, and token counts.
+  enforced by golden vectors covering every stage (the eight record stages,
+  `merge`, and the payload stages `asRecords`, `split` and `join`), the composed
+  contract, the audit record, canonical serialization, and token counts.
 - Token counting is per Unicode **code point** (matches Python `len`), not
   UTF-16 units — `"café"` costs the same in both languages.
 - Documented boundaries (see ADR-001): JS collapses `1.0` to `"1"` in

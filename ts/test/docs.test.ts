@@ -16,7 +16,10 @@ const CR = String.fromCharCode(13);
 const FENCE = new RegExp("```(ts|text)" + NL + "([^]*?)```", "g");
 
 /** [README heading, number of runnable examples the section must contain] */
-const SECTIONS: Array<[string, number]> = [["## Errors and strict mode", 2]];
+const SECTIONS: Array<[string, number]> = [
+  ["## Text, logs and web pages", 2],
+  ["## Errors and strict mode", 2],
+];
 
 const README = readFileSync(new URL("../../README.md", import.meta.url), "utf-8")
   .split(CR + NL)
@@ -66,3 +69,42 @@ for (const [heading, count] of SECTIONS) {
     });
   });
 }
+
+/* ---- Slice 4: the payload-stages example (text in, best lines out, text back) ---- */
+
+test("payload stages: the log example returns the best lines, in rank and in reading order", () => {
+  const { asRecords, dedupe, join, pipeline, rank, rescore, split, stage, trimToBudget } = contexel;
+  const log =
+    "INFO started" + NL + "WARN retry limit reached" + NL + "INFO ok" + NL + "INFO ok" + NL +
+    "ERROR timeout after retry" + NL;
+  const pipe = pipeline([
+    stage(split, { by: "lines" }),
+    stage(dedupe, { key: "text" }),
+    stage(rescore, { query: "retry timeout", fields: ["text"] }),
+    stage(rank, { by: "score" }),
+    stage(trimToBudget, { maxTokens: 60 }),
+  ]);
+  const best = pipe(asRecords(log));
+  assert.strictEqual(join(best), "ERROR timeout after retry" + NL + "WARN retry limit reached" + NL);
+  const startOf = (r: contexel.Rec) => (r.chunk as { start: number; end: number }).start;
+  assert.deepStrictEqual(best.map(startOf), [54, 13]); // offsets into the log
+  // rank again by offset to restore reading order
+  const reading = rank(best, { by: startOf, desc: false });
+  assert.strictEqual(join(reading), "WARN retry limit reached" + NL + "ERROR timeout after retry" + NL);
+});
+
+test("payload stages: the paragraphs example keeps each paragraph and its offsets", () => {
+  const { asRecords, split } = contexel;
+  const paras = split(asRecords("intro" + NL + NL + "body one" + NL + "body two" + NL + NL + "end"), {
+    by: "paragraphs",
+  });
+  assert.deepStrictEqual(
+    paras.map((c) => c.text),
+    ["intro" + NL + NL, "body one" + NL + "body two" + NL + NL, "end"]
+  );
+  const chunk = (c: contexel.Rec) => c.chunk as { start: number; end: number };
+  assert.deepStrictEqual(
+    paras.map((c) => [chunk(c).start, chunk(c).end]),
+    [[0, 7], [7, 26], [26, 29]]
+  );
+});

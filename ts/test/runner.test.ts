@@ -24,6 +24,9 @@ test("the argument table covers exactly the record stages plus the composite kin
     Object.keys(ARG_NAMES).sort(),
     [
       ...Object.keys(RECORD_STAGES),
+      "as_records",
+      "join",
+      "text_pipeline",
       "merge",
       "pipeline",
       "shaped",
@@ -49,7 +52,7 @@ test("an unknown argument name in a case is rejected, not ignored", () => {
   );
 });
 
-for (const kind of ["pipeline", "shaped", "trace_report", "trace_dropped_ids"]) {
+for (const kind of ["pipeline", "shaped", "text_pipeline", "trace_report", "trace_dropped_ids"]) {
   test(`an unknown argument inside a nested ${kind} stage spec is rejected`, () => {
     const c = base({
       stage: kind,
@@ -185,5 +188,164 @@ test("a nested stage must be a record stage", () => {
         FIXTURE
       ),
     /unknown stage "merge"/
+  );
+});
+
+/* ---- payload kinds (Slice 4): as_records, join, text_pipeline, split ---- */
+
+const NL = String.fromCharCode(10);
+
+test("split is a record stage: valid on its own and as a nested stage", () => {
+  checkCase(
+    base({
+      stage: "split",
+      args: { by: "size", size: 2, into: "part" },
+      input: [{ text: "abcde" }],
+      expect: [
+        { text: "ab", part: { index: 0, start: 0, end: 2 } },
+        { text: "cd", part: { index: 1, start: 2, end: 4 } },
+        { text: "e", part: { index: 2, start: 4, end: 5 } },
+      ],
+    }),
+    FIXTURE
+  );
+  checkCase(
+    base({
+      stage: "pipeline",
+      args: { stages: [{ stage: "split", args: { by: "lines" } }] },
+      input: [{ text: "a" + NL + "b" }],
+      expect: [
+        { text: "a" + NL, chunk: { index: 0, start: 0, end: 2 } },
+        { text: "b", chunk: { index: 1, start: 2, end: 3 } },
+      ],
+    }),
+    FIXTURE
+  );
+});
+
+for (const kind of ["split", "as_records", "join", "text_pipeline"]) {
+  test(`an unknown argument name for ${kind} is rejected, not ignored`, () => {
+    // `fields` and `separator` are typos for `field` and `sep`: ignoring them would default
+    const stages = [{ stage: "split", args: {} }];
+    for (const bad of ["fields", "separator", "chunk_size", "Field"]) {
+      const args: Record<string, unknown> = kind === "text_pipeline" ? { stages, [bad]: "x" } : { [bad]: "x" };
+      assert.throws(
+        () => runCase(base({ stage: kind, args, input: [{ text: "a" }], expect: [] }), FIXTURE),
+        new RegExp(`unknown argument "${bad}" for stage ${kind}`)
+      );
+    }
+  });
+}
+
+test("a text_pipeline with an unknown nested stage is rejected", () => {
+  const c = base({
+    stage: "text_pipeline",
+    args: { stages: [{ stage: "no_such_stage", args: {} }] },
+    input: "a",
+    expect: "a",
+  });
+  assert.throws(() => runCase(c, FIXTURE), /stages\[0\]: unknown stage "no_such_stage"/);
+});
+
+test("a text_pipeline nested stage must be a record stage, and its arguments are checked", () => {
+  for (const nested of ["as_records", "join", "text_pipeline", "merge"]) {
+    const c = base({
+      stage: "text_pipeline",
+      args: { stages: [{ stage: nested, args: {} }] },
+      input: "a",
+      expect: "a",
+    });
+    assert.throws(() => runCase(c, FIXTURE), new RegExp(`unknown stage "${nested}"`));
+  }
+  const typo = base({
+    stage: "text_pipeline",
+    args: { stages: [{ stage: "split", args: { by: "lines", sizes: 3 } }] },
+    input: "a",
+    expect: "a",
+  });
+  assert.throws(() => runCase(typo, FIXTURE), /stages\[0\]: unknown argument "sizes" for stage split/);
+});
+
+test("a text_pipeline needs its stages to be a list", () => {
+  const c = base({ stage: "text_pipeline", args: { stages: "split" }, input: "a", expect: "a" });
+  assert.throws(() => runCase(c, FIXTURE), /args\.stages must be a list/);
+});
+
+test("a text_pipeline runs asRecords, the stages, then join, with field and sep defaulted", () => {
+  const stages = [{ stage: "split", args: { by: "lines" } }];
+  checkCase(
+    base({ stage: "text_pipeline", args: { stages }, input: "a" + NL + "b" + NL, expect: "a" + NL + "b" + NL }),
+    FIXTURE
+  );
+  // a named field is used for the wrap, the stage and the join; sep joins the chunks
+  checkCase(
+    base({
+      stage: "text_pipeline",
+      args: { field: "body", sep: "|", stages: [{ stage: "split", args: { field: "body", by: "size", size: 2 } }] },
+      input: "abcde",
+      expect: "ab|cd|e",
+    }),
+    FIXTURE
+  );
+  // the stages really run: dedupe drops the repeated chunk
+  checkCase(
+    base({
+      stage: "text_pipeline",
+      args: { stages: [{ stage: "split", args: {} }, { stage: "dedupe", args: { key: "text" } }] },
+      input: ["x" + NL + "x" + NL + "y"],
+      expect: "x" + NL + "y",
+    }),
+    FIXTURE
+  );
+});
+
+test("a text_pipeline expect_error case checks the code the pipeline throws", () => {
+  const stages = [{ stage: "split", args: {} }];
+  checkCase(
+    base({ stage: "text_pipeline", args: { stages }, input: null, expect_error: { code: "input.not_list" } }),
+    FIXTURE
+  );
+  assert.throws(
+    () =>
+      checkCase(
+        base({ stage: "text_pipeline", args: { stages }, input: null, expect_error: { code: "input.not_mapping" } }),
+        FIXTURE
+      ),
+    /wrong error code/
+  );
+});
+
+test("as_records and join cases pass on the right output and fail on a wrong one", () => {
+  checkCase(base({ stage: "as_records", args: { field: "body" }, input: "x", expect: [{ body: "x" }] }), FIXTURE);
+  checkCase(base({ stage: "join", args: { sep: "-" }, input: [{ text: "a" }, { text: "b" }], expect: "a-b" }), FIXTURE);
+  assert.throws(
+    () => checkCase(base({ stage: "as_records", args: {}, input: "x", expect: [{ body: "x" }] }), FIXTURE),
+    assert.AssertionError
+  );
+  assert.throws(
+    () => checkCase(base({ stage: "join", args: {}, input: [{ text: "a" }], expect: "b" }), FIXTURE),
+    assert.AssertionError
+  );
+});
+
+test("as_records and join pass a null input through as null", () => {
+  checkCase(base({ stage: "as_records", args: {}, input: null, expect_error: { code: "input.not_list" } }), FIXTURE);
+  checkCase(base({ stage: "join", args: {}, input: null, expect_error: { code: "input.not_list" } }), FIXTURE);
+  checkCase(
+    base({ stage: "join", args: {}, input: [{ text: "a" }, null], expect_error: { code: "input.not_mapping" } }),
+    FIXTURE
+  );
+  checkCase(
+    base({ stage: "as_records", args: { field: "" }, input: "x", expect_error: { code: "config.invalid_value" } }),
+    FIXTURE
+  );
+});
+
+test("the payload kinds are not strict-dependent: strict true changes nothing", () => {
+  checkCase(base({ stage: "as_records", args: {}, input: "x", strict: true, expect: [{ text: "x" }] }), FIXTURE);
+  checkCase(base({ stage: "join", args: {}, input: null, strict: true, expect_error: { code: "input.not_list" } }), FIXTURE);
+  checkCase(
+    base({ stage: "split", args: {}, input: [{ text: "a" + NL + "b" }, 1], strict: true, expect_error: { code: "input.not_mapping" } }),
+    FIXTURE
   );
 });

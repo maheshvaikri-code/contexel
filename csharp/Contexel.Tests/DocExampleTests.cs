@@ -27,11 +27,14 @@ public class DocExampleTests
     private static string ReadText(string path) =>
         File.ReadAllText(path).Replace("\r\n", "\n");
 
-    private static List<(string Lang, string Body)> ReadmeBlocks()
+    private const string ErrorsHeading = "## Errors and strict mode";
+    private const string PayloadHeading = "## Text, logs and web pages";
+
+    private static List<(string Lang, string Body)> ReadmeBlocks(string heading = ErrorsHeading)
     {
         string readme = ReadText(FindUp(Path.Combine("csharp", "Contexel", "README.md")));
-        int start = readme.IndexOf("## Errors and strict mode", StringComparison.Ordinal);
-        Assert.True(start >= 0, "README has no 'Errors and strict mode' section");
+        int start = readme.IndexOf(heading, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"README has no '{heading}' section");
         int end = readme.IndexOf("\n## ", start + 1, StringComparison.Ordinal);
         string section = readme[start..(end < 0 ? readme.Length : end)];
         var blocks = new List<(string, string)>();
@@ -42,9 +45,9 @@ public class DocExampleTests
     }
 
     /// <summary>The README's n-th C# example (without its using line) and its expected output.</summary>
-    private static (string Source, string Expected) ReadmeExample(int n)
+    private static (string Source, string Expected) ReadmeExample(int n, string heading = ErrorsHeading)
     {
-        var blocks = ReadmeBlocks();
+        var blocks = ReadmeBlocks(heading);
         int seen = 0;
         for (int i = 0; i < blocks.Count; i++)
         {
@@ -72,10 +75,11 @@ public class DocExampleTests
         return string.Join("\n", body).TrimEnd();
     }
 
-    private static void Check(int n, Action example, string thisFile)
+    private static void Check(int n, Action example, string thisFile,
+                              string heading = ErrorsHeading, int? marker = null)
     {
-        var (source, expected) = ReadmeExample(n);
-        Assert.Equal(source, CompiledSource(n, thisFile));
+        var (source, expected) = ReadmeExample(n, heading);
+        Assert.Equal(source, CompiledSource(marker ?? n, thisFile));
         var original = Console.Out;
         var captured = new StringWriter();
         Console.SetOut(captured);
@@ -95,6 +99,45 @@ public class DocExampleTests
     [Fact]
     public void ReadmeExample2PrintsWhatTheReadmeShows() =>
         Check(2, Example2, ThisFile());
+
+    // The payload-stage examples (Text, logs and web pages): the README section is tied
+    // to Example3 and Example4 below like the others, and the two tests that follow pin
+    // the exact printed text (blank lines included) on their own.
+
+    [Fact]
+    public void ThePayloadSectionHasItsTwoRunnableExamples() =>
+        Assert.Equal(2, ReadmeBlocks(PayloadHeading).Count(b => b.Lang == "csharp"));
+
+    [Fact]
+    public void PayloadExample1PrintsWhatTheReadmeShows() =>
+        Check(1, Example3, ThisFile(), PayloadHeading, marker: 3);
+
+    [Fact]
+    public void PayloadExample2PrintsWhatTheReadmeShows() =>
+        Check(2, Example4, ThisFile(), PayloadHeading, marker: 4);
+
+    private static string Printed(Action example)
+    {
+        var original = Console.Out;
+        var captured = new StringWriter();
+        Console.SetOut(captured);
+        try { example(); }
+        finally { Console.SetOut(original); }
+        return captured.ToString().Replace("\r\n", "\n");
+    }
+
+    [Fact]
+    public void TextExample3FindsTheBestLinesAndTheirOffsetsInTheLog() =>
+        Assert.Equal(
+            "ERROR timeout after retry\nWARN retry limit reached\n[54, 13]\n" +
+            "WARN retry limit reached\nERROR timeout after retry\n",
+            Printed(Example3));
+
+    [Fact]
+    public void TextExample4SplitsParagraphsWithOffsetsIntoTheText() =>
+        Assert.Equal(
+            "[\"intro\\n\\n\", \"body one\\nbody two\\n\\n\", \"end\"]\n[[0, 7], [7, 26], [26, 29]]\n",
+            Printed(Example4));
 
     private static string ThisFile([CallerFilePath] string path = "") => path;
 
@@ -156,5 +199,39 @@ public class DocExampleTests
             Console.WriteLine(e.Stage);
         }
         // </doc-example-2>
+    }
+
+    private static void Example3()
+    {
+        // <doc-example-3>
+        var log = "INFO started\nWARN retry limit reached\nINFO ok\nINFO ok\nERROR timeout after retry\n";
+
+        var pipe = new Pipeline(
+            new Stage("split", r => Text.Split(r, by: "lines")),                      // one record per line
+            new Stage("dedupe", r => Stages.Dedupe(r, "text")),                       // the repeated "INFO ok" goes
+            new Stage("rescore", r => Stages.Rescore(r, "retry timeout", new[] { "text" })),
+            new Stage("rank", r => Stages.Rank(r, "score")),
+            new Stage("trim_to_budget", r => Stages.TrimToBudget(r, 60)));
+        var best = pipe.Run(Text.AsRecords(log));
+        Console.Write(Text.Join(best));
+        Console.WriteLine(Tokens.PythonJson(best.Select(c => ((Dictionary<string, object?>)c["chunk"]!)["start"]).ToList()));
+
+        // rank again on the offset to restore reading order before Join
+        var reading = Stages.Rank(best, r => ((Dictionary<string, object?>)r["chunk"]!)["start"], desc: false);
+        Console.Write(Text.Join(reading));
+        // </doc-example-3>
+    }
+
+    private static void Example4()
+    {
+        // <doc-example-4>
+        var paras = Text.Split(Text.AsRecords("intro\n\nbody one\nbody two\n\nend"), by: "paragraphs");
+        Console.WriteLine(Tokens.PythonJson(paras.Select(c => c["text"]).ToList()));
+        Console.WriteLine(Tokens.PythonJson(paras.Select(c =>
+        {
+            var at = (Dictionary<string, object?>)c["chunk"]!;
+            return new List<object?> { at["start"], at["end"] };
+        }).ToList()));
+        // </doc-example-4>
     }
 }

@@ -1,6 +1,6 @@
 # ADR-005 — Non-record payloads: `as_records`, `split`, `join`
 
-**Date:** 2026-11-19 · **Status:** proposed · **Deciders:** Chief Architect + human (public API addition)
+**Date:** 2026-11-19 · **Status:** accepted (2026-11-21, Slice 4) · **Deciders:** Chief Architect + human (public API addition)
 
 ## Context
 Stages require "a list of mappings". Non-coding agents mostly receive text: logs,
@@ -28,4 +28,24 @@ shape always. Boundaries are explicit and language-independent: lines end after
 ## Consequences
 - Positive: logs and pages flow through dedupe/rescore/rank/trim unchanged.
 - Negative / debt: `rank` loses reading order (docs show re-ranking by `chunk.start`); no overlap windows; an empty text record vanishes on `split`.
+- Resources (measured on a development machine after Slice 4; orders of magnitude, not guarantees): `split` has no cap and makes one record per boundary, so at one chunk per input character a 1,000,000-character text retains roughly 440 MB in Python, 140 MB in TypeScript and 540 MB in C#, with linear time (about 0.4 to 2 seconds per million chunks). Each chunk copies its parent, so anything that prices or serializes each chunk in full (a `trace`, `trim_to_budget`) costs about the number of chunks times the size of the parent's other fields (a 50,000-character side field and 4,000 chunks: about 0.6 to 2 seconds traced), growing with both. Callers cap untrusted input before `split` and `select` the fields they need; the memory of the paragraph cut does not grow with a newline run. A cap option may be considered later.
 - Invalidation triggers: a user need for overlap or token-sized chunks; a portable tokenizer.
+
+## Amendments at G2 (Slice 4 plan, 2026-11-21)
+Decisions the design left open, each recorded in the Slice 4 plan as S4-1 to S4-8:
+- **Ramps stay outside `pipeline`** (S4-1). `as_records` takes a non-list and
+  `join` returns a string; a pipeline hands every stage a list, TypeScript and C#
+  type it `Records -> Records`, and a strict pipeline rejects a stage that returns
+  a non-list. They are called around a pipeline, as `merge` is.
+- **Shape is checked in every mode, and before the configuration** (S4-2), through
+  an internal `always` option of the existing strict wrapper.
+- **A string-valued parent that already has `into` raises `input.field_conflict`,
+  even when its text is empty; a record passed through (its field is not a
+  string) is never checked** (S4-3).
+- **`split` is attributed exactly under `trace`, per distinct id value** (S4-4; the limits are in the ADR-008 amendment). Found while planning: the
+  Slice 3 rule (`lost = max(0, unidentified_out - unidentified_in)`) read the
+  id-less chunks of an expanded id-less record as ids lost by survivors and hid a
+  real drop (ADR-008). `split` never removes an id, so it declares `keeps_ids`
+  and `lost` is 0 for it.
+- **"Mapping" is per language** (S4-5): `Mapping` in Python, a plain object in
+  TypeScript, `Dictionary<string, object?>` in C#.
