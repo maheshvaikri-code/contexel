@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import unicodedata
 from collections.abc import Mapping
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
@@ -25,10 +26,12 @@ from .errors import (
     check_choice,
     check_fields,
     check_non_negative_int,
+    check_normalize,
     check_query,
     check_str,
     invalid_value,
 )
+from .stem import stem
 from .trace import traced
 from .validate import checked
 
@@ -237,7 +240,8 @@ def _scan_text(value: Any) -> str:
 def quarantine(records: Records, fields: Fields = ("snippet",),
                patterns: Optional[Fields] = None,
                action: str = "drop", into: str = "quarantined",
-               replace_patterns: bool = False) -> Records:
+               replace_patterns: bool = False,
+               normalize: Optional[str] = None) -> Records:
     """Deterministic tripwire for the crudest prompt-injection markers
     ("ignore all previous instructions", role-reset phrases, system-prompt
     tags) in the given text ``fields``.
@@ -273,6 +277,11 @@ def quarantine(records: Records, fields: Fields = ("snippet",),
     ``replace_patterns=True``; an empty replacement list raises rather
     than matching nothing (or everything).
 
+    ``normalize="nfc"`` applies Unicode NFC to the scanned text (never to the
+    patterns) before matching, so a marker typed with a precomposed character
+    is found in its decomposed spelling and the other way round; the default
+    ``None`` scans the text as it is. Any other value raises ``ConfigError``.
+
     Honest scope: this is NOT a security boundary. A paraphrased attack
     passes; a benign document quoting an attack trips it. Provenance
     gating (:func:`allowlist`) is the stronger control; this one makes the
@@ -295,6 +304,7 @@ def quarantine(records: Records, fields: Fields = ("snippet",),
     field_list = check_fields(fields, "quarantine", allow_empty=False)
     check_str(into, "quarantine", "into")
     check_bool(replace_patterns, "quarantine", "replace_patterns")
+    normalize = check_normalize(normalize, "quarantine")
     if patterns is None:
         if replace_patterns:
             raise ConfigError(
@@ -339,6 +349,8 @@ def quarantine(records: Records, fields: Fields = ("snippet",),
                 f"quarantine: item {i} must be a mapping, got {_kind(r)}",
                 stage="quarantine")
         text = " ".join(_scan_text(r[f]) if f in r else "" for f in field_list)
+        if normalize == "nfc":
+            text = unicodedata.normalize("NFC", text)
         hit = any(m.search(text) is not None for m in matchers)
         if action == "flag":
             if into in r:
@@ -360,7 +372,8 @@ _TOKEN = re.compile(r"[^\W_]+")  # word tokens; underscores split snake_case
 @traced
 def rescore(records: Records, query: Union[str, Sequence[str]],
             fields: Fields = ("snippet",), into: str = "score",
-            proximity: bool = True, match: str = "word") -> Records:
+            proximity: bool = True, match: str = "word",
+            normalize: Optional[str] = None) -> Records:
     """Replace the tool's relevance score with a deterministic lexical one.
 
     Ranking by a tool-provided score means inheriting that tool's ranking
@@ -378,8 +391,16 @@ def rescore(records: Records, query: Union[str, Sequence[str]],
     Lucene do — ``value`` does not match ``values`` — with underscores
     treated as boundaries so snake_case splits. ``match="substring"`` counts
     raw substring occurrences instead: more forgiving of morphology, more
-    decoy-prone. Writes the score to ``into`` on a copy of each record; use
-    before :func:`rank`.
+    decoy-prone. ``match="stem"`` reduces every word of the query and of the
+    text to its stem first (a small, frozen English suffix stemmer, see
+    ``docs/stemmer-rules.md``), so ``parse``, ``parses``, ``parsed`` and
+    ``parsing`` are one term; scoring, proximity and rounding are unchanged
+    and a position is the start of the word. It is English only and not a
+    lemmatizer (``configure`` and ``config`` stay apart). ``normalize="nfc"``
+    applies Unicode NFC to the query and the text before lower-casing, so
+    ``café`` typed as one character and as ``e`` plus a combining accent
+    match each other; the default ``None`` changes nothing. Writes the score
+    to ``into`` on a copy of each record; use before :func:`rank`.
 
     Deterministic and dependency-free by construction — and therefore
     *lexical*: synonyms and paraphrase are invisible to it. When you need
@@ -390,22 +411,22 @@ def rescore(records: Records, query: Union[str, Sequence[str]],
     field_list = check_fields(fields, "rescore", allow_empty=False)
     check_str(into, "rescore", "into")
     check_bool(proximity, "rescore", "proximity")
-    if match == "stem":
-        # reserved for the English stemmer (ADR-006); until it ships, running
-        # it as substring matching would be a silent downgrade
-        raise invalid_value("rescore", "match",
-                            "match 'stem' is not available yet; use 'word' "
-                            "or 'substring'")
-    check_choice(match, "rescore", "match", ("word", "substring"))
-    terms = _TOKEN.findall(query.lower()) if isinstance(query, str) else [
-        t for part in query for t in _TOKEN.findall(str(part).lower())
+    check_choice(match, "rescore", "match", ("word", "substring", "stem"))
+    normalize = check_normalize(normalize, "rescore")
+
+    def prepare(text: str) -> str:  # NFC first, then lower-case (ADR-006)
+        return (unicodedata.normalize("NFC", text) if normalize == "nfc"
+                else text).lower()
+
+    words = _TOKEN.findall(prepare(query)) if isinstance(query, str) else [
+        t for part in query for t in _TOKEN.findall(prepare(str(part)))
     ]
-    terms = list(dict.fromkeys(terms))
+    terms = list(dict.fromkeys(map(stem, words) if match == "stem" else words))
     if not terms or not records:
         return [{**r, into: 0.0} for r in records]
 
     texts = [
-        " ".join(str(r.get(f, "")) for f in field_list).lower()
+        prepare(" ".join(str(r.get(f, "")) for f in field_list))
         for r in records
     ]
     if match == "word":
@@ -425,6 +446,12 @@ def rescore(records: Records, query: Union[str, Sequence[str]],
                 t = found.group(0)
                 row[t] = row.get(t, 0) + 1
                 first.setdefault(t, found.start())
+        elif match == "stem":
+            for found in _TOKEN.finditer(text):
+                t = stem(found.group(0))
+                if t in df:
+                    row[t] = row.get(t, 0) + 1
+                    first.setdefault(t, found.start())
         else:
             for t in terms:
                 count = text.count(t)

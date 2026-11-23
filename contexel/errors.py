@@ -129,6 +129,19 @@ def check_str(value: Any, stage: str, param: str) -> str:
     return value
 
 
+def check_normalize(value: Any, stage: str) -> Optional[str]:
+    """``normalize`` is ``None`` (leave the text alone) or ``"nfc"``. Anything
+    else -- ``"NFC"``, ``"nfd"``, a typo -- raises: a normalization that
+    silently did nothing would leave the screen or the match it was asked to
+    widen exactly as narrow as before."""
+    if value is None:
+        return None
+    if not isinstance(value, str) or value != "nfc":
+        raise invalid_value(stage, "normalize",
+                            f"normalize must be None or 'nfc', got {value!r}")
+    return value
+
+
 def check_choice(value: Any, stage: str, param: str,
                  choices: Iterable[str]) -> str:
     options = tuple(choices)

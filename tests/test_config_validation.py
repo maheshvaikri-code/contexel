@@ -23,10 +23,8 @@ def test_rescore_unknown_match_raises():
     assert rescore(RECS, "x", fields=["a"], match="substring")
 
 
-def test_rescore_match_stem_is_reserved_until_the_stemmer_ships():
-    e = raised(lambda: rescore(RECS, "x", fields=["a"], match="stem"))
-    assert e.code == "config.invalid_value"
-    assert "not available yet" in str(e)
+def test_rescore_match_stem_is_a_valid_mode():
+    assert rescore(RECS, "x", fields=["a"], match="stem")
 
 
 def test_rescore_empty_fields_raises():
