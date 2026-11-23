@@ -30,6 +30,19 @@ def test_the_stem_vectors_hold_at_least_a_hundred_pairs():
     assert sum(len(c["input"]) for c in stem_cases) >= 100
 
 
+def test_the_undoubling_group_has_an_ing_and_an_ed_word_for_every_listed_letter():
+    """Each of the 17 undoubling letters must change some stem if it is dropped
+    from the rule: the vectors need an "ing" and an "ed" word for every one."""
+    from contexel.stem import _UNDOUBLE
+
+    case = next(c for c in VECTORS["cases"] if c["id"] == "stem/undoubling_each_listed_letter")
+    assert len(_UNDOUBLE) == 17
+    for suffix in ("ing", "ed"):
+        covered = {w[-len(suffix) - 1] for w in case["input"]
+                   if w.endswith(suffix) and w[-len(suffix) - 1] == w[-len(suffix) - 2]}
+        assert covered >= set(_UNDOUBLE), (suffix, sorted(set(_UNDOUBLE) - covered))
+
+
 @pytest.mark.parametrize("case", VECTORS["cases"], ids=lambda c: c["id"])
 def test_committed_case_matches_canon(case):
     assert set(case) <= parity_cases.ALLOWED_KEYS

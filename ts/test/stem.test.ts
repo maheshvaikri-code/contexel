@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
+import * as api from "../src/index.js";
 import { stem } from "../src/stem.js";
 
 const cp = (n: number): string => String.fromCodePoint(n);
@@ -146,6 +147,11 @@ test("stem never throws and never grows a word", () => {
     assert.ok(out.length <= word.length, JSON.stringify(word));
     assert.strictEqual(out === "", word === "");
   }
+});
+
+test("stem is not part of the public API", () => {
+  // ruling S5-1: reached through rescore({ match: "stem" }) and the module only
+  assert.ok(!("stem" in api));
 });
 
 test("the rule table examples are what the stemmer returns", () => {

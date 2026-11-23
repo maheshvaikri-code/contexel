@@ -7,6 +7,7 @@ documented limits and the promise that it never raises and never grows a word.
 import itertools
 import random
 import re
+import types
 from pathlib import Path
 
 import pytest
@@ -130,6 +131,15 @@ def test_stem_never_raises_and_never_grows():
         assert isinstance(out, str)
         assert len(out) <= len(word)
         assert (out == "") == (word == "")
+
+
+def test_stem_is_not_part_of_the_public_api():
+    # ruling S5-1: the stemmer is reached through rescore(match="stem") and the
+    # module, never through the package namespace
+    import contexel
+
+    assert "stem" not in contexel.__all__
+    assert isinstance(contexel.stem, types.ModuleType)
 
 
 def test_the_rule_table_examples_are_what_the_stemmer_returns():

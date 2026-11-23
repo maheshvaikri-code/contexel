@@ -181,6 +181,13 @@ public class StemTests
     }
 
     [Fact]
+    public void StemIsNotPartOfThePublicApi()
+    {
+        // ruling S5-1: reached through Rescore(match: "stem"); no public type is called Stem
+        Assert.DoesNotContain(typeof(Stages).Assembly.GetExportedTypes(), t => t.Name == "Stem");
+    }
+
+    [Fact]
     public void TheRuleTableExamplesAreWhatTheStemmerReturns()
     {
         string doc = File.ReadAllText(FindUp(Path.Combine("docs", "stemmer-rules.md"))).Replace("\r\n", "\n");

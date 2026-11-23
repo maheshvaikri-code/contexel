@@ -238,6 +238,22 @@ public class RescoreModeTests
         }
     }
 
+    [Fact]
+    public void QuarantineValidatesNormalizeBeforeTheRecordsAndBeforeThePatterns()
+    {
+        // a bad value throws even with no record to scan (a check made per record would
+        // never run), and it is reported before an invalid pattern
+        foreach (Action call in new Action[]
+        {
+            () => Stages.Quarantine(new Records(), normalize: "NFC"),
+            () => Stages.Quarantine(Words(), patterns: new[] { "(unclosed" }, normalize: "NFC"),
+        })
+        {
+            var e = Assert.Throws<ConfigException>(call);
+            Assert.Equal(("config.invalid_value", "normalize"), (e.Code, e.Param));
+        }
+    }
+
     // ---- AC 18a: quarantine ----------------------------------------------------
 
     private static object?[] Flags(Records records, object? patterns = null, string? normalize = null) =>

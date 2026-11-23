@@ -201,6 +201,21 @@ for (const bad of ["NFC", "nfd", "nfkc", "", " nfc", 5, true, ["nfc"]]) {
   });
 }
 
+test("quarantine validates normalize before the records and before the patterns", () => {
+  // a bad value raises even with no record to scan (a check made per record would
+  // never run), and it is reported before an invalid pattern
+  for (const call of [
+    () => quarantine([], { normalize: "NFC" as never }),
+    () => quarantine(WORD_RECORDS, { patterns: ["(unclosed"], normalize: "NFC" as never }),
+  ]) {
+    assert.throws(call, (e: unknown) => {
+      assert.ok(e instanceof ConfigError);
+      assert.deepStrictEqual([e.code, e.param], ["config.invalid_value", "normalize"]);
+      return true;
+    });
+  }
+});
+
 // ---- AC 18a: quarantine ----------------------------------------------------
 
 function flags(records: Records, options: Record<string, unknown> = {}): boolean[] {

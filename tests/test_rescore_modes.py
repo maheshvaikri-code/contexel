@@ -173,6 +173,17 @@ def test_normalize_unknown_value_raises(bad):
         assert info.value.stage in ("rescore", "quarantine")
 
 
+def test_quarantine_validates_normalize_before_the_records_and_before_the_patterns():
+    # a bad value raises even with no record to scan (a check made per record would
+    # never run), and it is reported before an invalid pattern
+    with pytest.raises(ConfigError) as info:
+        quarantine([], normalize="NFC")
+    assert (info.value.code, info.value.param) == ("config.invalid_value", "normalize")
+    with pytest.raises(ConfigError) as info:
+        quarantine(WORD_RECORDS, patterns=["(unclosed"], normalize="NFC")
+    assert (info.value.code, info.value.param) == ("config.invalid_value", "normalize")
+
+
 # ---- AC 18a: quarantine ------------------------------------------------------
 
 def flags(records, **kw):
