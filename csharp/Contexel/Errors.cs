@@ -161,6 +161,19 @@ internal static class Check
         return value;
     }
 
+    /// <summary><c>normalize</c> is null (leave the text alone) or "nfc".
+    /// Anything else raises: a normalization that silently did nothing would
+    /// leave the screen or the match it was asked to widen exactly as narrow
+    /// as before.</summary>
+    public static string? Normalize(string? value, string stage)
+    {
+        if (value is null) return null;
+        if (value != "nfc")
+            throw InvalidValue(stage, "normalize",
+                $"normalize must be null or 'nfc', got {PyCompat.PyRepr(value)}");
+        return value;
+    }
+
     public static string Choice(string? value, string stage, string param,
                                 params string[] choices)
     {
