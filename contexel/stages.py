@@ -277,10 +277,12 @@ def quarantine(records: Records, fields: Fields = ("snippet",),
     ``replace_patterns=True``; an empty replacement list raises rather
     than matching nothing (or everything).
 
-    ``normalize="nfc"`` applies Unicode NFC to the scanned text (never to the
-    patterns) before matching, so a marker typed with a precomposed character
-    is found in its decomposed spelling and the other way round; the default
-    ``None`` scans the text as it is. Any other value raises ``ConfigError``.
+    ``normalize="nfc"`` widens detection and never narrows it: the text is
+    scanned as given and also in its Unicode NFC form, and a record is hit if
+    either matches, so a marker typed with a precomposed character is also
+    found in its decomposed spelling. It never touches the patterns, and the
+    default ``None`` scans the text as it is. Any other value raises
+    ``ConfigError``.
 
     Honest scope: this is NOT a security boundary. A paraphrased attack
     passes; a benign document quoting an attack trips it. Provenance
@@ -349,9 +351,13 @@ def quarantine(records: Records, fields: Fields = ("snippet",),
                 f"quarantine: item {i} must be a mapping, got {_kind(r)}",
                 stage="quarantine")
         text = " ".join(_scan_text(r[f]) if f in r else "" for f in field_list)
-        if normalize == "nfc":
-            text = unicodedata.normalize("NFC", text)
         hit = any(m.search(text) is not None for m in matchers)
+        if not hit and normalize == "nfc":
+            # widen only (ADR-006): the raw text was scanned first, so
+            # normalizing can add a detection but never hide one
+            composed = unicodedata.normalize("NFC", text)
+            if composed != text:
+                hit = any(m.search(composed) is not None for m in matchers)
         if action == "flag":
             if into in r:
                 raise InputShapeError(
