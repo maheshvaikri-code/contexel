@@ -215,6 +215,48 @@ public class RunnerTests
         CaseTests.AssertCase(c);
     }
 
+    // ----------------------- stem and normalize (Slice 5) -----------------------
+
+    [Fact]
+    public void AStemCaseMapsEveryWordToItsStemAndFailsOnAWrongStem()
+    {
+        CaseTests.AssertCase(Case("stem", new Rec(), Items("parsing", "tests", ""),
+            ("expect", Items("pars", "test", ""))));
+        Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => CaseTests.AssertCase(
+            Case("stem", new Rec(), Items("parsing"), ("expect", Items("parsing")))));
+        var e = Assert.Throws<ArgumentException>(() => CaseTests.AssertCase(
+            Case("stem", new Rec { ["mode"] = "x" }, Items(), ("expect", Items()))));
+        Assert.Contains("mode", e.Message);
+    }
+
+    [Fact]
+    public void NormalizeIsAKnownArgumentOfRescoreAndQuarantineAndNullMeansTheDefault()
+    {
+        CaseTests.AssertCase(Case("rescore", new Rec { ["query"] = "x", ["normalize"] = null },
+            Items(), ("expect", Items())));
+        CaseTests.AssertCase(Case("quarantine", new Rec { ["normalize"] = null },
+            Items(), ("expect", Items())));
+        var e = Assert.Throws<ArgumentException>(() => CaseTests.AssertCase(
+            Case("rescore", new Rec { ["query"] = "x", ["normalise"] = "nfc" }, Items(), ("expect", Items()))));
+        Assert.Contains("normalise", e.Message);
+    }
+
+    [Fact]
+    public void TheRealVectorFileCarriesTheStemAndNormalizeCases()
+    {
+        var cases = AsList(Vectors["cases"]).Select(AsRec).ToList();
+        Assert.True(cases.Where(c => (string)c["stage"]! == "stem")
+            .Sum(c => AsList(c["input"]).Count) >= 100);
+        Assert.Contains(cases, c => (string)c["stage"]! == "rescore"
+            && AsRec(c["args"]).GetValueOrDefault("match") is "stem");
+        Assert.Contains(cases, c => (string)c["stage"]! == "rescore"
+            && AsRec(c["args"]).GetValueOrDefault("normalize") is "nfc");
+        Assert.Contains(cases, c => (string)c["stage"]! == "quarantine"
+            && AsRec(c["args"]).GetValueOrDefault("normalize") is "nfc");
+        Assert.Contains(cases, c => AsRec(c["args"]).ContainsKey("normalize")
+            && AsRec(c["args"])["normalize"] is null);
+    }
+
     // ----------------------- payload stages (as_records, split, join) -----------------------
 
     [Theory]

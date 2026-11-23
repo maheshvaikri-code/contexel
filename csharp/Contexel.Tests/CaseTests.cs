@@ -24,8 +24,8 @@ public class CaseTests
         ["select"] = ["fields"],
         ["dedupe"] = ["key"],
         ["allowlist"] = ["field", "allowed"],
-        ["quarantine"] = ["fields", "patterns", "action", "into", "replace_patterns"],
-        ["rescore"] = ["query", "fields", "into", "proximity", "match"],
+        ["quarantine"] = ["fields", "patterns", "action", "into", "replace_patterns", "normalize"],
+        ["rescore"] = ["query", "fields", "into", "proximity", "match", "normalize"],
         ["rank"] = ["by", "desc"],
         ["truncate_field"] = ["field", "max_tokens"],
         ["trim_to_budget"] = ["max_tokens", "min_records"],
@@ -35,6 +35,7 @@ public class CaseTests
         ["trace_report"] = ["stages", "id_field"],
         ["trace_dropped_ids"] = ["stages", "id_field"],
         ["split"] = ["field", "by", "size", "into"],
+        ["stem"] = [],
         ["as_records"] = ["field"],
         ["join"] = ["field", "sep"],
         ["text_pipeline"] = ["stages", "field", "sep"],
@@ -90,6 +91,10 @@ public class CaseTests
     private static string Str(Rec a, string key, string dflt) =>
         a.TryGetValue(key, out var v) ? (string)v! : dflt;
 
+    // an optional string argument: absent and JSON null both mean "not given"
+    private static string? OptStr(Rec a, string key) =>
+        a.TryGetValue(key, out var v) ? (string?)v : null;
+
     // a JSON null input reaches the stage as null (not-a-list case). A
     // Records list can only hold mappings or null, so a SCALAR item (a string,
     // a number, a bool) or null is handed over as a null item: the one
@@ -121,10 +126,10 @@ public class CaseTests
             : Stages.Allowlist(r, (string)a["field"]!, AsList(a["allowed"])),
         "quarantine" => Stages.Quarantine(r, OptStrs(a, "fields"), OptStrs(a, "patterns"),
             Str(a, "action", "drop"), Str(a, "into", "quarantined"),
-            Flag(a, "replace_patterns", false)),
+            Flag(a, "replace_patterns", false), OptStr(a, "normalize")),
         "rescore" => Stages.Rescore(r, a["query"] is string q ? q : Strs(a["query"]),
             OptStrs(a, "fields"), Str(a, "into", "score"), Flag(a, "proximity", true),
-            Str(a, "match", "word")),
+            Str(a, "match", "word"), OptStr(a, "normalize")),
         "rank" => Stages.Rank(r, (string)a["by"]!, Flag(a, "desc", true)),
         "truncate_field" => Stages.TruncateField(r, (string)a["field"]!, (int)(long)a["max_tokens"]!),
         "trim_to_budget" => Stages.TrimToBudget(r, (int)(long)a["max_tokens"]!,
@@ -164,6 +169,9 @@ public class CaseTests
                             kv => (object)(kv.Value is string s ? s : Strs(kv.Value)))
                         : null,
                     args.TryGetValue("dedupe_key", out var dk) ? (string?)dk : null);
+            // the frozen stemmer, one pair per word (input = words, expect = stems)
+            case "stem":
+                return AsList(c["input"]).Select(w => (object?)Stem.Of((string)w!)).ToList();
             // the entry and exit points take the raw JSON payload and sit outside
             // the pipeline, like merge: asRecords -> pipeline(stages) -> join
             case "as_records":
