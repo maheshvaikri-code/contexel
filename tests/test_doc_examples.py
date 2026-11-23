@@ -15,6 +15,7 @@ FENCE = re.compile("```(python|text)" + NL + "(.*?)```", re.S)
 
 #: (README heading, number of runnable examples the section must contain)
 SECTIONS = [("### Text, logs and web pages", 2),
+            ("### Matching: stems and Unicode forms", 2),
             ("### Errors and strict mode", 2)]
 
 with open(os.path.join(ROOT, "README.md"), encoding="utf-8") as fh:

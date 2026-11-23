@@ -18,6 +18,7 @@ const FENCE = new RegExp("```(ts|text)" + NL + "([^]*?)```", "g");
 /** [README heading, number of runnable examples the section must contain] */
 const SECTIONS: Array<[string, number]> = [
   ["## Text, logs and web pages", 2],
+  ["## Matching: stems and Unicode forms", 2],
   ["## Errors and strict mode", 2],
 ];
 

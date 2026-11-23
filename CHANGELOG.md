@@ -92,6 +92,32 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   through `as_records`, `split`, `dedupe`, `rescore`, `rank`, `trim_to_budget`
   and `join`, identical in all three languages and inside its token budget.
 
+### Added — stemming and Unicode normalization (ADR-006, all three languages)
+- `rescore(match="stem")` (TypeScript `match: "stem"`, C# `match: "stem"`) reduces
+  every word of the query and of the text to its stem before counting, so `parse`,
+  `parses`, `parsed` and `parsing` are one term and `values` matches `value`. The
+  stemmer is a small English suffix stemmer (plurals `sses`, `ies`, `ied` and `s`;
+  `ing` and `ed` with a vowel-bearing base of three code points and consonant
+  undoubling; a final `e`), identical in all three languages, **frozen** (an
+  improvement ships under a new `match` name) and documented rule by rule, with
+  worked examples that a test runs, in `docs/stemmer-rules.md`. Scoring, IDF, the
+  proximity bonus and the rounding are those of `match="word"`. The default
+  `match="word"` and every existing output are unchanged.
+- `normalize="nfc"` on `rescore` and `quarantine` applies Unicode NFC to the query
+  and the text (before lower-casing in `rescore`; in `quarantine` the text is scanned as given
+  and also in its NFC form, so the option only widens detection, and the patterns
+  are never normalized), so precomposed and decomposed spellings of the same word match;
+  the default `None` (TypeScript and C# `null`) changes nothing, and any other
+  value raises `config.invalid_value`. In C#, `string.Normalize` throws on a lone
+  surrogate and on U+FFFE where Python and JavaScript pass them through;
+  contexel normalizes the text around such a character, so no input raises.
+- The shared vectors gain a `stem` case kind (181 word-to-stem pairs in 14
+  groups, one per rule and edge: code-point lengths, ignorable characters, case)
+  and rescore and quarantine cases for `match="stem"` and `normalize` (167 cases
+  in all), identical in all three languages. `stem` itself is not part of the
+  public API: it is internal in TypeScript and C#, and in Python `contexel.stem`
+  is the module.
+
 ### Behavior changes
 Valid input with strict mode off keeps byte-identical output; these are the
 exceptions, all intentional:
@@ -154,8 +180,8 @@ exceptions, all intentional:
    pattern), but a custom pattern list that relied on the leak must be
    rewritten, giving each pattern its own flags and groups.
 4. Misconfiguration raises a typed `ConfigError`: an unknown `rescore` `match`
-   (it silently ran substring matching; `match="stem"` is reserved and raises
-   until the stemmer ships), `fields=[]` for `rescore`, a `max_tokens` or
+   (it silently ran substring matching; `"stem"` is now a real mode, see Added),
+   `fields=[]` for `rescore`, a `max_tokens` or
    `min_records` that is negative or not an integer (`0` stays valid; `None` used
    to raise a raw `TypeError` and is now a `ConfigError`, a `ValueError`), and
    any wrong-typed parameter, for example `rank(r, by=5)`,
@@ -290,6 +316,23 @@ literal `null` third argument, `Stages.Allowlist(r, "f", null)`, ambiguous
 Documented, not fixed in this slice. `quarantine` is a tripwire for literal
 markers, not a security boundary, and the three ports do not catch exactly the
 same obfuscations.
+- The stemmer is English only and not a lemmatizer: `configure` and `config` do
+  not meet, `speed` becomes `spe`, `news` becomes `new`, `series` becomes `sery`,
+  `using` is left alone, and irregular forms (`ran`, `mice`) are not handled; it
+  expects lower-case input. These are frozen on purpose: a better stemmer is a new
+  `match` name, not an edit.
+- `normalize="nfc"` depends on each runtime's Unicode database (Python's
+  `unicodedata`, the JavaScript engine's, .NET's): text that uses characters added
+  to Unicode recently can normalize differently. The shared vectors use accented
+  Latin, Hangul, combining marks and an astral compatibility ideograph, which
+  normalize the same in every version in use. Only NFC is offered (no NFKC).
+- In C#, a letter outside the Basic Multilingual Plane (a surrogate pair, such as
+  a mathematical script letter) is not a word character for .NET's regular
+  expressions, so a word is split at it wherever `rescore` tokenizes (the query in
+  every `match` mode, the text in `"word"` and `"stem"`), where Python and
+  TypeScript keep it in the word. This is the word pattern's existing margin,
+  found again by a randomized comparison of the ports; the stemmer itself counts
+  code points identically in all three languages.
 - C# `JsonElement` and `JsonNode`: `quarantine` and `allowlist` do not read
   `System.Text.Json` values (what `JsonSerializer.Deserialize<Dictionary<string,
   object?>>` produces by default). A marker split by a newline inside a nested

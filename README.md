@@ -38,12 +38,12 @@ never mutates its input, and composes with the others:
 |---|---|---|
 | `select(records, fields)` | keep only the fields you need | per-record projection onto the keep-list, order preserved |
 | `dedupe(records, key=...)` | drop duplicate records | type-qualified fingerprint of the key fields (`1`, `1.0`, `True`, `"1"` stay distinct); first occurrence wins, order preserved |
-| `rescore(records, query=...)` | score relevance from evidence, instead of trusting the tool's score | BM25-style, computed inside the batch: per-term IDF `ln((N-df+0.5)/(df+0.5)+1)` × saturating term frequency `tf/(tf+1.5)`, exact word-boundary matching (`value` ≠ `values`, snake_case splits), plus a bonus when consecutive query terms appear in order within 80 chars |
+| `rescore(records, query=...)` | score relevance from evidence, instead of trusting the tool's score | BM25-style, computed inside the batch: per-term IDF `ln((N-df+0.5)/(df+0.5)+1)` × saturating term frequency `tf/(tf+1.5)`, exact word-boundary matching by default (`value` ≠ `values`, snake_case splits; `match="stem"` opts in to a small frozen English stemmer, `normalize="nfc"` to Unicode NFC), plus a bonus when consecutive query terms appear in order within 80 chars |
 | `rank(records, by=...)` | order by importance | stable sort on a field or key function; records missing the field go last |
 | `truncate_field(records, field, max_tokens=...)` | clip one long text field | longest prefix that fits the token cap — closed-form for the built-in estimator, binary search for custom tokenizers — then `…` |
 | `trim_to_budget(records, max_tokens=...)` | keep the top records that fit a budget | greedy prefix: each record costs the token count of its serialized text (+2 list framing); stops before the budget is crossed |
 | `allowlist(records, field, allowed)` | provenance gate — refuse unapproved sources | keeps records whose `field` value is in the allowed set; missing or unhashable values are dropped (fail closed); apply *before* any relevance logic |
-| `quarantine(records, fields=...)` | tripwire for literal injection markers | case-insensitive pattern screen ("ignore previous instructions", role resets, system tags); `drop` or `flag` — not a security boundary: paraphrase passes, provenance gating is the stronger control |
+| `quarantine(records, fields=...)` | tripwire for literal injection markers | case-insensitive pattern screen ("ignore previous instructions", role resets, system tags); `drop` or `flag`, with an opt-in `normalize="nfc"` that also scans the NFC form (it only widens detection) — not a security boundary: paraphrase passes, provenance gating is the stronger control |
 | `merge(*sources, schema=...)` | unify differently-shaped tool outputs | maps candidate field names onto one schema, first match wins; optional cross-source dedupe |
 | `as_records(x, field="text")` | turn a string, a mapping or a list into records | entry point (outside `pipeline`): a string becomes `[{field: x}]`, a mapping `[x]`, a list keeps its mappings and wraps every other item; `None` and bytes raise `input.not_list` |
 | `split(records, field="text", by="lines")` | cut text into chunk records | by lines (after each `\n`), paragraphs (after a run of two or more newlines) or `size` code points; every chunk keeps its separator and an `{index, start, end}` offset, so joining the chunks rebuilds the text exactly |
@@ -335,6 +335,85 @@ about 0.6 to 2 seconds, and the cost grows with both. When the text is untrusted
 cap its size before `split`, and keep only the fields you need (`select`) before
 it. The memory of the paragraph cut does not grow with the length of a newline
 run. A cap option may be considered later.
+
+### Matching: stems and Unicode forms
+
+`rescore` counts exact words by default, the way BM25 and Lucene do: `parse` does
+not match `parses` or `parsing`, and `café` typed as one character does not match
+`café` typed as `e` plus a combining accent. Two opt-in switches widen what a match
+means. Neither changes any default output.
+
+`match="stem"` reduces every word of the query and of the text to its stem first,
+so `parse`, `parses`, `parsed` and `parsing` count as one term:
+
+```python
+from contexel import rescore
+
+notes = [
+    {"id": 1, "snippet": "Parses every line, then keeps parsing until the end"},
+    {"id": 2, "snippet": "Parsed rows are cached"},
+    {"id": 3, "snippet": "Nothing about this topic"},
+]
+exact = rescore(notes, query="parse", fields=["snippet"])
+stemmed = rescore(notes, query="parse", fields=["snippet"], match="stem")
+print([r["score"] for r in exact])
+print([r["score"] for r in stemmed])
+```
+
+```text
+[0, 0, 0]
+[0.268574, 0.188001, 0]
+```
+
+The stemmer is a short, ordered list of suffix rules (plural `s`, `ies`, `ied`,
+`ing`, `ed`, a final `e`) that Python, TypeScript and C# repeat exactly; the whole
+table, with worked examples, is [docs/stemmer-rules.md](docs/stemmer-rules.md).
+It is English only and not a lemmatizer: `configure` and `config` stay apart and
+`speed` becomes `spe`. It is **frozen**: an improvement will ship under a new
+`match` name, never as an edit, so a policy that says `match="stem"` keeps meaning
+the same thing. Scoring, IDF, the proximity bonus and the rounding are those of
+`match="word"`, and a position is the start of the word, counted in code points.
+
+`normalize="nfc"` applies Unicode NFC to the query and the text before they are
+lower-cased in `rescore`, and makes `quarantine` scan the text in its NFC form as well:
+
+```python
+from contexel import quarantine, rescore
+
+precomposed = "caf\u00e9"       # one code point
+decomposed = "cafe\u0301"       # "cafe" plus a combining acute accent: it looks the same
+records = [{"snippet": "the " + precomposed + " opens"},
+           {"snippet": "the " + decomposed + " opens"},
+           {"snippet": "tea"}]
+print([r["score"] for r in rescore(records, query=precomposed)])
+print([r["score"] for r in rescore(records, query=precomposed, normalize="nfc")])
+for normalize in (None, "nfc"):
+    flagged = quarantine(records, fields=["snippet"], patterns=[precomposed + " opens"],
+                         action="flag", normalize=normalize)
+    print([r["quarantined"] for r in flagged])
+```
+
+```text
+[0.392332, 0, 0]
+[0.188001, 0.188001, 0]
+[True, False, False]
+[True, True, False]
+```
+
+- `quarantine` with `normalize="nfc"` scans the text as it is and also in its NFC form, and a record is hit when either
+  matches: the option can only add detections, never hide one the default catches (a
+  combining mark after the last letter of a marker cannot hide it). It never
+  normalizes the patterns: a pattern written in decomposed form matches a
+  decomposed spelling of the text with or without `normalize`, and never matches a
+  precomposed one. The built-in markers are unaffected.
+- The default is `None`. Any other value than `None` and `"nfc"` (`"NFC"`, `"nfd"`,
+  a typo) raises `config.invalid_value` instead of quietly doing nothing.
+- **Margin.** Each runtime ships its own Unicode database, so text that uses
+  characters added to Unicode recently can normalize differently in Python,
+  TypeScript and C#. The shared vectors use text whose normalization has not
+  changed (accented Latin, Hangul, combining marks, an astral compatibility
+  ideograph). C#'s own normalizer throws on a lone surrogate; contexel
+  normalizes around it, as Python and JavaScript do, so no input raises.
 
 ### Errors and strict mode
 

@@ -65,8 +65,8 @@ var searchCode = Shaped.Wrap(pipe, (string query) => Repo.Search(query));
 | `Select` | keep only the listed fields |
 | `Dedupe` | drop duplicates by key or whole-record fingerprint (type-aware: `1`, `1.0`, `"1"`, `true` all distinct) |
 | `Allowlist` | fail-closed provenance gate (missing field reads as null, kept only if null is explicitly allowed) |
-| `Quarantine` | drop or flag records matching injection patterns; custom patterns **extend** the built-ins — `replacePatterns: true` is the explicit opt-out |
-| `Rescore` | batch BM25 relevance with word-boundary matching and in-order proximity bonus |
+| `Quarantine` | drop or flag records matching injection patterns; custom patterns **extend** the built-ins — `replacePatterns: true` is the explicit opt-out; `normalize: "nfc"` is an opt-in that also scans the NFC form (it only widens detection) |
+| `Rescore` | batch BM25 relevance with word-boundary matching and in-order proximity bonus; opt in to a small frozen English stemmer with `match: "stem"` and to Unicode NFC with `normalize: "nfc"` |
 | `Rank` | stable sort by field or key function; missing-field records sort last |
 | `TruncateField` | cut one field to a token budget, `…` suffix |
 | `TrimToBudget` | keep records until the budget is spent; `minRecords` guarantees the best records survive a too-small budget |
@@ -169,6 +169,100 @@ Console.WriteLine(Tokens.PythonJson(paras.Select(c =>
 ["intro\n\n", "body one\nbody two\n\n", "end"]
 [[0, 7], [7, 26], [26, 29]]
 ```
+
+## Matching: stems and Unicode forms
+
+`Rescore` counts exact words by default, the way BM25 and Lucene do: `parse` does
+not match `parses` or `parsing`, and `café` typed as one character does not match
+`café` typed as `e` plus a combining accent. Two opt-in switches widen what a match
+means. Neither changes any default output.
+
+`match: "stem"` reduces every word of the query and of the text to its stem first,
+so `parse`, `parses`, `parsed` and `parsing` count as one term:
+
+```csharp
+using Contexel;
+
+var notes = new List<Dictionary<string, object?>>
+{
+    new() { ["id"] = 1L, ["snippet"] = "Parses every line, then keeps parsing until the end" },
+    new() { ["id"] = 2L, ["snippet"] = "Parsed rows are cached" },
+    new() { ["id"] = 3L, ["snippet"] = "Nothing about this topic" },
+};
+var exact = Stages.Rescore(notes, "parse");
+var stemmed = Stages.Rescore(notes, "parse", match: "stem");
+Console.WriteLine(Tokens.PythonJson(exact.Select(r => r["score"]).ToList()));
+Console.WriteLine(Tokens.PythonJson(stemmed.Select(r => r["score"]).ToList()));
+```
+
+```text
+[0, 0, 0]
+[0.268574, 0.188001, 0]
+```
+
+The stemmer is a short, ordered list of suffix rules (plural `s`, `ies`, `ied`,
+`ing`, `ed`, a final `e`) that Python, TypeScript and C# repeat exactly; the whole
+table, with worked examples, is [docs/stemmer-rules.md](https://github.com/maheshvaikri-code/contexel/blob/main/docs/stemmer-rules.md).
+It is English only and not a lemmatizer: `configure` and `config` stay apart and
+`speed` becomes `spe`. It is **frozen**: an improvement will ship under a new
+`match` name, never as an edit. Scoring, IDF, the proximity bonus and the rounding
+are those of `match: "word"`, and a position is the start of the word, counted in
+code points. Every comparison inside it is ordinal, so the current culture changes
+nothing.
+
+`normalize: "nfc"` applies Unicode NFC to the query and the text before they are
+lower-cased in `Rescore`, and makes `Quarantine` scan the text in its NFC form as well:
+
+```csharp
+using Contexel;
+
+var precomposed = "caf\u00e9";       // one code point
+var decomposed = "cafe\u0301";       // "cafe" plus a combining acute accent: it looks the same
+var records = new List<Dictionary<string, object?>>
+{
+    new() { ["snippet"] = "the " + precomposed + " opens" },
+    new() { ["snippet"] = "the " + decomposed + " opens" },
+    new() { ["snippet"] = "tea" },
+};
+Console.WriteLine(Tokens.PythonJson(Stages.Rescore(records, precomposed).Select(r => r["score"]).ToList()));
+Console.WriteLine(Tokens.PythonJson(Stages.Rescore(records, precomposed, normalize: "nfc").Select(r => r["score"]).ToList()));
+foreach (var normalize in new string?[] { null, "nfc" })
+{
+    var flagged = Stages.Quarantine(records, patterns: new[] { precomposed + " opens" },
+                                    action: "flag", normalize: normalize);
+    Console.WriteLine(Tokens.PythonJson(flagged.Select(r => r["quarantined"]).ToList()));
+}
+```
+
+```text
+[0.392332, 0, 0]
+[0.188001, 0.188001, 0]
+[true, false, false]
+[true, true, false]
+```
+
+- `Quarantine` with `normalize: "nfc"` scans the text as it is and also in its NFC form, and a record is hit when either
+  matches: the option can only add detections, never hide one the default catches (a
+  combining mark after the last letter of a marker cannot hide it). It never
+  normalizes the patterns: a pattern written in decomposed form matches a
+  decomposed spelling of the text with or without `normalize`, and never matches a
+  precomposed one. The built-in markers are unaffected.
+- The default is `null`. Any other value than `null` and `"nfc"` (`"NFC"`, `"nfd"`,
+  a typo) throws a `ConfigException` (`config.invalid_value`) instead of quietly
+  doing nothing.
+- **Margin.** Each runtime ships its own Unicode database, so text that uses
+  characters added to Unicode recently can normalize differently in Python,
+  TypeScript and C#. The shared vectors use text whose normalization has not
+  changed (accented Latin, Hangul, combining marks, an astral compatibility
+  ideograph). .NET's own `string.Normalize` throws on a lone surrogate and on
+  U+FFFE; contexel normalizes the text around such a character and keeps it, as
+  Python and JavaScript do, so no input raises.
+- A letter outside the Basic Multilingual Plane (a surrogate pair, such as a
+  mathematical script letter) is not a word character for .NET's regular
+  expressions, so a word is split at it wherever `Rescore` tokenizes (the query in
+  every `match` mode, the text in `"word"` and `"stem"`), where Python and
+  TypeScript keep it in the word. Ordinary text, accented Latin, Hangul and CJK in
+  the BMP, and emoji are unaffected.
 
 ## Errors and strict mode
 

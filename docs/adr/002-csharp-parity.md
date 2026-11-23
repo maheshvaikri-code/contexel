@@ -66,6 +66,11 @@ nested value, so the nested-container repr margin no longer applies to it
      ADR-001; the ports agree with each other.
    - Lone surrogates (out of the JSON-safe envelope) advance one unit
      like Python's per-code-point strings — never a crash.
+   - Unicode normalization (`normalize="nfc"`, ADR-006) uses each runtime's own
+     Unicode database, so characters added to Unicode recently may normalize
+     differently; vectors use text that is stable across versions. .NET's
+     `Normalize` throws on a lone surrogate and U+FFFE, which contexel normalizes
+     around (ADR-006 amendment).
 8. **Release**: NuGet publish rides the existing tag-gated pipeline as a
    `nuget-publish` job (needs `NUGET_API_KEY` repo secret — §5 human
    setup), gated on the 3-OS suites like npm, dry-run on dispatch,
