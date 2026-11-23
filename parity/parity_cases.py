@@ -655,8 +655,10 @@ def _raw_cases() -> List[dict]:
     # a query given as a list is normalized too (a port that skips it scores the NFC record 0)
     add("rescore/normalize_nfc_normalizes_a_list_query", "rescore",
         {"query": ["cafe" + acute], "normalize": "nfc"}, cafe_records)
-    # NFC runs BEFORE lower-casing: U+1E97 (t with diaeresis) is "T" + U+0308 only after the
-    # text is composed, and the query's U+1E97 lower-cases to itself
+    # NFC runs BEFORE lower-casing. U+1E97 is LATIN SMALL LETTER T WITH DIAERESIS; capital "T" +
+    # U+0308 has no composed form, so NFC leaves the text alone, lower-casing gives "t" + U+0308,
+    # and the record scores 0 against the query U+1E97 + "est". Only a mutant that lower-cases
+    # first would compose "t" + U+0308 into U+1E97 and score 0.277259
     add("rescore/normalize_nfc_runs_before_lower_casing", "rescore",
         {"query": chr(0x1E97) + "est", "normalize": "nfc"},
         [{"snippet": "x T" + chr(0x308) + "est y"}, {"snippet": "other"}])

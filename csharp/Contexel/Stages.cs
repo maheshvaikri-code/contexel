@@ -203,9 +203,9 @@ public static class Stages
     /// precomposed character is also found in its decomposed spelling). It
     /// never touches the patterns; the default (null) scans the text as it is;
     /// any other value raises <see cref="ConfigException"/>. NFC costs time that
-    /// grows with the square of a long run of alternating combining marks: cap
-    /// the size of text you do not control (README, "Matching: stems and
-    /// Unicode forms").</summary>
+    /// grows with the square of a long run of combining marks of two different
+    /// kinds: cap the size of text you do not control (README, "Matching:
+    /// stems and Unicode forms").</summary>
     public static Records Quarantine(Records records, object? fields = null,
                                      object? patterns = null, string action = "drop",
                                      string into = "quarantined",
@@ -326,9 +326,9 @@ public static class Stages
     /// <param name="normalize"><c>null</c> (default) changes nothing; <c>"nfc"</c>
     /// applies Unicode NFC to the query and the text before lower-casing; any
     /// other value throws <see cref="ConfigException"/>. NFC costs time that grows
-    /// with the square of a long run of alternating combining marks: cap the size
-    /// of text you do not control (README, "Matching: stems and Unicode
-    /// forms").</param>
+    /// with the square of a long run of combining marks of two different kinds:
+    /// cap the size of text you do not control (README, "Matching: stems and
+    /// Unicode forms").</param>
     public static Records Rescore(Records records, object query, object? fields = null,
                                   string into = "score", bool proximity = true,
                                   string match = "word", string? normalize = null)

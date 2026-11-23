@@ -106,7 +106,7 @@ public class StemTests
     [Fact]
     public void StemCountsCodePointsNotUtf16Units()
     {
-        // an astral letter is ONE code point: these words are three or four
+        // an astral letter is ONE code point: these words are three to six
         // code points long, so the length rules treat them as the short words
         // they are
         Assert.Equal(Astral + "as", Stem.Of(Astral + "as"));

@@ -220,9 +220,9 @@ function scanText(value: unknown): string {
  * either matches (so a marker typed with a precomposed character is also found
  * in its decomposed spelling). It never touches the patterns; the default
  * (`null`) scans the text as it is. Any other value throws `ConfigError`.
- * NFC costs time that grows with the square of a long run of alternating
- * combining marks: cap the size of text you do not control (README, "Matching:
- * stems and Unicode forms").
+ * NFC costs time that grows with the square of a long run of combining marks
+ * of two different kinds: cap the size of text you do not control (README,
+ * "Matching: stems and Unicode forms").
  */
 export const quarantine = checked(
   "quarantine",
@@ -484,8 +484,8 @@ const rescoreStage = traced(
  * frozen English stemmer (README). `normalize: "nfc"` applies Unicode NFC to the
  * query and the text before lower-casing; the default `null` changes nothing,
  * and any other value throws `ConfigError`. NFC costs time that grows with the
- * square of a long run of alternating combining marks: cap the size of text you
- * do not control (README, "Matching: stems and Unicode forms").
+ * square of a long run of combining marks of two different kinds: cap the size
+ * of text you do not control (README, "Matching: stems and Unicode forms").
  */
 export const rescore = checked("rescore", true, rescoreStage);
 

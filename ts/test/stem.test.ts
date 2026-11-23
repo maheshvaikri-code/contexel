@@ -111,7 +111,7 @@ test("stem leaves words of three code points or fewer unchanged", () => {
 });
 
 test("stem counts code points, not UTF-16 units", () => {
-  // an astral letter is ONE code point: these words are three or four code
+  // an astral letter is ONE code point: these words are three to six code
   // points long, so the length rules treat them as the short words they are
   assert.strictEqual(stem(ASTRAL + "as"), ASTRAL + "as");
   assert.strictEqual(stem(ASTRAL + "aing"), ASTRAL + "aing");
