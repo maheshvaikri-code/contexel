@@ -96,7 +96,11 @@ system-prompt tags. <code>action="drop"</code> removes matches (audited);
 <code>into</code> so downstream policy decides.
 <code>normalize="nfc"</code> also scans the text in its Unicode NFC form and
 flags a record if either form matches, so it can only widen detection; it never
-touches the patterns.</p>
+touches the patterns. The default <code>normalize=None</code> scans the text as
+it is; any other value than <code>None</code> and <code>"nfc"</code> raises
+<code>ConfigError</code>. Cost: NFC takes time that grows with the square of a
+long run of alternating combining marks (seconds for 128,000 of them), so cap
+the size of text you do not control before you pass <code>normalize="nfc"</code>.</p>
 <p>Custom <code>patterns</code> <strong>extend</strong> the built-in list —
 passing your own domain markers can never silently disable the
 "ignore all previous instructions" detection (a configured-looking call
@@ -151,7 +155,10 @@ search tool's score quality. BM25-style, computed inside the batch:</p>
   as <code>e</code> plus a combining accent match each other; the default
   <code>None</code> changes nothing, any other value raises
   <code>ConfigError</code>. Each runtime ships its own Unicode database: the
-  shared vectors use text that normalizes the same in all of them;</li>
+  shared vectors use text that normalizes the same in all of them. Cost: NFC
+  takes time that grows with the square of a long run of alternating combining
+  marks (seconds for 128,000 of them), so cap the size of text you do not control
+  before you pass <code>normalize="nfc"</code>;</li>
   <li><code>proximity=True</code>: consecutive query terms in order within
   80 characters earn a bonus — the source a query was phrased from usually
   carries its terms in sequence.</li>

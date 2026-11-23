@@ -282,7 +282,9 @@ def quarantine(records: Records, fields: Fields = ("snippet",),
     either matches, so a marker typed with a precomposed character is also
     found in its decomposed spelling. It never touches the patterns, and the
     default ``None`` scans the text as it is. Any other value raises
-    ``ConfigError``.
+    ``ConfigError``. NFC costs time that grows with the square of a long run
+    of alternating combining marks: cap the size of text you do not control
+    (README, "Matching: stems and Unicode forms").
 
     Honest scope: this is NOT a security boundary. A paraphrased attack
     passes; a benign document quoting an attack trips it. Provenance
@@ -405,8 +407,11 @@ def rescore(records: Records, query: Union[str, Sequence[str]],
     lemmatizer (``configure`` and ``config`` stay apart). ``normalize="nfc"``
     applies Unicode NFC to the query and the text before lower-casing, so
     ``café`` typed as one character and as ``e`` plus a combining accent
-    match each other; the default ``None`` changes nothing. Writes the score
-    to ``into`` on a copy of each record; use before :func:`rank`.
+    match each other; the default ``None`` changes nothing. NFC costs time
+    that grows with the square of a long run of alternating combining marks:
+    cap the size of text you do not control (README, "Matching: stems and
+    Unicode forms"). Writes the score to ``into`` on a copy of each record;
+    use before :func:`rank`.
 
     Deterministic and dependency-free by construction — and therefore
     *lexical*: synonyms and paraphrase are invisible to it. When you need

@@ -112,7 +112,7 @@ def test_stem_short_words_unchanged():
 
 
 def test_stem_counts_code_points_not_utf16_units():
-    # an astral letter is ONE code point: these words are three or four code
+    # an astral letter is ONE code point: these words are three to six code
     # points long, so the length rules treat them as the short words they are
     assert stem(ASTRAL + "as") == ASTRAL + "as"       # 3 code points: unchanged
     assert stem(ASTRAL + "aing") == ASTRAL + "aing"   # base of 2 code points

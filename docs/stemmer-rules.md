@@ -141,6 +141,12 @@ mode, not an edit.
 | `bias` | `bia` |
 | `ran` | `ran` |
 | `mice` | `mic` |
+| `adds` | `add` |
+| `added` | `ad` |
+| `adding` | `ad` |
+| `egged` | `eg` |
+| `died` | `died` |
+| `dies` | `die` |
 
 - `configure` and `config` do not meet: the stem is a spelling, not a meaning.
 - A stem is not a word: `value` becomes `valu`, which is fine because the query
@@ -148,6 +154,10 @@ mode, not an edit.
 - A word that ends in `ed` or `ing` by accident is cut when the base is long
   enough and has a vowel (`speed` to `spe`); `using` is left alone only because
   its base, `us`, is shorter than three letters.
+- Undoubling runs after the three-code-point test on the base, so a stem can be
+  two letters (`added` to `ad`) and a word and its inflections can split
+  (`add`/`adds` stay, `added`/`adding` become `ad`; `die`/`dies` stay, `died` is
+  unchanged).
 - English only. Other languages are matched with `match="word"`.
 
 ## Where it applies

@@ -229,7 +229,7 @@ console.log(JSON.stringify(quarantine(records, { patterns, action: "flag", norma
   combining mark after the last letter of a marker cannot hide it). It never
   normalizes the patterns: a pattern written in decomposed form matches a
   decomposed spelling of the text with or without `normalize`, and never matches a
-  precomposed one. The built-in markers are unaffected.
+  precomposed one. The built-in patterns themselves are not changed.
 - The default is `null`. Any other value than `null` and `"nfc"` (`"NFC"`, `"nfd"`,
   a typo) throws `config.invalid_value` instead of quietly doing nothing.
 - **Margin.** Each runtime ships its own Unicode database, so text that uses
@@ -237,6 +237,13 @@ console.log(JSON.stringify(quarantine(records, { patterns, action: "flag", norma
   TypeScript and C#. The shared vectors use text whose normalization has not
   changed (accented Latin, Hangul, combining marks, an astral compatibility
   ideograph).
+- **Cost.** Each runtime's own NFC reorders a run of combining marks in time that
+  grows with the square of the run: a text made of a long alternating run of two
+  kinds of combining marks (for example 128,000 of U+0301 and U+0323) takes
+  seconds with `normalize: "nfc"` on, in Python, TypeScript and C# alike, where
+  the default takes milliseconds. Real text does not contain such runs.
+  `normalize: "nfc"` is opt-in; if you pass text you do not control, cap its size
+  first.
 
 ## Errors and strict mode
 

@@ -34,7 +34,7 @@ mode name**, never by editing `stem`; (3) add `normalize ∈ {None, "nfc"}` to
 - Invalidation triggers: non-English use; evidence the stemmer harms precision on a real corpus (publish under a new mode).
 
 ## Amendments at G2 (Slice 5 plan, 2026-11-22)
-Decisions the design left open, each recorded in the Slice 5 plan as S5-1 to S5-8:
+Decisions the design left open, each recorded in the Slice 5 plan: S5-1 to S5-8 at G2, and S5-10 to S5-14 during execution (see the plan's Amendments at execution):
 - **The rules are an ordered `if`/`else if` chain whose conditions include the
   length tests**, so when a rule's length condition fails the next rule is tried:
   `ties` (four letters) reaches the plural `s` rule and becomes `tie`; `tied` stays
@@ -69,10 +69,27 @@ Decisions the design left open, each recorded in the Slice 5 plan as S5-1 to S5-
   `quarantine/normalize_nfc_cannot_hide_a_marker_behind_a_trailing_mark`).
 - **C# normalizes around characters its platform rejects.** `string.Normalize`
   throws `ArgumentException` on a lone surrogate and on U+FFFE; Python and
-  JavaScript return them unchanged. Such a character has no composition and blocks
-  none on either side, so contexel normalizes the runs between them and keeps the
-  character: no input raises, and the result equals the other two languages'.
+  JavaScript return them unchanged. Such a character is a starter that composes
+  with nothing, so NFC never combines or reorders across it, which is why
+  normalizing run by run is correct: contexel normalizes the runs between them and
+  keeps the character, so no input raises and the result equals the other two
+  languages'.
 - **The Unicode-version margin** is recorded in ADR-002's margin list: the vectors
   use accented Latin, Hangul, combining marks (including two orders that NFC
   reorders) and an astral compatibility ideograph, none of which changed in the
   Unicode versions in use. Newer characters may normalize differently per runtime.
+- **The cost of NFC is accepted as a known limit** (decided by the project owner at
+  the G5 security review). The finding: each runtime's own NFC takes time that grows
+  with the square of a run of alternating combining marks, and the security review
+  vetoed `normalize` until that was fixed or the owner accepted it. The measured
+  figures, for a text made of an alternating run of U+0301 and U+0323 with
+  `normalize="nfc"`: Python `quarantine` 128,000 marks 5.1 s and 256,000 marks 19 s;
+  TypeScript 128,000 marks 5.7 s and 512,000 marks 92 s; C# 128,000 marks 4.6 s and
+  512,000 marks 76 s; the default path takes milliseconds. Why it was accepted: the
+  option is opt-in, real text has no such runs, and the raw scan always runs first, so
+  `quarantine` with `normalize="nfc"` is never weaker than the default. No code
+  changes; the limit is documented (READMEs, changelog, site, doc comments). A
+  possible additive follow-up: cut the text after every 30th consecutive combining
+  mark (the Unicode stream-safe limit) and normalize each piece, prototyped by the
+  reviewer (512,000 marks in about 70 ms); it would be a later change, because it
+  makes the result differ from exact NFC for runs longer than 30 marks.

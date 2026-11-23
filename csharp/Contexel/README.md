@@ -246,7 +246,7 @@ foreach (var normalize in new string?[] { null, "nfc" })
   combining mark after the last letter of a marker cannot hide it). It never
   normalizes the patterns: a pattern written in decomposed form matches a
   decomposed spelling of the text with or without `normalize`, and never matches a
-  precomposed one. The built-in markers are unaffected.
+  precomposed one. The built-in patterns themselves are not changed.
 - The default is `null`. Any other value than `null` and `"nfc"` (`"NFC"`, `"nfd"`,
   a typo) throws a `ConfigException` (`config.invalid_value`) instead of quietly
   doing nothing.
@@ -254,9 +254,16 @@ foreach (var normalize in new string?[] { null, "nfc" })
   characters added to Unicode recently can normalize differently in Python,
   TypeScript and C#. The shared vectors use text whose normalization has not
   changed (accented Latin, Hangul, combining marks, an astral compatibility
-  ideograph). .NET's own `string.Normalize` throws on a lone surrogate and on
-  U+FFFE; contexel normalizes the text around such a character and keeps it, as
-  Python and JavaScript do, so no input raises.
+  ideograph). .NET's `string.Normalize` throws on a lone surrogate and on
+  U+FFFE; contexel's C# port normalizes around such a character and keeps it, so
+  the result equals what Python and JavaScript return.
+- **Cost.** Each runtime's own NFC reorders a run of combining marks in time that
+  grows with the square of the run: a text made of a long alternating run of two
+  kinds of combining marks (for example 128,000 of U+0301 and U+0323) takes
+  seconds with `normalize: "nfc"` on, in Python, TypeScript and C# alike, where
+  the default takes milliseconds. Real text does not contain such runs.
+  `normalize: "nfc"` is opt-in; if you pass text you do not control, cap its size
+  first.
 - A letter outside the Basic Multilingual Plane (a surrogate pair, such as a
   mathematical script letter) is not a word character for .NET's regular
   expressions, so a word is split at it wherever `Rescore` tokenizes (the query in

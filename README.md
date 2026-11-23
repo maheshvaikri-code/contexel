@@ -405,15 +405,23 @@ for normalize in (None, "nfc"):
   combining mark after the last letter of a marker cannot hide it). It never
   normalizes the patterns: a pattern written in decomposed form matches a
   decomposed spelling of the text with or without `normalize`, and never matches a
-  precomposed one. The built-in markers are unaffected.
+  precomposed one. The built-in patterns themselves are not changed.
 - The default is `None`. Any other value than `None` and `"nfc"` (`"NFC"`, `"nfd"`,
   a typo) raises `config.invalid_value` instead of quietly doing nothing.
 - **Margin.** Each runtime ships its own Unicode database, so text that uses
   characters added to Unicode recently can normalize differently in Python,
   TypeScript and C#. The shared vectors use text whose normalization has not
   changed (accented Latin, Hangul, combining marks, an astral compatibility
-  ideograph). C#'s own normalizer throws on a lone surrogate; contexel
-  normalizes around it, as Python and JavaScript do, so no input raises.
+  ideograph). .NET's `string.Normalize` throws on a lone surrogate and on
+  U+FFFE; contexel's C# port normalizes around such a character and keeps it, so
+  the result equals what Python and JavaScript return.
+- **Cost.** Each runtime's own NFC reorders a run of combining marks in time that
+  grows with the square of the run: a text made of a long alternating run of two
+  kinds of combining marks (for example 128,000 of U+0301 and U+0323) takes
+  seconds with `normalize="nfc"` on, in Python, TypeScript and C# alike, where
+  the default takes milliseconds. Real text does not contain such runs.
+  `normalize="nfc"` is opt-in; if you pass text you do not control, cap its size
+  first.
 
 ### Errors and strict mode
 

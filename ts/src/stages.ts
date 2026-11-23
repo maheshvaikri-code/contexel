@@ -220,6 +220,9 @@ function scanText(value: unknown): string {
  * either matches (so a marker typed with a precomposed character is also found
  * in its decomposed spelling). It never touches the patterns; the default
  * (`null`) scans the text as it is. Any other value throws `ConfigError`.
+ * NFC costs time that grows with the square of a long run of alternating
+ * combining marks: cap the size of text you do not control (README, "Matching:
+ * stems and Unicode forms").
  */
 export const quarantine = checked(
   "quarantine",
@@ -473,6 +476,17 @@ const rescoreStage = traced(
   }
 );
 
+/**
+ * Replaces the tool's relevance score with a deterministic lexical one (BM25
+ * style, computed inside the batch; see the Python `rescore` for the details).
+ * `match: "word"` (default) counts exact words, `"substring"` raw substrings,
+ * `"stem"` reduces every word of the query and the text to its stem with the
+ * frozen English stemmer (README). `normalize: "nfc"` applies Unicode NFC to the
+ * query and the text before lower-casing; the default `null` changes nothing,
+ * and any other value throws `ConfigError`. NFC costs time that grows with the
+ * square of a long run of alternating combining marks: cap the size of text you
+ * do not control (README, "Matching: stems and Unicode forms").
+ */
 export const rescore = checked("rescore", true, rescoreStage);
 
 const rankStage = traced(

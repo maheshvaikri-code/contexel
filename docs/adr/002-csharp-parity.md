@@ -71,6 +71,20 @@ nested value, so the nested-container repr margin no longer applies to it
      differently; vectors use text that is stable across versions. .NET's
      `Normalize` throws on a lone surrogate and U+FFFE, which contexel normalizes
      around (ADR-006 amendment).
+   - In C#, a letter outside the Basic Multilingual Plane (a surrogate pair)
+     is not a word character for .NET regular expressions, so a word is split
+     at it wherever `Rescore` tokenizes, in `word` and `stem` mode (Python and
+     TypeScript keep it in the word). Example: `a` + U+1D49C + `b` scores
+     0.277259 in Python and TypeScript and 0.901091 in C# for
+     `rescore(..., match="stem")`. Documented, not fixed in Slice 5; a later
+     slice can add an explicit code-point tokenizer, with a behavior-change
+     entry.
+   - C# `ToLowerInvariant` leaves U+0130 (capital I with a dot above) unchanged
+     where Python and JavaScript lower-case it to `i` plus U+0307 (the
+     combining dot above), so `rescore` of a text made of U+0130 followed by
+     "stanbul" against the query "i" + U+0307 + "stanbul" differs between
+     Python (a match) and C# (no match). This is older than Slice 5 and is now
+     recorded; no behavior change.
 8. **Release**: NuGet publish rides the existing tag-gated pipeline as a
    `nuget-publish` job (needs `NUGET_API_KEY` repo secret — §5 human
    setup), gated on the 3-OS suites like npm, dry-run on dispatch,

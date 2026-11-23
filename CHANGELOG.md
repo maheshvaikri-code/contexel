@@ -97,24 +97,25 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   every word of the query and of the text to its stem before counting, so `parse`,
   `parses`, `parsed` and `parsing` are one term and `values` matches `value`. The
   stemmer is a small English suffix stemmer (plurals `sses`, `ies`, `ied` and `s`;
-  `ing` and `ed` with a vowel-bearing base of three code points and consonant
+  `ing` and `ed` with a vowel-bearing base of at least three code points and consonant
   undoubling; a final `e`), identical in all three languages, **frozen** (an
   improvement ships under a new `match` name) and documented rule by rule, with
   worked examples that a test runs, in `docs/stemmer-rules.md`. Scoring, IDF, the
   proximity bonus and the rounding are those of `match="word"`. The default
   `match="word"` and every existing output are unchanged.
-- `normalize="nfc"` on `rescore` and `quarantine` applies Unicode NFC to the query
-  and the text (before lower-casing in `rescore`; in `quarantine` the text is scanned as given
-  and also in its NFC form, so the option only widens detection, and the patterns
-  are never normalized), so precomposed and decomposed spellings of the same word match;
-  the default `None` (TypeScript and C# `null`) changes nothing, and any other
-  value raises `config.invalid_value`. In C#, `string.Normalize` throws on a lone
-  surrogate and on U+FFFE where Python and JavaScript pass them through;
+- `normalize="nfc"` on `rescore` and `quarantine` applies Unicode NFC. In `rescore`
+  it applies to the query and the text before lower-casing, so precomposed and
+  decomposed spellings of the same word match. In `quarantine` the text is scanned
+  as given and also in its NFC form, so a precomposed pattern also finds a decomposed
+  spelling; the patterns are never normalized, and the option can only widen
+  detection. The default `None` (TypeScript and C# `null`) changes nothing, and any
+  other value raises `config.invalid_value`. In C#, `string.Normalize` throws on a
+  lone surrogate and on U+FFFE where Python and JavaScript pass them through;
   contexel normalizes the text around such a character, so no input raises.
-- The shared vectors gain a `stem` case kind (181 word-to-stem pairs in 14
-  groups, one per rule and edge: code-point lengths, ignorable characters, case)
-  and rescore and quarantine cases for `match="stem"` and `normalize` (167 cases
-  in all), identical in all three languages. `stem` itself is not part of the
+- The shared vectors gain a `stem` case kind (223 word-to-stem pairs in 16
+  groups, one per rule and edge: code-point lengths, ignorable characters, case,
+  every undoubling letter) and rescore and quarantine cases for `match="stem"` and
+  `normalize` (174 cases in all), identical in all three languages. `stem` itself is not part of the
   public API: it is internal in TypeScript and C#, and in Python `contexel.stem`
   is the module.
 
@@ -312,6 +313,10 @@ literal `null` third argument, `Stages.Allowlist(r, "f", null)`, ambiguous
 (compile error CS0121) where it compiled before; cast it
 (`(IEnumerable<object?>)null`) or pass a real list.
 
+C#: `Stages.Rescore` and `Stages.Quarantine` gained a trailing optional `normalize`
+parameter; callers recompile unchanged, but an assembly compiled against an
+earlier version must be recompiled (binary compatibility is not preserved).
+
 ### Known limitations
 Documented, not fixed in this slice. `quarantine` is a tripwire for literal
 markers, not a security boundary, and the three ports do not catch exactly the
@@ -326,6 +331,13 @@ same obfuscations.
   to Unicode recently can normalize differently. The shared vectors use accented
   Latin, Hangul, combining marks and an astral compatibility ideograph, which
   normalize the same in every version in use. Only NFC is offered (no NFKC).
+- Cost. Each runtime's own NFC reorders a run of combining marks in time that
+  grows with the square of the run: a text made of a long alternating run of two
+  kinds of combining marks (for example 128,000 of U+0301 and U+0323) takes
+  seconds with `normalize="nfc"` on, in Python, TypeScript and C# alike, where
+  the default takes milliseconds. Real text does not contain such runs.
+  `normalize="nfc"` is opt-in; if you pass text you do not control, cap its size
+  first.
 - In C#, a letter outside the Basic Multilingual Plane (a surrogate pair, such as
   a mathematical script letter) is not a word character for .NET's regular
   expressions, so a word is split at it wherever `rescore` tokenizes (the query in

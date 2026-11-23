@@ -202,7 +202,10 @@ public static class Stages
     /// form, and a record is hit if either matches (so a marker typed with a
     /// precomposed character is also found in its decomposed spelling). It
     /// never touches the patterns; the default (null) scans the text as it is;
-    /// any other value raises <see cref="ConfigException"/>.</summary>
+    /// any other value raises <see cref="ConfigException"/>. NFC costs time that
+    /// grows with the square of a long run of alternating combining marks: cap
+    /// the size of text you do not control (README, "Matching: stems and
+    /// Unicode forms").</summary>
     public static Records Quarantine(Records records, object? fields = null,
                                      object? patterns = null, string action = "drop",
                                      string into = "quarantined",
@@ -306,6 +309,26 @@ public static class Stages
     private static readonly Regex Word =
         new(@"[\p{L}\p{N}]+", RegexOptions.CultureInvariant);
 
+    /// <summary>Replaces the tool's relevance score with a deterministic lexical
+    /// one (BM25 style, computed inside the batch) and writes it to
+    /// <paramref name="into"/> on a copy of each record; use before
+    /// <see cref="Rank(Records, string, bool)"/>.</summary>
+    /// <param name="records">The records to score.</param>
+    /// <param name="query">A string or a list of strings.</param>
+    /// <param name="fields">The text fields to read (default <c>snippet</c>).</param>
+    /// <param name="into">The field that receives the score.</param>
+    /// <param name="proximity">Add a bonus for consecutive query terms in order
+    /// within an 80-character window.</param>
+    /// <param name="match"><c>"word"</c> (default) counts exact words;
+    /// <c>"substring"</c> counts raw substrings; <c>"stem"</c> reduces every word
+    /// of the query and of the text to its stem with the frozen English stemmer
+    /// (see the README). Any other value throws <see cref="ConfigException"/>.</param>
+    /// <param name="normalize"><c>null</c> (default) changes nothing; <c>"nfc"</c>
+    /// applies Unicode NFC to the query and the text before lower-casing; any
+    /// other value throws <see cref="ConfigException"/>. NFC costs time that grows
+    /// with the square of a long run of alternating combining marks: cap the size
+    /// of text you do not control (README, "Matching: stems and Unicode
+    /// forms").</param>
     public static Records Rescore(Records records, object query, object? fields = null,
                                   string into = "score", bool proximity = true,
                                   string match = "word", string? normalize = null)

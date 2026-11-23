@@ -327,10 +327,10 @@ internal static class PyCompat
     /// <summary>Unicode NFC, as Python's <c>unicodedata.normalize("NFC", s)</c>
     /// and JavaScript's <c>normalize("NFC")</c> do it. .NET's own
     /// <c>Normalize</c> THROWS on a lone surrogate and on U+FFFE, which the
-    /// other two pass through untouched. Such a character has no composition
-    /// and blocks none on either side, so the text between two of them is
-    /// normalized on its own and the character is kept; a run the platform
-    /// still refuses is returned as it came.</summary>
+    /// other two pass through untouched. Such a character is a starter that
+    /// composes with nothing, so NFC never combines or reorders across it:
+    /// the text between two of them is normalized on its own and the character
+    /// is kept; a run the platform still refuses is returned as it came.</summary>
     public static string NormalizeNfc(string text)
     {
         try
