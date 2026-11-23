@@ -133,6 +133,17 @@ export function checkStr(value: unknown, stage: string, param: string): string {
   return value;
 }
 
+/** `normalize` is null/undefined (leave the text alone) or "nfc". Anything
+ * else raises: a normalization that silently did nothing would leave the
+ * screen or the match it was asked to widen exactly as narrow as before. */
+export function checkNormalize(value: unknown, stage: string): "nfc" | null {
+  if (value === undefined || value === null) return null;
+  if (value !== "nfc") {
+    throw invalidValue(stage, "normalize", `normalize must be null or 'nfc', got ${pyRepr(value)}`);
+  }
+  return "nfc";
+}
+
 export function checkChoice(
   value: unknown,
   stage: string,

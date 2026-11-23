@@ -5,6 +5,7 @@
  */
 import assert from "node:assert/strict";
 
+import { stem } from "../src/stem.js";
 import {
   ContexelError,
   allowlist,
@@ -79,12 +80,13 @@ export const ARG_NAMES: Record<string, readonly string[]> = {
   select: ["fields"],
   dedupe: ["key"],
   allowlist: ["field", "allowed"],
-  quarantine: ["fields", "patterns", "action", "into", "replace_patterns"],
-  rescore: ["query", "fields", "into", "proximity", "match"],
+  quarantine: ["fields", "patterns", "action", "into", "replace_patterns", "normalize"],
+  rescore: ["query", "fields", "into", "proximity", "match", "normalize"],
   rank: ["by", "desc"],
   truncate_field: ["field", "max_tokens", "suffix"],
   trim_to_budget: ["max_tokens", "min_records"],
   split: ["field", "by", "size", "into"],
+  stem: [],
   as_records: ["field"],
   join: ["field", "sep"],
   text_pipeline: ["stages", "field", "sep"],
@@ -145,6 +147,9 @@ function execute(c: Case, fixture: Records): unknown {
   switch (c.stage) {
     case "merge":
       return merge(input as Records[], toOptions(c.args));
+    case "stem":
+      // the frozen stemmer, one pair per word (input = words, expect = stems)
+      return (input as string[]).map(stem);
     case "as_records":
       return asRecords(input, toOptions(c.args));
     case "join":

@@ -196,10 +196,21 @@ public static class Stages
         return string.Join(" ", parts);
     }
 
+    /// <summary>Drops or flags records whose scanned text matches a built-in or
+    /// custom pattern. <c>normalize: "nfc"</c> widens detection and never
+    /// narrows it: the text is scanned as given and also in its Unicode NFC
+    /// form, and a record is hit if either matches (so a marker typed with a
+    /// precomposed character is also found in its decomposed spelling). It
+    /// never touches the patterns; the default (null) scans the text as it is;
+    /// any other value raises <see cref="ConfigException"/>. NFC costs time that
+    /// grows with the square of a long run of combining marks of two different
+    /// kinds: cap the size of text you do not control (README, "Matching:
+    /// stems and Unicode forms").</summary>
     public static Records Quarantine(Records records, object? fields = null,
                                      object? patterns = null, string action = "drop",
                                      string into = "quarantined",
-                                     bool replacePatterns = false)
+                                     bool replacePatterns = false,
+                                     string? normalize = null)
     {
         Strict.CheckRecords(records, "quarantine", mapping: true);
         return Trace.Traced("quarantine", records, () =>
@@ -213,6 +224,7 @@ public static class Stages
             var fieldNames = Check.Fields(fields ?? new[] { "snippet" }, "quarantine",
                                           allowEmpty: false);
             Check.Str(into, "quarantine", "into");
+            bool nfc = Check.Normalize(normalize, "quarantine") is not null;
             // custom patterns EXTEND the built-ins: domain markers must never
             // silently disable "ignore all previous instructions" detection;
             // replacePatterns is the explicit opt-out
@@ -269,6 +281,14 @@ public static class Stages
                 string text = string.Join(" ", fieldNames.Select(f =>
                     r.TryGetValue(f, out var v) ? ScanText(v) : ""));
                 bool hit = matchers.Any(m => m.IsMatch(text));
+                if (!hit && nfc)
+                {
+                    // widen only (ADR-006): the raw text was scanned first, so
+                    // normalizing can add a detection but never hide one
+                    string composed = PyCompat.NormalizeNfc(text);
+                    if (!string.Equals(composed, text, StringComparison.Ordinal))
+                        hit = matchers.Any(m => m.IsMatch(composed));
+                }
                 if (action == "flag")
                 {
                     // continuing would silently overwrite the caller's data
@@ -289,45 +309,63 @@ public static class Stages
     private static readonly Regex Word =
         new(@"[\p{L}\p{N}]+", RegexOptions.CultureInvariant);
 
+    /// <summary>Replaces the tool's relevance score with a deterministic lexical
+    /// one (BM25 style, computed inside the batch) and writes it to
+    /// <paramref name="into"/> on a copy of each record; use before
+    /// <see cref="Rank(Records, string, bool)"/>.</summary>
+    /// <param name="records">The records to score.</param>
+    /// <param name="query">A string or a list of strings.</param>
+    /// <param name="fields">The text fields to read (default <c>snippet</c>).</param>
+    /// <param name="into">The field that receives the score.</param>
+    /// <param name="proximity">Add a bonus for consecutive query terms in order
+    /// within an 80-character window.</param>
+    /// <param name="match"><c>"word"</c> (default) counts exact words;
+    /// <c>"substring"</c> counts raw substrings; <c>"stem"</c> reduces every word
+    /// of the query and of the text to its stem with the frozen English stemmer
+    /// (see the README). Any other value throws <see cref="ConfigException"/>.</param>
+    /// <param name="normalize"><c>null</c> (default) changes nothing; <c>"nfc"</c>
+    /// applies Unicode NFC to the query and the text before lower-casing; any
+    /// other value throws <see cref="ConfigException"/>. NFC costs time that grows
+    /// with the square of a long run of combining marks of two different kinds:
+    /// cap the size of text you do not control (README, "Matching: stems and
+    /// Unicode forms").</param>
     public static Records Rescore(Records records, object query, object? fields = null,
                                   string into = "score", bool proximity = true,
-                                  string match = "word")
+                                  string match = "word", string? normalize = null)
     {
         Strict.CheckRecords(records, "rescore", mapping: true);
-        return RescoreBody(records, query, fields, into, proximity, match);
+        return RescoreBody(records, query, fields, into, proximity, match, normalize);
     }
 
     private static Records RescoreBody(Records records, object query, object? fields,
-                                       string into, bool proximity, string match) =>
+                                       string into, bool proximity, string match,
+                                       string? normalize) =>
         Trace.Traced("rescore", records, () =>
         {
             var validQuery = Check.Query(query, "rescore"); // materialized once
             var fieldNames = Check.Fields(fields ?? new[] { "snippet" }, "rescore",
                                           allowEmpty: false);
             Check.Str(into, "rescore", "into");
-            if (match == "stem")
-            {
-                // reserved for the English stemmer (ADR-006); until it ships,
-                // running it as substring matching would be a silent downgrade
-                throw Check.InvalidValue("rescore", "match",
-                    "match 'stem' is not available yet; use 'word' or 'substring'");
-            }
-            Check.Choice(match, "rescore", "match", "word", "substring");
+            Check.Choice(match, "rescore", "match", "word", "substring", "stem");
+            bool nfc = Check.Normalize(normalize, "rescore") is not null;
+            // NFC first, then lower-case (ADR-006)
+            string Prepare(string text) =>
+                (nfc ? PyCompat.NormalizeNfc(text) : text).ToLowerInvariant();
             var rawTerms = (validQuery switch
             {
-                string q => Word.Matches(q.ToLowerInvariant()).Select(m => m.Value),
+                string q => Word.Matches(Prepare(q)).Select(m => m.Value),
                 // Python: str(part) for each element of the list
                 System.Collections.IEnumerable qs => qs.Cast<object?>().SelectMany(p =>
-                    Word.Matches(PyCompat.PyStr(p).ToLowerInvariant()).Select(m => m.Value)),
+                    Word.Matches(Prepare(PyCompat.PyStr(p))).Select(m => m.Value)),
                 _ => throw Check.InvalidValue("rescore", "query",
                     "query must be a string or a list of strings"),
             }).ToList();
-            var terms = rawTerms.Distinct().ToList();
+            var terms = (match == "stem" ? rawTerms.Select(Stem.Of) : rawTerms).Distinct().ToList();
             if (terms.Count == 0 || records.Count == 0)
                 return records.Select(r => new Rec(r) { [into] = 0.0 }).ToList();
 
-            var texts = records.Select(r => string.Join(" ", fieldNames.Select(f =>
-                r.TryGetValue(f, out var v) ? PyCompat.PyStr(v) : "")).ToLowerInvariant()).ToList();
+            var texts = records.Select(r => Prepare(string.Join(" ", fieldNames.Select(f =>
+                r.TryGetValue(f, out var v) ? PyCompat.PyStr(v) : "")))).ToList();
 
             Regex? finder = null;
             if (match == "word")
@@ -355,6 +393,16 @@ public static class Stages
                     foreach (Match m in finder.Matches(text))
                     {
                         string t = m.Value;
+                        row[t] = row.GetValueOrDefault(t) + 1;
+                        if (!first.ContainsKey(t)) first[t] = toCp(m.Index);
+                    }
+                }
+                else if (match == "stem")
+                {
+                    foreach (Match m in Word.Matches(text))
+                    {
+                        string t = Stem.Of(m.Value);
+                        if (!df.ContainsKey(t)) continue;
                         row[t] = row.GetValueOrDefault(t) + 1;
                         if (!first.ContainsKey(t)) first[t] = toCp(m.Index);
                     }

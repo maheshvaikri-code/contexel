@@ -72,8 +72,8 @@ const searchCode = shaped([
 | `select` | keep only the listed fields |
 | `dedupe` | drop duplicates by key or whole-record fingerprint (type-aware: `1`, `"1"`, `true` stay distinct) |
 | `allowlist` | fail-closed provenance gate — keep records whose field is in the allowed set (a missing field reads as `null`, kept only if `null` is explicitly allowed) |
-| `quarantine` | drop or flag records matching injection patterns ("ignore previous instructions", …); custom `patterns` extend the built-ins — `replacePatterns: true` is the explicit opt-out |
-| `rescore` | batch BM25 relevance with word-boundary matching and in-order proximity bonus |
+| `quarantine` | drop or flag records matching injection patterns ("ignore previous instructions", …); custom `patterns` extend the built-ins — `replacePatterns: true` is the explicit opt-out; `normalize: "nfc"` is an opt-in that also scans the NFC form (it only widens detection) |
+| `rescore` | batch BM25 relevance with word-boundary matching and in-order proximity bonus; opt in to a small frozen English stemmer with `match: "stem"` and to Unicode NFC with `normalize: "nfc"` |
 | `rank` | stable sort by a field; records missing the field sort last |
 | `truncateField` | cut one field to a token budget, `…` suffix |
 | `trimToBudget` | keep records until the total token budget is spent; `minRecords` guarantees the best records survive a too-small budget instead of returning `[]` |
@@ -158,6 +158,92 @@ console.log(JSON.stringify(join(inOrder)));
 "three\none\ntwo\n"
 "one\ntwo\nthree\n"
 ```
+
+## Matching: stems and Unicode forms
+
+`rescore` counts exact words by default, the way BM25 and Lucene do: `parse` does
+not match `parses` or `parsing`, and `café` typed as one character does not match
+`café` typed as `e` plus a combining accent. Two opt-in switches widen what a match
+means. Neither changes any default output.
+
+`match: "stem"` reduces every word of the query and of the text to its stem first,
+so `parse`, `parses`, `parsed` and `parsing` count as one term:
+
+```ts
+import { rescore } from "contexel";
+
+const notes = [
+  { id: 1, snippet: "Parses every line, then keeps parsing until the end" },
+  { id: 2, snippet: "Parsed rows are cached" },
+  { id: 3, snippet: "Nothing about this topic" },
+];
+const exact = rescore(notes, { query: "parse", fields: ["snippet"] });
+const stemmed = rescore(notes, { query: "parse", fields: ["snippet"], match: "stem" });
+console.log(JSON.stringify(exact.map((r) => r.score)));
+console.log(JSON.stringify(stemmed.map((r) => r.score)));
+```
+
+```text
+[0,0,0]
+[0.268574,0.188001,0]
+```
+
+The stemmer is a short, ordered list of suffix rules (plural `s`, `ies`, `ied`,
+`ing`, `ed`, a final `e`) that Python, TypeScript and C# repeat exactly; the whole
+table, with worked examples, is [docs/stemmer-rules.md](https://github.com/maheshvaikri-code/contexel/blob/main/docs/stemmer-rules.md).
+It is English only and not a lemmatizer: `configure` and `config` stay apart and
+`speed` becomes `spe`. It is **frozen**: an improvement will ship under a new
+`match` name, never as an edit. Scoring, IDF, the proximity bonus and the rounding
+are those of `match: "word"`, and a position is the start of the word, counted in
+code points.
+
+`normalize: "nfc"` applies Unicode NFC to the query and the text before they are
+lower-cased in `rescore`, and makes `quarantine` scan the text in its NFC form as well:
+
+```ts
+import { quarantine, rescore } from "contexel";
+
+const precomposed = "caf\u00e9";       // one code point
+const decomposed = "cafe\u0301";       // "cafe" plus a combining acute accent: it looks the same
+const records = [
+  { snippet: "the " + precomposed + " opens" },
+  { snippet: "the " + decomposed + " opens" },
+  { snippet: "tea" },
+];
+console.log(JSON.stringify(rescore(records, { query: precomposed }).map((r) => r.score)));
+console.log(JSON.stringify(rescore(records, { query: precomposed, normalize: "nfc" }).map((r) => r.score)));
+const patterns = [precomposed + " opens"];
+console.log(JSON.stringify(quarantine(records, { patterns, action: "flag" }).map((r) => r.quarantined)));
+console.log(JSON.stringify(quarantine(records, { patterns, action: "flag", normalize: "nfc" }).map((r) => r.quarantined)));
+```
+
+```text
+[0.392332,0,0]
+[0.188001,0.188001,0]
+[true,false,false]
+[true,true,false]
+```
+
+- `quarantine` with `normalize: "nfc"` scans the text as it is and also in its NFC form, and a record is hit when either
+  matches: the option can only add detections, never hide one the default catches (a
+  combining mark after the last letter of a marker cannot hide it). It never
+  normalizes the patterns: a pattern written in decomposed form matches a
+  decomposed spelling of the text with or without `normalize`, and never matches a
+  precomposed one. The built-in patterns themselves are not changed.
+- The default is `null`. Any other value than `null` and `"nfc"` (`"NFC"`, `"nfd"`,
+  a typo) throws `config.invalid_value` instead of quietly doing nothing.
+- **Margin.** Each runtime ships its own Unicode database, so text that uses
+  characters added to Unicode recently can normalize differently in Python,
+  TypeScript and C#. The shared vectors use text whose normalization has not
+  changed (accented Latin, Hangul, combining marks, an astral compatibility
+  ideograph).
+- **Cost.** Each runtime's own NFC reorders a run of combining marks in time that
+  grows with the square of the run: a text made of a long alternating run of two
+  kinds of combining marks (for example 128,000 of U+0301 and U+0323) takes
+  seconds with `normalize: "nfc"` on, in Python, TypeScript and C# alike, where
+  the default takes milliseconds. Real text does not contain such runs.
+  `normalize: "nfc"` is opt-in; if you pass text you do not control, cap its size
+  first.
 
 ## Errors and strict mode
 

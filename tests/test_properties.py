@@ -29,6 +29,10 @@ STAGES = {
     "quarantine_drop": lambda r: quarantine(r),
     "quarantine_flag": lambda r: quarantine(r, action="flag"),
     "rescore": lambda r: rescore(r, "retry backoff jitter", fields=("snippet", "path")),
+    "rescore_stem": lambda r: rescore(r, "retry backoff jitter", fields=("snippet", "path"), match="stem"),
+    "rescore_nfc": lambda r: rescore(r, "caf\u00e9 retry", fields=("snippet", "path"), normalize="nfc"),
+    "quarantine_drop_nfc": lambda r: quarantine(r, normalize="nfc"),
+    "quarantine_flag_nfc": lambda r: quarantine(r, action="flag", normalize="nfc"),
     "rank": lambda r: rank(r, by="score"),
     "truncate": lambda r: truncate_field(r, "snippet", 6),
     "trim": lambda r: trim_to_budget(r, 80),
@@ -37,10 +41,14 @@ STAGES = {
 # will raise input.field_conflict instead of overwriting (design spec section
 # 3, error table; brief AC 5).
 IDEMPOTENT = ["select", "dedupe_key", "dedupe_whole", "allowlist",
-              "quarantine_drop", "rescore", "rank", "truncate", "trim"]
-SUBSEQUENCE = ["dedupe_key", "dedupe_whole", "allowlist", "quarantine_drop", "trim"]
-SAME_LENGTH = ["select", "quarantine_flag", "rescore", "rank", "truncate"]
-ORDER_KEEPING = ["select", "quarantine_flag", "rescore", "truncate"]  # rank reorders
+              "quarantine_drop", "quarantine_drop_nfc", "rescore", "rescore_stem",
+              "rescore_nfc", "rank", "truncate", "trim"]
+SUBSEQUENCE = ["dedupe_key", "dedupe_whole", "allowlist", "quarantine_drop",
+               "quarantine_drop_nfc", "trim"]
+SAME_LENGTH = ["select", "quarantine_flag", "quarantine_flag_nfc", "rescore",
+               "rescore_stem", "rescore_nfc", "rank", "truncate"]
+ORDER_KEEPING = ["select", "quarantine_flag", "quarantine_flag_nfc", "rescore",
+                 "rescore_stem", "rescore_nfc", "truncate"]  # rank reorders
 
 
 def canon(value):
@@ -166,6 +174,8 @@ EFFECTS = {
     "allowlist": check_allowlist_effect,
     "quarantine_drop": check_quarantine_drop_effect,
     "quarantine_flag": check_quarantine_flag_effect,
+    "quarantine_drop_nfc": check_quarantine_drop_effect,
+    "quarantine_flag_nfc": check_quarantine_flag_effect,
 }
 
 

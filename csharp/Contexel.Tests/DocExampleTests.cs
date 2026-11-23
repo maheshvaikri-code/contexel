@@ -29,6 +29,7 @@ public class DocExampleTests
 
     private const string ErrorsHeading = "## Errors and strict mode";
     private const string PayloadHeading = "## Text, logs and web pages";
+    private const string MatchingHeading = "## Matching: stems and Unicode forms";
 
     private static List<(string Lang, string Body)> ReadmeBlocks(string heading = ErrorsHeading)
     {
@@ -115,6 +116,20 @@ public class DocExampleTests
     [Fact]
     public void PayloadExample2PrintsWhatTheReadmeShows() =>
         Check(2, Example4, ThisFile(), PayloadHeading, marker: 4);
+
+    // The matching examples (stems and Unicode forms): tied to Example5 and Example6 below.
+
+    [Fact]
+    public void TheMatchingSectionHasItsTwoRunnableExamples() =>
+        Assert.Equal(2, ReadmeBlocks(MatchingHeading).Count(b => b.Lang == "csharp"));
+
+    [Fact]
+    public void MatchingExample1PrintsWhatTheReadmeShows() =>
+        Check(1, Example5, ThisFile(), MatchingHeading, marker: 5);
+
+    [Fact]
+    public void MatchingExample2PrintsWhatTheReadmeShows() =>
+        Check(2, Example6, ThisFile(), MatchingHeading, marker: 6);
 
     private static string Printed(Action example)
     {
@@ -233,5 +248,43 @@ public class DocExampleTests
             return new List<object?> { at["start"], at["end"] };
         }).ToList()));
         // </doc-example-4>
+    }
+
+    private static void Example5()
+    {
+        // <doc-example-5>
+        var notes = new List<Dictionary<string, object?>>
+        {
+            new() { ["id"] = 1L, ["snippet"] = "Parses every line, then keeps parsing until the end" },
+            new() { ["id"] = 2L, ["snippet"] = "Parsed rows are cached" },
+            new() { ["id"] = 3L, ["snippet"] = "Nothing about this topic" },
+        };
+        var exact = Stages.Rescore(notes, "parse");
+        var stemmed = Stages.Rescore(notes, "parse", match: "stem");
+        Console.WriteLine(Tokens.PythonJson(exact.Select(r => r["score"]).ToList()));
+        Console.WriteLine(Tokens.PythonJson(stemmed.Select(r => r["score"]).ToList()));
+        // </doc-example-5>
+    }
+
+    private static void Example6()
+    {
+        // <doc-example-6>
+        var precomposed = "caf\u00e9";       // one code point
+        var decomposed = "cafe\u0301";       // "cafe" plus a combining acute accent: it looks the same
+        var records = new List<Dictionary<string, object?>>
+        {
+            new() { ["snippet"] = "the " + precomposed + " opens" },
+            new() { ["snippet"] = "the " + decomposed + " opens" },
+            new() { ["snippet"] = "tea" },
+        };
+        Console.WriteLine(Tokens.PythonJson(Stages.Rescore(records, precomposed).Select(r => r["score"]).ToList()));
+        Console.WriteLine(Tokens.PythonJson(Stages.Rescore(records, precomposed, normalize: "nfc").Select(r => r["score"]).ToList()));
+        foreach (var normalize in new string?[] { null, "nfc" })
+        {
+            var flagged = Stages.Quarantine(records, patterns: new[] { precomposed + " opens" },
+                                            action: "flag", normalize: normalize);
+            Console.WriteLine(Tokens.PythonJson(flagged.Select(r => r["quarantined"]).ToList()));
+        }
+        // </doc-example-6>
     }
 }

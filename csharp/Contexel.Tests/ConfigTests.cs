@@ -38,11 +38,9 @@ public class ConfigTests
     }
 
     [Fact]
-    public void RescoreMatchStemIsReservedUntilTheStemmerShips()
+    public void RescoreMatchStemIsAValidMode()
     {
-        var e = Raised(() => Stages.Rescore(Recs(), "x", A, match: "stem"));
-        Assert.Equal("config.invalid_value", e.Code);
-        Assert.Contains("not available yet", e.Message);
+        Assert.NotEmpty(Stages.Rescore(Recs(), "x", A, match: "stem"));
     }
 
     [Fact]

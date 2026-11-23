@@ -87,13 +87,20 @@ cannot pass <code>allowed=[True]</code>; <code>1</code> and
 apart. A wrong-typed <code>allowed</code>, or an unhashable entry in it,
 raises <code>ConfigError</code>.</p>
 
-<h2 id="quarantine">quarantine(records, fields=("snippet",), patterns=None, action="drop", into="quarantined", replace_patterns=False)</h2>
+<h2 id="quarantine">quarantine(records, fields=("snippet",), patterns=None, action="drop", into="quarantined", replace_patterns=False, normalize=None)</h2>
 <p><strong>Injection tripwire.</strong> A deterministic, case-insensitive
 pattern screen over the given text fields for the crudest prompt-injection
 markers — "ignore all previous instructions", role resets ("you are now"),
 system-prompt tags. <code>action="drop"</code> removes matches (audited);
 <code>action="flag"</code> keeps everything and writes a boolean to
-<code>into</code> so downstream policy decides.</p>
+<code>into</code> so downstream policy decides.
+<code>normalize="nfc"</code> also scans the text in its Unicode NFC form and
+flags a record if either form matches, so it can only widen detection; it never
+touches the patterns. The default <code>normalize=None</code> scans the text as
+it is; any other value than <code>None</code> and <code>"nfc"</code> raises
+<code>ConfigError</code>. Cost: NFC takes time that grows with the square of a
+long run of alternating combining marks (seconds for 128,000 of them), so cap
+the size of text you do not control before you pass <code>normalize="nfc"</code>.</p>
 <p>Custom <code>patterns</code> <strong>extend</strong> the built-in list —
 passing your own domain markers can never silently disable the
 "ignore all previous instructions" detection (a configured-looking call
@@ -124,7 +131,7 @@ obfuscations (zero-width characters, homoglyphs and several others pass in
 all of them); the known limits are listed in the
 <a href="https://github.com/maheshvaikri-code/contexel/blob/main/CHANGELOG.md">changelog</a>.</div>
 
-<h2 id="rescore">rescore(records, query, fields=("snippet",), into="score", proximity=True, match="word")</h2>
+<h2 id="rescore">rescore(records, query, fields=("snippet",), into="score", proximity=True, match="word", normalize=None)</h2>
 <p><strong>Writes</strong> a deterministic lexical relevance score to
 <code>into</code> on a copy of each record, so ranking stops inheriting the
 search tool's score quality. BM25-style, computed inside the batch:</p>
@@ -135,9 +142,23 @@ search tool's score quality. BM25-style, computed inside the batch:</p>
   <li><code>match="word"</code> (default) counts exact word occurrences the
   way BM25/Lucene tokenize — <code>value</code> ≠ <code>values</code>,
   underscores split snake_case; <code>match="substring"</code> is the
-  forgiving, decoy-prone alternative; any other <code>match</code> raises
-  <code>ConfigError</code> (<code>"stem"</code> is reserved for a later
-  release); <code>fields=[]</code> raises too;</li>
+  forgiving, decoy-prone alternative; <code>match="stem"</code> reduces every
+  word of the query and of the text to its stem first, with a small frozen
+  English suffix stemmer, so <code>parse</code>, <code>parses</code>,
+  <code>parsed</code> and <code>parsing</code> are one term (the rule table is
+  <code>docs/stemmer-rules.md</code>; English only, not a lemmatizer:
+  <code>configure</code> and <code>config</code> stay apart); any other
+  <code>match</code> raises <code>ConfigError</code>; <code>fields=[]</code>
+  raises too;</li>
+  <li><code>normalize="nfc"</code> applies Unicode NFC to the query and the text
+  before they are lower-cased, so <code>café</code> typed as one character and
+  as <code>e</code> plus a combining accent match each other; the default
+  <code>None</code> changes nothing, any other value raises
+  <code>ConfigError</code>. Each runtime ships its own Unicode database: the
+  shared vectors use text that normalizes the same in all of them. Cost: NFC
+  takes time that grows with the square of a long run of alternating combining
+  marks (seconds for 128,000 of them), so cap the size of text you do not control
+  before you pass <code>normalize="nfc"</code>;</li>
   <li><code>proximity=True</code>: consecutive query terms in order within
   80 characters earn a bonus — the source a query was phrased from usually
   carries its terms in sequence.</li>

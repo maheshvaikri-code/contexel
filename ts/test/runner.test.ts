@@ -24,6 +24,7 @@ test("the argument table covers exactly the record stages plus the composite kin
     Object.keys(ARG_NAMES).sort(),
     [
       ...Object.keys(RECORD_STAGES),
+      "stem",
       "as_records",
       "join",
       "text_pipeline",
@@ -189,6 +190,43 @@ test("a nested stage must be a record stage", () => {
       ),
     /unknown stage "merge"/
   );
+});
+
+/* ---- stem and normalize (Slice 5) ---- */
+
+test("a stem case maps every word to its stem and fails on a wrong stem", () => {
+  checkCase(base({ stage: "stem", args: {}, input: ["parsing", "tests", ""], expect: ["pars", "test", ""] }), FIXTURE);
+  assert.throws(() =>
+    checkCase(base({ stage: "stem", args: {}, input: ["parsing"], expect: ["parsing"] }), FIXTURE)
+  );
+  assert.throws(
+    () => checkCase(base({ stage: "stem", args: { mode: "x" }, input: [], expect: [] }), FIXTURE),
+    /unknown argument "mode" for stage stem/
+  );
+});
+
+test("normalize is a known argument of rescore and quarantine, and null means the default", () => {
+  for (const kind of ["rescore", "quarantine"]) {
+    const args = kind === "rescore" ? { query: "x", normalize: null } : { normalize: null };
+    checkCase(base({ stage: kind, args, input: [], expect: [] }), FIXTURE);
+  }
+  assert.throws(
+    () => checkCase(base({ stage: "rescore", args: { query: "x", normalise: "nfc" }, input: [], expect: [] }), FIXTURE),
+    /unknown argument "normalise" for stage rescore/
+  );
+});
+
+test("the real vector file carries the stem and normalize cases", async () => {
+  const { readFileSync } = await import("node:fs");
+  const vectors = JSON.parse(
+    readFileSync(new URL("../../../parity/vectors.json", import.meta.url), "utf-8")
+  ) as { cases: Case[] };
+  const stems = vectors.cases.filter((c) => c.stage === "stem");
+  assert.ok(stems.reduce((n, c) => n + (c.input as string[]).length, 0) >= 100);
+  assert.ok(vectors.cases.some((c) => c.stage === "rescore" && c.args.match === "stem"));
+  assert.ok(vectors.cases.some((c) => c.stage === "rescore" && c.args.normalize === "nfc"));
+  assert.ok(vectors.cases.some((c) => c.stage === "quarantine" && c.args.normalize === "nfc"));
+  assert.ok(vectors.cases.some((c) => "normalize" in c.args && c.args.normalize === null));
 });
 
 /* ---- payload kinds (Slice 4): as_records, join, text_pipeline, split ---- */
