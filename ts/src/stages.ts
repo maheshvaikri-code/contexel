@@ -14,10 +14,12 @@ import {
   checkChoice,
   checkFields,
   checkNonNegativeInt,
+  checkNormalize,
   checkQuery,
   checkStr,
   invalidValue,
 } from "./errors.js";
+import { stem } from "./stem.js";
 import { checked, isMapping } from "./validate.js";
 import {
   allowKey,
@@ -212,6 +214,12 @@ function scanText(value: unknown): string {
  * separately and a record is dropped/flagged when ANY of them matches, so a
  * pattern's groups, named groups and numbered backreferences stay its own,
  * and an invalid pattern is named in the `ConfigError`.
+ *
+ * `normalize: "nfc"` widens detection and never narrows it: the text is
+ * scanned as given and also in its Unicode NFC form, and a record is hit if
+ * either matches (so a marker typed with a precomposed character is also found
+ * in its decomposed spelling). It never touches the patterns; the default
+ * (`null`) scans the text as it is. Any other value throws `ConfigError`.
  */
 export const quarantine = checked(
   "quarantine",
@@ -226,6 +234,7 @@ export const quarantine = checked(
         action?: "drop" | "flag";
         into?: string;
         replacePatterns?: boolean;
+        normalize?: "nfc" | null;
       } = {}
     ): Records => {
       const action = params.action === undefined ? "drop" : params.action;
@@ -243,6 +252,7 @@ export const quarantine = checked(
       checkStr(into, "quarantine", "into");
       const replacePatterns = params.replacePatterns === undefined ? false : params.replacePatterns;
       checkBool(replacePatterns, "quarantine", "replacePatterns");
+      const normalize = checkNormalize(params.normalize, "quarantine");
       // custom patterns EXTEND the built-ins: passing domain markers must
       // never silently disable "ignore all previous instructions" detection;
       // replacePatterns is the explicit opt-out
@@ -312,7 +322,12 @@ export const quarantine = checked(
         const text = fields
           .map((f) => (Object.hasOwn(r, f) ? scanText(r[f]) : ""))
           .join(" ");
-        const hit = matchers.some((m) => m.test(text));
+        let hit = matchers.some((m) => m.test(text));
+        if (!hit && normalize === "nfc") {
+          // widen only: the raw text was scanned first, never replaced
+          const composed = text.normalize("NFC");
+          if (composed !== text) hit = matchers.some((m) => m.test(composed));
+        }
         if (action === "flag") {
           if (Object.hasOwn(r, into)) {
             throw new InputShapeError(
@@ -344,7 +359,8 @@ const rescoreStage = traced(
       fields?: string | string[];
       into?: string;
       proximity?: boolean;
-      match?: "word" | "substring";
+      match?: "word" | "substring" | "stem";
+      normalize?: "nfc" | null;
     }
   ): Records => {
     const query = checkQuery(params.query, "rescore");
@@ -354,31 +370,23 @@ const rescoreStage = traced(
     const proximity = params.proximity === undefined ? true : params.proximity;
     checkBool(proximity, "rescore", "proximity");
     const match = params.match === undefined ? "word" : params.match;
-    if ((match as unknown) === "stem") {
-      // reserved for the English stemmer (ADR-006); until it ships, running
-      // it as substring matching would be a silent downgrade
-      throw invalidValue(
-        "rescore",
-        "match",
-        "match 'stem' is not available yet; use 'word' or 'substring'"
-      );
-    }
-    checkChoice(match, "rescore", "match", ["word", "substring"]);
+    checkChoice(match, "rescore", "match", ["word", "substring", "stem"]);
+    const normalize = checkNormalize(params.normalize, "rescore");
+    // NFC first, then lower-case (ADR-006)
+    const prepare = (text: string): string =>
+      (normalize === "nfc" ? text.normalize("NFC") : text).toLowerCase();
 
     const rawTerms =
       typeof query === "string"
-        ? query.toLowerCase().match(WORD) ?? []
-        : query.flatMap((p) => String(p).toLowerCase().match(WORD) ?? []);
-    const terms = [...new Set(rawTerms)];
+        ? prepare(query).match(WORD) ?? []
+        : query.flatMap((p) => prepare(String(p)).match(WORD) ?? []);
+    const terms = [...new Set(match === "stem" ? rawTerms.map(stem) : rawTerms)];
     if (!terms.length || !records.length) {
       return records.map((r) => ({ ...r, [into]: 0.0 }));
     }
 
     const texts = records.map((r) =>
-      fields
-        .map((f) => (Object.hasOwn(r, f) ? pyStr(r[f]) : ""))
-        .join(" ")
-        .toLowerCase()
+      prepare(fields.map((f) => (Object.hasOwn(r, f) ? pyStr(r[f]) : "")).join(" "))
     );
 
     let finder: RegExp | null = null;
@@ -407,6 +415,14 @@ const rescoreStage = traced(
           const t = m[0];
           row.set(t, (row.get(t) ?? 0) + 1);
           if (!first.has(t)) first.set(t, toCp(m.index ?? 0));
+        }
+      } else if (match === "stem") {
+        for (const m of text.matchAll(WORD)) {
+          const t = stem(m[0]);
+          if (df.has(t)) {
+            row.set(t, (row.get(t) ?? 0) + 1);
+            if (!first.has(t)) first.set(t, toCp(m.index ?? 0));
+          }
         }
       } else {
         for (const t of terms) {

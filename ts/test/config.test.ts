@@ -51,10 +51,8 @@ test("rescore unknown match raises", () => {
   assert.ok(rescore(RECS, { query: "x", fields: ["a"], match: "substring" }));
 });
 
-test("rescore match stem is reserved until the stemmer ships", () => {
-  const e = raised(() => rescore(RECS, { query: "x", fields: ["a"], match: "stem" as never }));
-  assert.strictEqual(e.code, "config.invalid_value");
-  assert.ok(e.message.includes("not available yet"));
+test("rescore match stem is a valid mode", () => {
+  assert.ok(rescore(RECS, { query: "x", fields: ["a"], match: "stem" }));
 });
 
 test("rescore empty fields raises", () => {
