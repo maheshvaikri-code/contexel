@@ -2,9 +2,13 @@
 number that does not is reported. The tests that exercise a competitor library skip
 when it is not installed."""
 import json
+import os
+import re
 import shutil
 import subprocess
 import sys
+import tempfile
+import time
 from pathlib import Path
 
 import pytest
@@ -360,7 +364,221 @@ def test_a_bare_number_cell_is_reported_however_it_is_formatted(tree, rel, ancho
     assert any(rel in p and "table cell" in p and "'12'" in p for p in problems), (cell, problems)
 
 
+def test_a_bare_number_cell_in_italics_is_reported(tree):
+    _replace(tree, "README.md", "How to read each column, plainly:",
+             "| a | _12_ |\n\nHow to read each column, plainly:")
+    assert any("README.md" in p and "table cell" in p and "'12'" in p for p in publish.check(tree))
+
+
 def test_a_table_cell_with_words_or_a_version_is_not_a_bare_number(tree):
     _replace(tree, "README.md", "How to read each column, plainly:",
              "| a | 6/6 |\n| b | v2 |\n|---|---|\n\nHow to read each column, plainly:")
     assert publish.check(tree) == []
+
+
+# --- the scan sees through Unicode tricks, covers microseconds and more attributes -------
+@pytest.mark.parametrize("written", [
+    "12 " + chr(0xB5) + "s", "12 " + chr(0x3BC) + "s", "12 &micro;s", "12 us", "12 US", "12ns",
+    "12 microseconds", "12 nanoseconds", "40" + chr(0xFF05), chr(0xFF11) + chr(0xFF12) + " ms",
+    "12" + chr(0x200B) + "ms", "12" + chr(0xAD) + "ms", "12" + chr(0x2060) + "ms",
+    "12" + chr(0x200C) + " ms", "40" + chr(0x200D) + "%", "12" + chr(0xFEFF) + "ms", "12&#8203;ms",
+])
+def test_a_number_split_or_disguised_by_unicode_or_in_microseconds_is_reported(tree, written):
+    _replace(tree, "README.md", _ANCHOR, f"Both are noise ({written}) next to a")
+    problems = publish.check(tree)
+    assert any("unregistered benchmark number" in p and "README.md" in p for p in problems), (written, problems)
+
+
+@pytest.mark.parametrize("tag", [
+    '<input placeholder="12 ms">', '<span data-tip="40%">i</span>',
+    "<span data-cost-per-record='3&times;'>i</span>",
+])
+def test_a_number_inside_a_placeholder_or_data_attribute_is_reported(tree, tag):
+    _replace(tree, "site/index.html", "<h2>The record, at a glance</h2>",
+             "<h2>The record, at a glance</h2>\n" + tag)
+    problems = publish.check(tree)
+    assert any("unregistered benchmark number" in p and "site/index.html" in p for p in problems), (tag, problems)
+
+
+@pytest.mark.parametrize("written", [
+    "a 3 x 4 grid", "Python 3.x", "12 users", "5 nodes", "12 usb ports", "the US market",
+    "a 12-step plan",
+])
+def test_words_that_start_like_a_unit_are_not_reported(tree, written):
+    _replace(tree, "README.md", _ANCHOR, f"Both are noise ({written}) next to a")
+    assert publish.check(tree) == [], written
+
+
+# --- linear time on adversarial text; an oversized file is refused --------------------------
+# Sizes: the earlier patterns took 150 s or more on 40,000 digits and 11 to 55 s on 160,000
+# characters of the other four; the linear ones take well under a second on all of them.
+_ADVERSARIAL = {
+    "a run of digits": "1" * 40_000,
+    "1, repeated": "1," * 20_000,
+    "unclosed td cells": "<td>" * 40_000,
+    "unclosed block start markers": "<!-- benchmark:glance:start -->" * 5_200,
+    "a run of <": "<" * 160_000,
+    "unclosed Markdown link targets": "](" * 80_000,
+}
+
+
+@pytest.mark.parametrize("name", sorted(_ADVERSARIAL))
+def test_the_check_runs_in_linear_time_on_adversarial_text(tree, name):
+    # the earlier patterns backtracked quadratically: seconds to minutes on these
+    path = tree / "README.md"
+    _write(path, path.read_text(encoding="utf-8") + "\n" + _ADVERSARIAL[name] + "\n")
+    start = time.perf_counter()
+    publish.check(tree)
+    assert time.perf_counter() - start < 2.0, name
+
+
+def test_a_published_file_larger_than_two_megabytes_is_refused_not_scanned(tree):
+    path = tree / "README.md"
+    _write(path, path.read_text(encoding="utf-8") + "x" * publish.MAX_PUBLISHED_BYTES)
+    problems = publish.check(tree)
+    assert any("README.md" in p and "larger than" in p for p in problems), problems
+
+
+def test_a_block_marker_without_its_pair_is_reported(tree):
+    _replace(tree, "README.md", "<!-- benchmark:glance:start -->",
+             "<!-- benchmark:glance:start -->\n<!-- benchmark:glance:start -->")
+    problems = publish.check(tree)
+    assert any("README.md" in p and "marker without its pair" in p for p in problems), problems
+
+
+# --- values from the results are escaped in the Markdown blocks ----------------------------
+def test_names_from_the_results_are_escaped_in_the_markdown_blocks(tree):
+    poison = "<script>x|y</script>"
+    path = tree / "benchmarks" / "COMPARISON.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    for key in ("outcomes", "operations"):
+        next(r for r in data[key] if r["impl"] == "toolz")["impl"] = poison
+    next(r for r in data["inflected"]["rows"] if r["shaper"] == "hand-written")["shaper"] = poison
+    _write(path, json.dumps(data, indent=2, ensure_ascii=False) + chr(10))
+    publish.write(tree)
+    readme = (tree / "README.md").read_text(encoding="utf-8")
+    for name in ("glance", "inflected"):
+        block = next(m.group("body") for m in publish.BLOCK.finditer(readme) if m.group("name") == name)
+        assert "<script>" not in block and "&lt;script&gt;x\\|y&lt;/script&gt;" in block, name
+        rows = [line for line in block.strip().splitlines()]
+        widths = {len(re.split(r"(?<!\\)\|", line)) for line in rows}
+        assert len(widths) == 1, (name, rows)  # no row gained a column
+
+
+# --- write: never through a link, never outside the root, through a temporary file --------
+def _link_directory(link, target):
+    try:
+        os.symlink(str(target), str(link), target_is_directory=True)
+        return True
+    except (OSError, NotImplementedError):
+        pass
+    try:  # a Windows junction needs no privilege
+        import _winapi
+        _winapi.CreateJunction(str(target), str(link))  # type: ignore[attr-defined]
+        return True
+    except (ImportError, AttributeError, OSError):
+        return False
+
+
+def test_write_refuses_a_symbolic_link(tree):
+    readme = tree / "README.md"
+    with tempfile.TemporaryDirectory() as other:
+        target = Path(other) / "README.md"
+        _write(target, readme.read_text(encoding="utf-8").replace("| **contexel** |", "| **edited** |"))
+        readme.unlink()
+        try:
+            readme.symlink_to(target)
+        except (OSError, NotImplementedError):
+            pytest.skip("symbolic links cannot be created here")
+        before = target.read_bytes()
+        try:
+            with pytest.raises(publish.PublishError, match="symbolic link"):
+                publish.write(tree)
+            assert target.read_bytes() == before
+        finally:
+            readme.unlink()
+
+
+def test_write_refuses_a_file_that_resolves_outside_the_root(tree):
+    with tempfile.TemporaryDirectory() as other:
+        outside = Path(other) / "site"
+        shutil.copytree(str(tree / "site"), str(outside))
+        shutil.rmtree(str(tree / "site"))
+        if not _link_directory(tree / "site", outside):
+            pytest.skip("neither a directory symlink nor a junction can be created here")
+        try:
+            with pytest.raises(publish.PublishError, match="outside"):
+                publish.write(tree)
+        finally:
+            try:
+                os.unlink(str(tree / "site"))
+            except OSError:
+                os.rmdir(str(tree / "site"))
+
+
+def test_write_refuses_a_target_that_is_not_a_file(tree):
+    readme = tree / "README.md"
+    readme.unlink()
+    readme.mkdir()
+    with pytest.raises(publish.PublishError, match="not a regular file"):
+        publish.write(tree)
+    assert any("README.md" in p and "cannot read" in p for p in publish.check(tree))
+    script = ROOT / "tools" / "check_benchmark_numbers.py"
+    run = subprocess.run([sys.executable, str(script), "--root", str(tree), "--write"],
+                         capture_output=True, text=True)
+    assert run.returncode == 1 and "cannot write" in run.stdout and "Traceback" not in run.stderr
+
+
+def test_write_goes_through_a_temporary_file_and_leaves_none_behind(tree):
+    _replace(tree, "README.md", "| **contexel** |", "| **contexel (edited)** |")
+    assert publish.write(tree) == ["README.md"]
+    assert publish.check(tree) == []
+    assert not [p.name for p in tree.rglob("*.tmp")]
+    assert (tree / "README.md").read_bytes().count(b"\r") == 0  # LF
+
+
+# --- malformed or missing inputs are reported, not a traceback ------------------------------
+@pytest.mark.parametrize("rel", ["benchmarks/COMPARISON.md", "benchmarks/RESULTS.md"])
+def test_a_missing_report_is_reported(tree, rel):
+    (tree / rel).unlink()
+    problems = publish.check(tree)
+    assert any(rel in p and "cannot read" in p for p in problems), problems
+
+
+@pytest.mark.parametrize("rel, edit", [
+    ("benchmarks/COMPARISON.json", lambda d: d.pop("inflected")),
+    ("benchmarks/COMPARISON.json", lambda d: d.__setitem__("outcomes", 5)),
+    ("benchmarks/COMPARISON.json", lambda d: d["dataset"].pop("sha256")),
+    ("benchmarks/COMPARISON.json", lambda d: d.__setitem__("operations", [])),
+    ("benchmarks/RESULTS.json", lambda d: d.pop("accuracy")),
+    ("benchmarks/RESULTS.json", lambda d: d["speed"].__setitem__("stages", [])),
+])
+def test_malformed_results_are_reported(tree, rel, edit):
+    path = tree / rel
+    data = json.loads(path.read_text(encoding="utf-8"))
+    edit(data)
+    _write(path, json.dumps(data, indent=2) + chr(10))
+    problems = publish.check(tree)
+    assert any("malformed" in p for p in problems), problems
+    script = ROOT / "tools" / "check_benchmark_numbers.py"
+    run = subprocess.run([sys.executable, str(script), "--root", str(tree)], capture_output=True, text=True)
+    assert run.returncode == 1 and "Traceback" not in run.stderr, run.stderr
+
+
+def test_a_published_file_that_is_not_utf8_is_reported(tree):
+    readme = tree / "README.md"
+    readme.write_bytes(readme.read_bytes() + b"\xff\xfe broken")
+    problems = publish.check(tree)
+    assert any("README.md" in p and "not valid UTF-8" in p for p in problems), problems
+
+
+# --- the qualitative claims read only the columns they name ---------------------------------
+def test_the_only_full_marks_claim_reads_only_the_outcome_columns(tree):
+    def edit(data):
+        row = _outcome(data, "hand-written (term overlap)")
+        row["recall_strong_pct"] = row["recall_weak_pct"] = 100.0  # 0/6 native ops, but full outcomes
+
+    _edit_comparison(tree, edit)
+    problems = publish.check(tree)
+    assert any("site/index.html" in p and "only row with full marks" in p and "not true" in p
+               for p in problems), problems

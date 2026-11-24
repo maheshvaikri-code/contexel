@@ -9,20 +9,29 @@ typed by hand, so they could drift from what the benchmark produced. Now:
   check compares each block with what the data renders;
 * the few prose numbers that remain are registered claims (``CLAIMS``): a pattern
   that must match, with the number it carries compared with the data;
-* any other number with a benchmark unit (ms, %, x) found in a published file
-  fails the check ("unregistered"), so a hand-typed number cannot slip in;
+* outside the generated blocks and the registered claims, any number carrying a
+  benchmark unit (ms, microseconds, ns, %, x and their spellings), in the text or in an
+  attribute a reader sees, and any table cell that is only a number, is reported
+  ("unregistered"). Other prose is not checked: a number written without one of
+  those units (in seconds, or in words) is not caught;
 * ``COMPARISON.md`` and ``RESULTS.md`` must equal the reports rendered from the
   JSON, and the dataset digest the results were produced with must be the digest
   committed in ``benchmarks/dataset.sha256``.
 
-``check(root)`` returns the problems (empty when everything agrees); ``write(root)``
-rewrites the generated blocks. ``tools/check_benchmark_numbers.py`` is the command.
+``check(root)`` returns the problems (empty when everything agrees): a missing,
+unreadable or oversized file and malformed results are problems too, never a
+crash. ``write(root)`` rewrites the generated blocks.
+``tools/check_benchmark_numbers.py`` is the command.
 """
 from __future__ import annotations
 
 import html
 import json
+import os
 import re
+import stat
+import tempfile
+import unicodedata
 from pathlib import Path
 from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple
 
@@ -31,9 +40,14 @@ from .competitors import render_report
 from .fetch_dataset import DatasetChecksumError, expected_digest
 
 FILES = ("README.md", "README_PYPI.md", "site/index.html", "site/benchmarks.html")
+MAX_PUBLISHED_BYTES = 2 * 1024 * 1024  # a larger published file is refused, not scanned
+_START = r"<!--\s*benchmark:[a-z0-9-]+:start"
+# A block's body never contains another start marker (tempered), so an unclosed start
+# marker costs one scan to the next marker, not to the end of the file.
 BLOCK = re.compile(
-    r"<!--\s*benchmark:(?P<name>[a-z0-9-]+):start\s*-->(?P<body>.*?)"
+    r"<!--\s*benchmark:(?P<name>[a-z0-9-]+):start\s*-->(?P<body>(?:(?!" + _START + r").)*?)"
     r"<!--\s*benchmark:(?P=name):end\s*-->", re.S)
+MARKER = re.compile(r"<!--\s*benchmark:[a-z0-9-]+:(?:start|end)\s*-->")
 MINUS = chr(0x2212)
 TIMES = chr(0xD7)
 DASH = chr(0x2014)
@@ -112,14 +126,20 @@ def _k(comparison: Dict[str, Any]) -> str:
     return f"{comparison['dataset']['records'] // 1000}k"
 
 
+def _md(text: str) -> str:
+    """A value from the results made safe for a Markdown table cell: a ``|`` cannot
+    split the row and no markup (a ``<script>``, a block marker) can be injected."""
+    return text.replace("|", "\\|").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def md_glance(comparison: Dict[str, Any]) -> str:
     head = ["Implementation", "Native ops", f"ms @{_k(comparison)}", "ms/episode",
             "Recall % (strong / weak)", "Compliance %", f"Fill {TIMES}", "Useful %",
             "Import ms", "Deps"]
     lines = ["| " + " | ".join(head) + " |", "|" + "|".join("---" for _ in head) + "|"]
     for row in glance(comparison):
-        name = f"**{row['impl']}**" if row["impl"] == "contexel" else row["impl"]
-        cells = [f"**{t}**" if tier == "best" else t for _, t, tier in _cells(row)]
+        name = f"**{_md(row['impl'])}**" if row["impl"] == "contexel" else _md(row["impl"])
+        cells = [f"**{_md(t)}**" if tier == "best" else _md(t) for _, t, tier in _cells(row)]
         lines.append("| " + " | ".join([name] + cells) + " |")
     return "\n".join(lines)
 
@@ -172,7 +192,7 @@ def md_inflected(comparison: Dict[str, Any]) -> str:
     head = ["Shaper", "Recall % (original terms)", "Recall % (inflected terms)"]
     lines = ["| " + " | ".join(head) + " |", "|---|---|---|"]
     for r in comparison["inflected"]["rows"]:
-        lines.append(f"| {r['shaper']} | {r['recall_original_pct']:.0f} | "
+        lines.append(f"| {_md(r['shaper'])} | {r['recall_original_pct']:.0f} | "
                      f"{r['recall_inflected_pct']:.0f} |")
     return "\n".join(lines)
 
@@ -312,8 +332,12 @@ def _rows(c: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     return {r["impl"]: r for r in glance(c)}
 
 
-def _full_marks(r: Dict[str, Any]) -> bool:
-    return all(_tier(m, r) == "best" for m in ("ops", "recall", "compliance", "useful"))
+OUTCOME_COLUMNS = ("recall", "compliance", "useful")  # not "ops": the operations column is no outcome
+
+
+def _full_outcome_marks(r: Dict[str, Any]) -> bool:
+    """Full marks in every outcome column: recall (strong and weak), compliance, useful share."""
+    return all(_tier(m, r) == "best" for m in OUTCOME_COLUMNS)
 
 
 def _only_full_native(c: Dict[str, Any], s: Dict[str, Any]) -> bool:
@@ -331,7 +355,7 @@ def _two_slowest_compliant(c: Dict[str, Any], s: Dict[str, Any]) -> bool:
 
 
 def _only_contexel_full(c: Dict[str, Any], s: Dict[str, Any]) -> bool:
-    return [r["impl"] for r in glance(c) if _full_marks(r)] == ["contexel"]
+    return [r["impl"] for r in glance(c) if _full_outcome_marks(r)] == ["contexel"]
 
 
 def _same_recall(c: Dict[str, Any], s: Dict[str, Any]) -> bool:
@@ -392,9 +416,11 @@ COLLAPSE_POINTS = 30  # "collapses": recall falls by at least this many percenta
 RECOVER_POINTS = 5     # "recovers": the stem row's inflected recall is within this of its original
 
 ROWS = r"split\s*(?:\(|" + DASH + r"|-|&mdash;)?\s*([\d,]+)\s+(?:functions|real)"
-RECORDS = r"([\d,]+)\s+(?:real\s+)?search-tool\s+records"
-EPISODES = r"([\d,]+)\s+ground-truth\s+episodes"
-BUDGET = r"([\d,]+)-token\s+(?:context|budget)"
+# (?<![\d,]): a capture starts only where a number starts, never inside a run of digits
+# and commas, so a long run costs one scan instead of one per position (linear time).
+RECORDS = r"(?<![\d,])([\d,]+)\s+(?:real\s+)?search-tool\s+records"
+EPISODES = r"(?<![\d,])([\d,]+)\s+ground-truth\s+episodes"
+BUDGET = r"(?<![\d,])([\d,]+)-token\s+(?:context|budget)"
 
 CLAIMS: List[Claim] = []
 for _file in FILES:
@@ -486,32 +512,53 @@ CLAIMS += [
               "the default tokenizer under-estimates JSON", _json_underestimates),
 ]
 
-# A number with a benchmark unit, in any case: ms (msec, milliseconds), a percentage
-# (% / percent / per cent), the multiplication sign (whitespace of any kind may sit between
-# the number and these), or an ASCII x written straight after the number ("2.95x", "10x";
-# "3 x 4" and "3.x" are not). A bare "s" is deliberately not a unit ("1990s"), and neither is
-# "seconds": the README's stemmer-throughput prose ("2 seconds per million chunks") is not
-# benchmark-section data and is not covered by this check. A number is not one when a letter
-# or digit comes right before it ("a12 ms"), but an underscore does not count as a letter
-# (Markdown italics: "_12 ms_").
+# A number with a benchmark unit, in any case: ms (msec, milliseconds), microseconds (the
+# micro sign or the Greek mu followed by s, us, microsecond(s)), ns (nanosecond(s)), a
+# percentage (% / percent / per cent), the multiplication sign (whitespace of any kind may sit
+# between the number and these), or an ASCII x written straight after the number ("2.95x",
+# "10x"; "3 x 4" and "3.x" are not). A bare "s" is deliberately not a unit ("1990s"), and
+# neither is "sec" or "seconds": the README's stemmer-throughput prose ("2 seconds per million
+# chunks") is not benchmark-section data and is not covered by this check. A number is not one
+# when a letter or digit comes right before it ("a12 ms"), but an underscore does not count as
+# a letter (Markdown italics: "_12 ms_"). Nor does it start right after a digit, a comma or a
+# dot, so a long run of digits and commas is scanned once (linear time).
 _END = r"(?![^\W_])"
+_MICRO = chr(0xB5) + chr(0x3BC)  # the micro sign and the Greek small letter mu
 UNIT_NUMBER = re.compile(
-    r"(?<![^\W_])(?<!\.)[+" + MINUS + r"-]?(?:"
-    r"\d[\d,.]*\s*(?:(?:msec|ms|milliseconds?|percent|per\s+cent)" + _END + r"|%|" + TIMES + r")"
+    r"(?<![^\W_])(?<![\d,.])[+" + MINUS + r"-]?(?:"
+    r"\d[\d,.]*\s*(?:(?:msec|ms|milliseconds?|[u" + _MICRO + r"]s|microseconds?|ns|nanoseconds?"
+    r"|percent|per\s+cent)" + _END + r"|%|" + TIMES + r")"
     r"|\d[\d,]*(?:\.\d+)?x" + _END + r")", re.I)
-URLISH = re.compile(r"https?://\S+|(?:href|src)=\"[^\"]*\"|\]\([^)]*\)")
-# Attributes whose value is shown to a reader (a tooltip, alt text, the page description).
-ATTRIBUTE = re.compile(r"""\b(?:title|alt|aria-label|content)\s*=\s*(?:"([^"]*)"|'([^']*)')""", re.I)
+# A Markdown link target stops at the next "]" too, so an unclosed "](" run stays linear.
+URLISH = re.compile(r"https?://\S+|(?:href|src)=\"[^\"]*\"|\]\([^)\]]*\)")
+# Attributes whose value is shown to a reader (a tooltip, alt text, the page description, a
+# form placeholder) or carried for scripts to show (data-*).
+ATTRIBUTE = re.compile(
+    r"""(?<![\w-])(?:title|alt|aria-label|content|placeholder|data-[\w-]+)\s*=\s*"""
+    r"""(?:"([^"]*)"|'([^']*)')""", re.I)
 # A table cell that is only a number: a Markdown row ("| a | 12 |", "| a | 12", "| `~12` |")
-# or an HTML cell ("<td>12</td>", "<td><b>12</b></td>"). Tags, backticks, emphasis stars and a
-# leading "~" do not hide it.
+# or an HTML cell ("<td>12</td>", "<td><b>12</b></td>"). Tags, backticks, emphasis stars and
+# underscores and a leading "~" do not hide it. A cell never spans another cell's start tag
+# (tempered), so an unclosed "<td>" costs one scan to the next cell, not to the end.
 BARE_NUMBER = re.compile(r"[+" + MINUS + r"-]?\d[\d,]*(?:\.\d+)?%?")
-HTML_CELL = re.compile(r"<t[dh]\b[^>]*>(.*?)</t[dh]>", re.I | re.S)
+HTML_CELL = re.compile(r"<t[dh]\b[^<>]*>((?:(?!</?t[dh]\b).)*)</t[dh]>", re.I | re.S)
+# A tag: it stops at the next "<", so a run of "<" stays linear.
+TAG = re.compile(r"<[^<>]+>")
+# Characters that render as nothing (zero-width space, non-joiner and joiner, word joiner,
+# soft hyphen, byte-order mark): deleted before the scan so they cannot split a number.
+INVISIBLE = dict.fromkeys(map(ord, "​‌‍⁠­﻿"))
+
+
+def _plain(text: str) -> str:
+    """Entities decoded, compatibility forms folded (fullwidth digits and percent sign,
+    the micro sign), invisible characters deleted, non-breaking spaces made plain."""
+    text = unicodedata.normalize("NFKC", html.unescape(text))
+    return text.translate(INVISIBLE).replace(chr(0xA0), " ")
 
 
 def _cell_text(raw: str) -> str:
-    text = html.unescape(re.sub(r"<[^>]+>", "", raw)).replace(chr(0xA0), " ")
-    return re.sub(r"[`*]", "", text).strip().lstrip("~").strip()
+    text = _plain(TAG.sub("", raw))
+    return re.sub(r"[`*_]", "", text).strip().lstrip("~").strip()
 
 
 def _bare_cells(text: str) -> List[str]:
@@ -526,23 +573,53 @@ def _bare_cells(text: str) -> List[str]:
 
 def _visible(outside: str) -> str:
     """What a reader sees of ``outside``, for the scan for unregistered numbers: URLs
-    dropped, the values of title/alt/aria-label/content attributes kept, tags stripped,
-    entities (&nbsp;, &times;, &#37;) decoded, non-breaking spaces made plain."""
+    dropped, the values of title/alt/aria-label/content/placeholder/data-* attributes
+    kept, tags stripped, entities (&nbsp;, &times;, &#37;) decoded, compatibility forms
+    folded (NFKC: fullwidth digits and percent sign, the micro sign), zero-width
+    characters and soft hyphens deleted, non-breaking spaces made plain."""
     plain = URLISH.sub(" ", outside)
     attributes = [a or b for a, b in ATTRIBUTE.findall(plain)]
-    plain = re.sub(r"<[^>]+>", " ", plain)
-    return html.unescape(" ".join([plain] + attributes)).replace(chr(0xA0), " ")
+    plain = TAG.sub(" ", plain)
+    return _plain(" ".join([plain] + attributes))
 
 
 # --------------------------------------------------------------------------- #
 # The check and the writer
 # --------------------------------------------------------------------------- #
+MALFORMED = (KeyError, TypeError, ValueError, IndexError)  # results missing a key or of the wrong type
+
+
+class PublishError(RuntimeError):
+    """``write`` refused a target (a symbolic link, a path outside the root, not a file)."""
+
+
 def _read(root: Path, rel: str) -> str:
-    return (root / rel).read_text(encoding="utf-8")
+    """The file's text with universal newlines; OSError and UnicodeDecodeError propagate."""
+    raw = (root / rel).read_bytes()
+    if len(raw) > MAX_PUBLISHED_BYTES:
+        raise OSError(f"{len(raw):,} bytes is larger than the {MAX_PUBLISHED_BYTES:,} bytes "
+                      "the check reads; refusing to scan it")
+    return raw.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
+
+
+def _text(problems: List[str], root: Path, rel: str) -> Optional[str]:
+    """``_read``, with a problem line instead of an exception."""
+    try:
+        return _read(root, rel)
+    except UnicodeDecodeError as exc:
+        problems.append(f"{rel}: not valid UTF-8 ({exc})")
+    except OSError as exc:
+        problems.append(f"{rel}: cannot read it ({exc})")
+    return None
 
 
 def _load(root: Path, rel: str) -> Dict[str, Any]:
     return json.loads(_read(root, rel))
+
+
+def _malformed(where: str, exc: BaseException) -> str:
+    return (f"{where}: cannot be checked, the results are malformed "
+            f"(benchmarks/COMPARISON.json or benchmarks/RESULTS.json: {type(exc).__name__}: {exc})")
 
 
 def _blocks(text: str) -> List[Tuple[str, re.Match]]:
@@ -565,30 +642,58 @@ def check(root: Path) -> List[str]:
     except (OSError, ValueError) as exc:
         return [f"cannot read the generated results: {exc}"]
 
-    if _read(root, "benchmarks/COMPARISON.md") != render_report(comparison):
-        problems.append("benchmarks/COMPARISON.md is not the report rendered from "
-                        "benchmarks/COMPARISON.json (regenerate it with python -m benchmarks.competitors)")
-    if _read(root, "benchmarks/RESULTS.md") != suites_report.render(suites):
-        problems.append("benchmarks/RESULTS.md is not the report rendered from "
-                        "benchmarks/RESULTS.json (regenerate it with python -m benchmarks)")
+    reports = (
+        ("benchmarks/COMPARISON.md", "benchmarks/COMPARISON.json", lambda: render_report(comparison),
+         "python -m benchmarks.competitors"),
+        ("benchmarks/RESULTS.md", "benchmarks/RESULTS.json", lambda: suites_report.render(suites),
+         "python -m benchmarks"),
+    )
+    for rel, source, render, command in reports:
+        report = _text(problems, root, rel)
+        if report is None:
+            continue
+        try:
+            rendered = render()
+        except MALFORMED as exc:
+            problems.append(_malformed(rel, exc))
+            continue
+        if report != rendered:
+            problems.append(f"{rel} is not the report rendered from {source} "
+                            f"(regenerate it with {command})")
     try:
         committed = expected_digest(root / "benchmarks" / "dataset.sha256")
     except DatasetChecksumError as exc:
         committed = ""
         problems.append(f"benchmarks/dataset.sha256: {exc}")
-    if committed and comparison["dataset"]["sha256"] != committed:
-        problems.append("benchmarks/COMPARISON.json was produced with dataset digest "
-                        f"{comparison['dataset']['sha256']}, not the committed {committed}")
+    try:
+        if committed and comparison["dataset"]["sha256"] != committed:
+            problems.append("benchmarks/COMPARISON.json was produced with dataset digest "
+                            f"{comparison['dataset']['sha256']}, not the committed {committed}")
+    except MALFORMED as exc:
+        problems.append(_malformed("benchmarks/dataset.sha256", exc))
 
-    wanted = expected_blocks(comparison, suites)
+    try:
+        wanted: Optional[Dict[str, Dict[str, str]]] = expected_blocks(comparison, suites)
+    except MALFORMED as exc:
+        problems.append(_malformed("the generated blocks", exc))
+        wanted = None
     for rel in FILES:
-        try:
-            text = _read(root, rel)
-        except OSError as exc:
-            problems.append(f"{rel}: cannot read it ({exc})")
+        text = _text(problems, root, rel)
+        if text is None:
             continue
-        found = _blocks(text)
-        names = [n for n, _ in found]
+        try:
+            _check_file(problems, rel, text, wanted, comparison, suites)
+        except MALFORMED as exc:
+            problems.append(_malformed(rel, exc))
+    return problems
+
+
+def _check_file(problems: List[str], rel: str, text: str, wanted: Optional[Dict[str, Dict[str, str]]],
+                comparison: Dict[str, Any], suites: Dict[str, Any]) -> None:
+    """The checks of one published file: its blocks, its claims, then the scan."""
+    found = _blocks(text)
+    names = [n for n, _ in found]
+    if wanted is not None:  # None: the blocks could not be rendered (already reported)
         for name, body in wanted.get(rel, {}).items():
             if names.count(name) != 1:
                 problems.append(f"{rel}: expected exactly one benchmark:{name} block, found {names.count(name)}")
@@ -601,25 +706,27 @@ def check(root: Path) -> List[str]:
             if name not in wanted.get(rel, {}):
                 problems.append(f"{rel}: unknown benchmark:{name} block")
 
-        outside = BLOCK.sub("", text)
-        for claim in (c for c in CLAIMS if c.file == rel):
-            matches = re.findall(claim.pattern, outside)
-            if not matches:
-                problems.append(f"{rel}: the registered claim '{claim.label}' was not found "
-                                "(reworded? update publish.CLAIMS)")
-                continue
-            for number in matches:
-                bad = claim.check(number, comparison, suites)
-                if bad:
-                    problems.append(f"{rel}: claim '{claim.label}' {bad}")
-            outside = re.sub(claim.pattern, _blank_group, outside)
-        for hit in UNIT_NUMBER.finditer(_visible(outside)):
-            problems.append(f"{rel}: unregistered benchmark number {hit.group(0).strip()!r} "
-                            "(put it in a generated block or register it in publish.CLAIMS)")
-        for cell in _bare_cells(outside):
-            problems.append(f"{rel}: unregistered benchmark number {cell!r} in a table cell "
-                            "outside a generated block (generate the table or register the number)")
-    return problems
+    outside = BLOCK.sub("", text)
+    for stray in MARKER.finditer(outside):
+        problems.append(f"{rel}: a benchmark marker without its pair, or inside another block: "
+                        f"{stray.group(0)!r}")
+    for claim in (c for c in CLAIMS if c.file == rel):
+        matches = re.findall(claim.pattern, outside)
+        if not matches:
+            problems.append(f"{rel}: the registered claim '{claim.label}' was not found "
+                            "(reworded? update publish.CLAIMS)")
+            continue
+        for number in matches:
+            bad = claim.check(number, comparison, suites)
+            if bad:
+                problems.append(f"{rel}: claim '{claim.label}' {bad}")
+        outside = re.sub(claim.pattern, _blank_group, outside)
+    for hit in UNIT_NUMBER.finditer(_visible(outside)):
+        problems.append(f"{rel}: unregistered benchmark number {hit.group(0).strip()!r} "
+                        "(put it in a generated block or register it in publish.CLAIMS)")
+    for cell in _bare_cells(outside):
+        problems.append(f"{rel}: unregistered benchmark number {cell!r} in a table cell "
+                        "outside a generated block (generate the table or register the number)")
 
 
 def _regenerated(text: str, blocks: Dict[str, str]) -> str:
@@ -636,17 +743,46 @@ def _regenerated(text: str, blocks: Dict[str, str]) -> str:
     return BLOCK.sub(replace, text)
 
 
+def _target(root: Path, rel: str) -> Path:
+    """The file ``write`` may rewrite: a regular file inside ``root``, not a symbolic
+    link and not reached through one that leads outside the root (PublishError)."""
+    path = root / rel
+    if path.is_symlink():
+        raise PublishError(f"{rel}: refusing to write through a symbolic link")
+    base, resolved = root.resolve(), path.resolve()
+    if base not in resolved.parents:
+        raise PublishError(f"{rel}: resolves to {resolved}, outside {base}; refusing to write it")
+    if not path.is_file():
+        raise PublishError(f"{rel}: not a regular file; refusing to write it")
+    return path
+
+
+def _replace_file(path: Path, text: str) -> None:
+    """Write ``text`` (LF, UTF-8) to a temporary file next to ``path``, then move it
+    into place, so a failed write never leaves ``path`` half written."""
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(text.encode("utf-8"))
+        os.chmod(tmp, stat.S_IMODE(path.stat().st_mode))  # keep the file's permissions
+        os.replace(tmp, str(path))
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+
+
 def write(root: Path) -> List[str]:
-    """Rewrite every generated block from the results; return the files changed."""
+    """Rewrite every generated block from the results; return the files changed.
+    Raises PublishError for a target it refuses (see ``_target``)."""
     comparison = _load(root, "benchmarks/COMPARISON.json")
     suites = _load(root, "benchmarks/RESULTS.json")
     changed = []
     for rel, blocks in expected_blocks(comparison, suites).items():
-        path = root / rel
-        text = path.read_text(encoding="utf-8")
+        path = _target(root, rel)
+        text = _read(root, rel)
         new = _regenerated(text, blocks)
         if new != text:
-            with path.open("w", encoding="utf-8", newline="\n") as fh:
-                fh.write(new)
+            _replace_file(path, new)
             changed.append(rel)
     return changed

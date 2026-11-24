@@ -13,7 +13,8 @@ no dataset), so it runs in CI on every push.
     python tools/check_benchmark_numbers.py --write    # regenerate the marked blocks
     python tools/check_benchmark_numbers.py --root DIR # check another tree (the tests do)
 
-Exit status: 0 everything agrees, 1 something differs (each problem is printed).
+Exit status: 0 everything agrees, 1 something differs (each problem is printed;
+a missing, unreadable or malformed input is a problem, not a crash).
 """
 from __future__ import annotations
 
@@ -30,14 +31,21 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--write", action="store_true",
                         help="rewrite the generated blocks from the JSON results, then check")
     args = parser.parse_args(argv)
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if reconfigure is not None:  # a problem quoting a non-ASCII number must print, not crash
+        reconfigure(errors="backslashreplace")
 
     sys.path.insert(0, str(here))
     from benchmarks import publish  # noqa: E402
 
     root = args.root.resolve()
     if args.write:
-        for rel in publish.write(root):
-            print(f"rewrote the generated blocks of {rel}")
+        try:
+            for rel in publish.write(root):
+                print(f"rewrote the generated blocks of {rel}")
+        except (publish.PublishError, OSError, *publish.MALFORMED) as exc:
+            print(f"cannot write the generated blocks: {type(exc).__name__}: {exc}")
+            return 1
     problems = publish.check(root)
     for problem in problems:
         print(problem)

@@ -580,10 +580,12 @@ same obfuscations.
   Face parquet export, so the parquet file is parsed before it is verified;
   pinning the parquet digest too needs a one-time download and is recorded as a
   follow-up. The number check is unit-based: it covers the generated blocks, the
-  registered claims and any number with a benchmark unit or a bare numeric table
-  cell, but not other prose, so the hand-typed cost figures in seconds for very
-  long inputs in the Limits paragraph about `split` (memory and time) are not
-  checked. The stemmer, the inflection and the scorer are measured on
+  registered claims, any number with a benchmark unit (ms, µs, ns, %, x) and any
+  bare numeric table cell. It does not check other prose: figures in seconds
+  (the hand-typed cost figures for very long inputs in the README's Limits
+  paragraph about `split`), numbers without a unit and numbers in words. The
+  home page's hand-typed "~2.4 µs per record" cost of the tenant-isolation
+  plumbing, which no benchmark measures, is removed. The stemmer, the inflection and the scorer are measured on
   English technical text only.
 
 ### Tests
