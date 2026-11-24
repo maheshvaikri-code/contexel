@@ -321,9 +321,12 @@ def _only_full_native(c: Dict[str, Any], s: Dict[str, Any]) -> bool:
         r["native"] < r["total"] for n, r in rows.items() if n != "contexel")
 
 
-def _slowest_compliant(c: Dict[str, Any], s: Dict[str, Any]) -> bool:
-    compliant = [r for r in glance(c) if r["compliance"] == 100]
-    return max(compliant, key=lambda r: r["ms_ep"])["impl"] == "contexel"
+def _two_slowest_compliant(c: Dict[str, Any], s: Dict[str, Any]) -> bool:
+    """The two budget-compliant rows with the highest ms/episode are contexel and the
+    hand-written term-overlap scorer, in either order (their order is run to run noise)."""
+    compliant = sorted((r for r in glance(c) if r["compliance"] == 100),
+                       key=lambda r: r["ms_ep"], reverse=True)
+    return {r["impl"] for r in compliant[:2]} == {"contexel", "hand-written (term overlap)"}
 
 
 def _only_contexel_full(c: Dict[str, Any], s: Dict[str, Any]) -> bool:
@@ -347,9 +350,31 @@ def _langchain_bloat(c: Dict[str, Any], s: Dict[str, Any]) -> bool:
 def _inflection_drop(c: Dict[str, Any], s: Dict[str, Any]) -> bool:
     rows = {r["shaper"]: r for r in c["inflected"]["rows"]}
     word, stem, scored = rows["contexel"], rows["contexel (match=stem)"], rows["hand-written (term overlap)"]
-    return (word["recall_inflected_pct"] < word["recall_original_pct"]
-            and scored["recall_inflected_pct"] < scored["recall_original_pct"]
-            and stem["recall_inflected_pct"] > word["recall_inflected_pct"])
+    return (word["recall_original_pct"] - word["recall_inflected_pct"] >= COLLAPSE_POINTS
+            and scored["recall_original_pct"] - scored["recall_inflected_pct"] >= COLLAPSE_POINTS
+            and stem["recall_inflected_pct"] > word["recall_inflected_pct"]
+            and stem["recall_original_pct"] - stem["recall_inflected_pct"] <= RECOVER_POINTS)
+
+
+def _inflected_value(shaper: str, key: str, name: str) -> Callable[..., Optional[str]]:
+    """A prose percentage that must equal one cell of the inflected-episodes table."""
+    def check(found: str, comparison: Dict[str, Any], suites: Dict[str, Any]) -> Optional[str]:
+        want = next(r for r in comparison["inflected"]["rows"] if r["shaper"] == shaper)[key]
+        return None if float(found) == round(want) else f"says {found}% {name}, the results say {want:.1f}%"
+    return check
+
+
+def _scored_value(key: str, name: str) -> Callable[..., Optional[str]]:
+    """A prose percentage that must equal the hand-written term-overlap row's outcome metric
+    (for recall, under both signals)."""
+    keys = ("recall_strong_pct", "recall_weak_pct") if key == "recall" else (key,)
+
+    def check(found: str, comparison: Dict[str, Any], suites: Dict[str, Any]) -> Optional[str]:
+        row = next(r for r in comparison["outcomes"] if r["impl"] == "hand-written (term overlap)")
+        if all(float(found) == round(row[k]) for k in keys):
+            return None
+        return f"says {found}% {name}, the results say " + " and ".join(f"{row[k]:.1f}%" for k in keys)
+    return check
 
 
 def _control_untouched(c: Dict[str, Any], s: Dict[str, Any]) -> bool:
@@ -360,6 +385,9 @@ def _control_untouched(c: Dict[str, Any], s: Dict[str, Any]) -> bool:
 def _json_underestimates(c: Dict[str, Any], s: Dict[str, Any]) -> bool:
     return next(r for r in s["accuracy"] if r["sample"].startswith("json"))["error_pct"] < 0
 
+
+COLLAPSE_POINTS = 30   # "collapses": recall falls by at least this many percentage points
+RECOVER_POINTS = 5     # "recovers": the stem row's inflected recall is within this of its original
 
 ROWS = r"split\s*(?:\(|" + DASH + r"|-|&mdash;)?\s*([\d,]+)\s+(?:functions|real)"
 RECORDS = r"([\d,]+)\s+(?:real\s+)?search-tool\s+records"
@@ -390,8 +418,19 @@ CLAIMS += [
     Claim("README_PYPI.md", "useful share", r"spends\s+(\d+)%\s+of\s+context\s+tokens",
           _metric("useful_share_pct", "useful share")),
     Claim("README_PYPI.md", "dependencies", r"at\s+(\d+)\s+dependencies", _deps),
-    Claim("README_PYPI.md", "import time", r"about\s+(\d+)\s+ms", _import_about),
-    Claim("site/index.html", "import time", r"about\s+(\d+)(?:&nbsp;|\s)+ms", _import_about),
+    Claim("README_PYPI.md", "import time", r"import\s+of\s+about\s+(\d+)\s+ms", _import_about),
+    Claim("site/index.html", "import time", r"about\s+(\d+)(?:&nbsp;|\s)+ms\s+import", _import_about),
+    Claim("README_PYPI.md", "term-overlap baseline recall",
+          r"term-overlap\s+baseline\s+\(a\s+hand-written\s+scorer\s+in\s+place\s+of\s+`rescore`\)\s+reaches\s+(\d+)%\s+recall",
+          _scored_value("recall", "recall")),
+    Claim("README_PYPI.md", "term-overlap baseline compliance", r"recall\s+and\s+(\d+)%\s+budget\s+compliance",
+          _scored_value("compliance_pct", "compliance")),
+    Claim("README_PYPI.md", "default matching, original terms", r"drops\s+from\s+(\d+)%\s+recall\s+on\s+the",
+          _inflected_value("contexel", "recall_original_pct", "with the original terms")),
+    Claim("README_PYPI.md", "default matching, inflected terms", r"own\s+words\s+to\s+(\d+)%\s+on\s+inflected",
+          _inflected_value("contexel", "recall_inflected_pct", "with the inflected terms")),
+    Claim("README_PYPI.md", "stem matching, inflected terms", r"recovers\s+them\s+\((\d+)%\)",
+          _inflected_value("contexel (match=stem)", "recall_inflected_pct", "with the inflected terms")),
 ]
 
 
@@ -400,18 +439,23 @@ def _sentence(file: str, pattern: str, label: str,
     return Claim(file, label, "(" + pattern + ")", _claim_is(label, truth))
 
 
-_SLOWEST = r"slowest\s+budget-compliant\s+row"
+_SLOWEST = r"two\s+slowest\s+budget-compliant\s+rows"
+_SLOWEST_LABEL = "two slowest budget-compliant rows"
 _DROP = r"Exact-word\s+matching\s+\(the\s+default\)\s+collapses\s+on\s+inflected\s+queries"
 CLAIMS += [
-    _sentence("README_PYPI.md", r"contexel\s+is\s+the\s+only\s+implementation\s+among\s+the\s+near-neighbours",
-              "only implementation with every operation native", _only_full_native),
+    _sentence("README_PYPI.md", r"contexel\s+expresses\s+all\s+six\s+operations\s+natively,\s+which\s+no\s+other\s+compared\s+row\s+does",
+              "only row with every operation native", _only_full_native),
+    _sentence("README_PYPI.md", r"one\s+corpus\s+and\s+one\s+task", "scope: one corpus, one task",
+              lambda c, s: bool(c["dataset"]["sha256"])),
+    _sentence("README_PYPI.md", r"the\s+default\s+exact-word\s+matching",
+              "word mode drops on inflected queries and stem recovers", _inflection_drop),
     _sentence("site/index.html",
               r"contexel\s+is\s+the\s+only\s+row\s+with\s+full\s+marks\s+in\s+every\s+outcome\s+column",
               "only row with full marks", _only_contexel_full),
-    _sentence("README_PYPI.md", _SLOWEST, "slowest budget-compliant row", _slowest_compliant),
-    _sentence("site/index.html", _SLOWEST, "slowest budget-compliant row", _slowest_compliant),
-    _sentence("README.md", _SLOWEST, "slowest budget-compliant row", _slowest_compliant),
-    _sentence("site/benchmarks.html", _SLOWEST, "slowest budget-compliant row", _slowest_compliant),
+    _sentence("README_PYPI.md", _SLOWEST, _SLOWEST_LABEL, _two_slowest_compliant),
+    _sentence("site/index.html", _SLOWEST, _SLOWEST_LABEL, _two_slowest_compliant),
+    _sentence("README.md", _SLOWEST, _SLOWEST_LABEL, _two_slowest_compliant),
+    _sentence("site/benchmarks.html", _SLOWEST, _SLOWEST_LABEL, _two_slowest_compliant),
     _sentence("README.md", r"contexel's\s+recall\s+is\s+the\s+same\s+under\s+both\s+signals",
               "same recall under both signals", _same_recall),
     _sentence("site/benchmarks.html", r"so\s+its\s+two\s+columns\s+read\s+the\s+same",
@@ -435,8 +479,31 @@ CLAIMS += [
               "the default tokenizer under-estimates JSON", _json_underestimates),
 ]
 
-UNIT_NUMBER = re.compile(r"(?<![\w.])[+" + MINUS + r"-]?\d[\d,.]*\s?(?:ms\b|%|" + TIMES + ")")
+# A number with a benchmark unit: ms (msec, milliseconds), a percentage, the multiplication
+# sign or an ASCII x that ends a word ("2.95x"). Whitespace of any kind may sit between the
+# number and its unit. A bare "s" is deliberately not a unit ("1990s"), and neither is
+# "seconds": the README's stemmer-throughput prose ("2 seconds per million chunks") is not
+# benchmark-section data and is not covered by this check.
+UNIT_NUMBER = re.compile(
+    r"(?<![\w.])[+" + MINUS + r"-]?\d[\d,.]*\s*(?:ms\b|msec\b|milliseconds?\b|%|percent\b|"
+    + TIMES + r"|x\b)")
 URLISH = re.compile(r"https?://\S+|(?:href|src)=\"[^\"]*\"|\]\([^)]*\)")
+# Attributes whose value is shown to a reader (a tooltip, alt text, the page description).
+ATTRIBUTE = re.compile(r"""\b(?:title|alt|aria-label|content)\s*=\s*(?:"([^"]*)"|'([^']*)')""", re.I)
+# A table cell that is only a number, on a line of its own kind: "| 12 |" or "<td>12</td>".
+BARE_CELL = re.compile(
+    r"(?<=\|)[ \t]*\**[+" + MINUS + r"-]?\d[\d,]*(?:\.\d+)?%?\**[ \t]*(?=\|)"
+    r"|<t[dh][^>]*>\s*[+" + MINUS + r"-]?\d[\d,]*(?:\.\d+)?%?\s*</t[dh]>")
+
+
+def _visible(outside: str) -> str:
+    """What a reader sees of ``outside``, for the scan for unregistered numbers: URLs
+    dropped, the values of title/alt/aria-label/content attributes kept, tags stripped,
+    entities (&nbsp;, &times;, &#37;) decoded, non-breaking spaces made plain."""
+    plain = URLISH.sub(" ", outside)
+    attributes = [a or b for a, b in ATTRIBUTE.findall(plain)]
+    plain = re.sub(r"<[^>]+>", " ", plain)
+    return html.unescape(" ".join([plain] + attributes)).replace(chr(0xA0), " ")
 
 
 # --------------------------------------------------------------------------- #
@@ -518,11 +585,13 @@ def check(root: Path) -> List[str]:
                 if bad:
                     problems.append(f"{rel}: claim '{claim.label}' {bad}")
             outside = re.sub(claim.pattern, _blank_group, outside)
-        plain = URLISH.sub(" ", outside)
-        plain = re.sub(r"<[^>]+>", " ", plain)
-        for hit in UNIT_NUMBER.finditer(plain):
+        for hit in UNIT_NUMBER.finditer(_visible(outside)):
             problems.append(f"{rel}: unregistered benchmark number {hit.group(0).strip()!r} "
                             "(put it in a generated block or register it in publish.CLAIMS)")
+        for cell in BARE_CELL.finditer(outside):
+            text_of_cell = re.sub(r"<[^>]+>", "", cell.group(0)).strip()
+            problems.append(f"{rel}: unregistered benchmark number {text_of_cell!r} in a table cell "
+                            "outside a generated block (generate the table or register the number)")
     return problems
 
 

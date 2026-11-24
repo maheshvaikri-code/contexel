@@ -106,11 +106,14 @@ separate shared-glue canonical task. Details and method on the
 <!-- benchmark:glance:end -->
 
 <div class="note"><strong>Read it honestly:</strong> contexel is the only row
-with full marks in every outcome column — and it is the slowest
-budget-compliant row <em>because it does the most work</em>: deriving
-relevance from each record's own text on top of projecting, deduping,
-clipping, ranking, and budgeting. Every faster row is faster by doing less.
-All rows are negligible next to a single model call.</div>
+with full marks in every outcome column — and, in the ms/episode column
+of the <a href="benchmarks.html">benchmarks page</a> (this table shows only
+ms @28k), it and the hand-written term-overlap scorer are the two slowest
+budget-compliant rows, in an order that can change from run to run.
+contexel <em>does the most work</em>: deriving relevance from each record's
+own text on top of projecting, deduping, clipping, ranking, and budgeting; the
+scorer does less of that. Every other compliant row is faster by doing less
+still. All rows are negligible next to a single model call.</div>
 
 <h2>Newly landed — toward a context shaping plane</h2>
 <p>A readiness audit set the bar: pilot-ready is not enterprise-ready.

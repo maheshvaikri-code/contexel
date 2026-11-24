@@ -91,9 +91,10 @@ agent *needed* is known in advance. Full method and tables in
 unless its SHA-256 equals the digest committed in
 `benchmarks/dataset.sha256`).
 
-Every number in this section is generated: the tables are rendered from
-`benchmarks/COMPARISON.json`, and `python tools/check_benchmark_numbers.py`
-(run in CI) fails when this file, the PyPI README or the site disagree with it.
+Every number in this section is generated, or checked against the results: the
+tables are rendered from `benchmarks/COMPARISON.json`, and
+`python tools/check_benchmark_numbers.py` (run in CI) fails when this file, the
+PyPI README or the site disagree with it.
 
 <!-- benchmark:glance:start -->
 | Implementation | Native ops | ms @28k | ms/episode | Recall % (strong / weak) | Compliance % | Fill × | Useful % | Import ms | Deps |
@@ -134,11 +135,16 @@ How to read each column, plainly:
   duplicates and field bloat it cannot remove; llama-index spends more.
 - **ms/episode is the work, not overhead.** Per episode contexel projects,
   dedupes, scans each record's own text to compute relevance, clips to a
-  token-accurate cap, ranks, and enforces the budget, and it is the slowest
-  budget-compliant row because of that. Every faster compliant row does less:
-  the hand-written glue trusts the score, langchain-core skips the record
-  work. The timings are one run on one machine and vary by a few percent from
-  run to run; the other columns do not.
+  token-accurate cap, ranks, and enforces the budget. It and the hand-written
+  term-overlap scorer are the two slowest budget-compliant rows, in an order
+  that can change from run to run: the scorer does less record work (whole-word
+  overlap instead of IDF, saturating term frequency and proximity), cuts by
+  characters instead of tokens, and trims with a heuristic. Every other
+  compliant row is faster because it does less still: the hand-written glue
+  trusts the score, langchain-core skips the record work. The timings are one
+  selected run (the best of three runs of the command) on one machine; they
+  vary with the machine's load and from run to run, and the other columns do
+  not.
 
 The same trade shows in `ms @28k`: contexel's time includes token-accurate
 truncation and the pipeline's plumbing; the hand-written glue slices at ~4
@@ -150,7 +156,9 @@ so exact-word matching is never tested. A second set of episodes keeps the
 hit lists but hands the shaper deterministic inflections of those words
 (`parse` becomes `parsing`, `returns` becomes `return`; synthetic, the rule is
 in `benchmarks/inflection.py`), so exact-word matching fails by construction
-and `match="stem"` is measured:
+and `match="stem"` is measured (only terms the frozen stemmer maps to one stem
+are used, so the stem row shows the stem match carrying through ranking and the
+budget, not how many English inflections the stemmer covers):
 
 <!-- benchmark:inflected:start -->
 | Shaper | Recall % (original terms) | Recall % (inflected terms) |
@@ -162,7 +170,8 @@ and `match="stem"` is measured:
 <!-- benchmark:inflected:end -->
 
 Exact-word matching (the default) collapses on inflected queries, and so does
-the hand-written term-overlap scorer; `match="stem"` recovers them. The
+the hand-written term-overlap scorer; `match="stem"` recovers them (for the
+terms the stemmer maps to one stem, which is what the episodes use). The
 hand-written row that trusts the tool's score never reads the query, so
 inflection cannot touch it: it is the control. This measures inflection
 robustness only — not synonyms, not paraphrase, not meaning.

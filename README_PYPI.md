@@ -95,17 +95,23 @@ def search_code(query: str) -> list[dict]:
 ## Measured, not asserted
 
 Benchmarked on the full CodeSearchNet python/test split (22,176 real
-functions → 28,047 search-tool records) with 100 ground-truth episodes:
-contexel is the only implementation among the near-neighbours
-(hand-written glue, toolz, langchain-core, llama-index-core) that covers
-all the operations natively, holds a 1,500-token budget in 100% of
+functions → 28,047 search-tool records) with 100 ground-truth episodes: one
+corpus and one task, so read it as a measurement, not a law. contexel
+expresses all six operations natively, which no other compared row does
+(hand-written glue, the hand-written term-overlap baseline, toolz,
+langchain-core, llama-index-core). It holds a 1,500-token budget in 100% of
 episodes, keeps the needed record in 100% of them under both a strong and
 a weak retrieval signal, and spends 100% of context tokens on unique,
-needed fields — at 0 dependencies and an import of about 20 ms. It is also the
-slowest budget-compliant row, *because it does the most work per record* —
-and the limits are stated with the same care: recall@budget is bounded by
-query specificity for any shaper, and `rescore` is lexical, not semantic
-(`match="stem"` opts in to inflections; synonyms stay invisible).
+needed fields — at 0 dependencies and an import of about 20 ms. The
+term-overlap baseline (a hand-written scorer in place of `rescore`) reaches
+97% recall and 100% budget compliance, so on these episodes the margin over it
+is small; it and contexel are the two slowest budget-compliant rows, in an
+order that can change from run to run, *because they do the most work per
+record*. The limits are stated with the same care: recall@budget is bounded
+by query specificity for any shaper, and `rescore` is lexical, not semantic:
+the default exact-word matching drops from 99% recall on the target's own
+words to 35% on inflected queries, and `match="stem"` recovers them (98%);
+synonyms stay invisible.
 
 Determinism is proven, not promised: the suite hashes the same contract's
 output across fresh interpreters with different `PYTHONHASHSEED` values —

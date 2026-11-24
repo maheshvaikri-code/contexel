@@ -94,8 +94,8 @@ def test_a_hand_typed_benchmark_number_is_reported_as_unregistered(tree):
 
 
 def test_a_reworded_registered_claim_is_reported_not_skipped(tree):
-    _replace(tree, "site/index.html", "slowest\nbudget-compliant row", "slowest compliant row")
-    assert any("slowest budget-compliant row" in p and "not found" in p for p in publish.check(tree))
+    _replace(tree, "site/index.html", "slowest\nbudget-compliant rows", "slowest compliant rows")
+    assert any("two slowest budget-compliant rows" in p and "not found" in p for p in publish.check(tree))
 
 
 def test_a_false_qualitative_claim_is_reported(tree):
@@ -103,12 +103,12 @@ def test_a_false_qualitative_claim_is_reported(tree):
     data = json.loads(results.read_text(encoding="utf-8"))
     for row in data["outcomes"]:
         if row["impl"] == "hand-written":
-            row["ms_per_episode"] = 10_000.0  # now the slowest compliant row is not contexel
+            row["ms_per_episode"] = 10_000.0  # now a third row is one of the two slowest
     results.write_text(json.dumps(data, indent=2, ensure_ascii=False) + chr(10), encoding="utf-8", newline="\n")
     (tree / "benchmarks" / "COMPARISON.md").write_text(competitors.render_report(data), encoding="utf-8",
                                                          newline="\n")
     problems = publish.check(tree)
-    assert any("slowest budget-compliant row" in p and "not true" in p for p in problems), problems
+    assert any("two slowest budget-compliant rows" in p and "not true" in p for p in problems), problems
 
 
 def test_a_stale_report_is_reported(tree):
@@ -164,3 +164,132 @@ def test_the_reports_are_rendered_from_the_json_alone():
     text = competitors.render_report(comparison)
     assert comparison["dataset"]["sha256"] in text
     assert "Inflected-query episodes" in text and "not synonyms, not paraphrase, not meaning" in text
+
+
+# --- a number with a unit is found however it is written -------------------------------
+_ANCHOR = "Both are noise next to a"
+
+
+@pytest.mark.parametrize("written", [
+    "10x faster", "12&nbsp;ms", "3&times;", "40&#37;", "12  ms", "12 msec", "12 milliseconds",
+    "40 percent", "12" + chr(0xA0) + "ms",
+])
+def test_every_way_of_writing_a_number_with_a_unit_is_reported(tree, written):
+    _replace(tree, "README.md", _ANCHOR, f"Both are noise ({written}) next to a")
+    problems = publish.check(tree)
+    assert any("unregistered benchmark number" in p and "README.md" in p for p in problems), (written, problems)
+
+
+@pytest.mark.parametrize("tag", [
+    '<abbr title="12 ms">i</abbr>', '<img alt="12 ms">', '<span aria-label="40%">i</span>',
+    '<meta name="description" content="3&times; faster">',
+])
+def test_a_number_inside_an_attribute_is_reported(tree, tag):
+    _replace(tree, "site/index.html", "<h2>The record, at a glance</h2>",
+             "<h2>The record, at a glance</h2>\n" + tag)
+    problems = publish.check(tree)
+    assert any("unregistered benchmark number" in p and "site/index.html" in p for p in problems), (tag, problems)
+
+
+def test_a_bare_number_in_a_table_cell_outside_a_block_is_reported(tree):
+    _replace(tree, "README.md", "How to read each column, plainly:",
+             "| Implementation | Score |\n|---|---|\n| contexel | 12 |\n\nHow to read each column, plainly:")
+    assert any("README.md" in p and "table cell" in p and "'12'" in p for p in publish.check(tree))
+    _replace(tree, "site/benchmarks.html", "<h3>How to read it</h3>",
+             "<table><tr><td>12</td></tr></table>\n<h3>How to read it</h3>")
+    assert any("site/benchmarks.html" in p and "table cell" in p for p in publish.check(tree))
+
+
+def test_a_year_or_a_version_is_not_a_benchmark_number(tree):
+    _replace(tree, "README.md", _ANCHOR, "Both are noise (since the 1990s, in 0x1f, version 3.12) next to a")
+    assert publish.check(tree) == []
+
+
+# --- the registered claims follow the data ---------------------------------------------
+def _edit_comparison(tree, edit):
+    path = tree / "benchmarks" / "COMPARISON.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    edit(data)
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + chr(10), encoding="utf-8", newline="\n")
+    (tree / "benchmarks" / "COMPARISON.md").write_text(competitors.render_report(data), encoding="utf-8",
+                                                         newline="\n")
+
+
+def _outcome(data, impl):
+    return next(r for r in data["outcomes"] if r["impl"] == impl)
+
+
+def test_the_two_slowest_compliant_rows_may_swap_places(tree):
+    top = max(o["ms_per_episode"] for o in json.loads(
+        (tree / "benchmarks" / "COMPARISON.json").read_text(encoding="utf-8"))["outcomes"])
+
+    def edit(data):
+        _outcome(data, "hand-written (term overlap)")["ms_per_episode"] = top + 100.0
+
+    _edit_comparison(tree, edit)
+    assert not [p for p in publish.check(tree) if "slowest" in p]
+
+
+def test_a_third_row_among_the_two_slowest_compliant_rows_is_reported(tree):
+    _edit_comparison(tree, lambda data: _outcome(data, "langchain-core").__setitem__("ms_per_episode", 10_000.0))
+    assert any("two slowest budget-compliant rows" in p and "not true" in p for p in publish.check(tree))
+
+
+def test_an_inflection_drop_smaller_than_thirty_points_is_not_a_collapse(tree):
+    def edit(data):
+        row = next(r for r in data["inflected"]["rows"] if r["shaper"] == "contexel")
+        row["recall_inflected_pct"] = row["recall_original_pct"] - 10
+
+    _edit_comparison(tree, edit)
+    assert any("word mode drops on inflected queries" in p and "not true" in p for p in publish.check(tree))
+
+
+def test_a_stem_row_far_from_its_original_recall_is_not_a_recovery(tree):
+    def edit(data):
+        row = next(r for r in data["inflected"]["rows"] if r["shaper"] == "contexel (match=stem)")
+        row["recall_inflected_pct"] = row["recall_original_pct"] - 20
+        word = next(r for r in data["inflected"]["rows"] if r["shaper"] == "contexel")
+        word["recall_inflected_pct"] = 0
+
+    _edit_comparison(tree, edit)
+    assert any("word mode drops on inflected queries" in p and "not true" in p for p in publish.check(tree))
+
+
+def test_a_changed_number_in_the_readme_inflected_block_is_reported(tree):
+    _replace(tree, "README.md", "| contexel (match=stem) | 98 | 98 |", "| contexel (match=stem) | 98 | 97 |")
+    assert any("README.md" in p and "benchmark:inflected" in p for p in publish.check(tree))
+
+
+def test_a_changed_number_in_the_home_page_table_is_reported(tree):
+    comparison = json.loads((tree / "benchmarks" / "COMPARISON.json").read_text(encoding="utf-8"))
+    ms = publish._n0(comparison["task"][0]["ms"])
+    _replace(tree, "site/index.html", f"<td>{ms}</td>", f"<td>{int(ms.replace(',', '')) + 1}</td>")
+    assert any("site/index.html" in p and "benchmark:glance" in p for p in publish.check(tree))
+
+
+@pytest.mark.parametrize("rel, old, new", [
+    ("README_PYPI.md", "import of about 20 ms", "import of about 90 ms"),
+    ("site/index.html", "about 20&nbsp;ms import", "about 90&nbsp;ms import"),
+])
+def test_a_wrong_import_time_is_reported(tree, rel, old, new):
+    _replace(tree, rel, old, new)
+    assert any(rel in p and "import time" in p for p in publish.check(tree))
+
+
+def test_another_about_n_ms_sentence_does_not_stand_in_for_the_import_claim(tree):
+    _replace(tree, "README_PYPI.md", "import of about 20 ms", "start-up of about 20 ms")
+    problems = publish.check(tree)
+    assert any("import time" in p and "not found" in p for p in problems), problems
+
+
+@pytest.mark.parametrize("old, new, label", [
+    ("reaches\n97% recall", "reaches\n96% recall", "term-overlap baseline recall"),
+    ("recall and 100% budget compliance", "recall and 99% budget compliance", "term-overlap baseline compliance"),
+    ("drops from 99% recall", "drops from 98% recall", "default matching, original terms"),
+    ("words to 35% on inflected", "words to 34% on inflected", "default matching, inflected terms"),
+    ("recovers them (98%)", "recovers them (97%)", "stem matching, inflected terms"),
+])
+def test_a_wrong_number_in_the_pypi_comparison_sentences_is_reported(tree, old, new, label):
+    _replace(tree, "README_PYPI.md", old, new)
+    problems = publish.check(tree)
+    assert any("README_PYPI.md" in p and label in p for p in problems), problems
