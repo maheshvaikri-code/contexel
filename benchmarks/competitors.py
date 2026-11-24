@@ -562,8 +562,10 @@ def build_episodes(corpus: List[dict], n: int = N_EPISODES, seed: int = 11,
     matching one often — the ranking shape a real multi-term search returns.
 
     ``term_ok(term, target_words)`` (optional) keeps only the docstring terms it
-    accepts; ``pool`` is how many candidate functions are sampled per episode
-    wanted. The defaults reproduce the original episodes exactly.
+    accepts; the target's words are those of its code, docstring, path and
+    symbol, i.e. every field the shapers score. ``pool`` is how many candidate
+    functions are sampled per episode wanted. The defaults reproduce the
+    original episodes exactly.
     """
     rng = random.Random(seed)
     lowered = [
@@ -581,7 +583,9 @@ def build_episodes(corpus: List[dict], n: int = N_EPISODES, seed: int = 11,
         doc_words = corpus[i]["func_documentation_string"].split()
         candidates = [w.lower().strip(".,()`'\"") for w in doc_words if len(w) >= 5]
         if term_ok is not None:
-            target_words = words(lowered[i])
+            target_words = words(
+                lowered[i] + " " + corpus[i]["func_path_in_repository"]
+                + " " + corpus[i]["func_name"])
             candidates = [w for w in candidates if term_ok(w, target_words)]
         terms = candidates[:3]
         if not terms:

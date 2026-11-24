@@ -175,3 +175,20 @@ def test_the_comparison_report_states_what_the_numbers_say_and_changes_with_them
     nondeterministic = copy.deepcopy(results)
     nondeterministic["task"][0]["deterministic"] = "NO"
     assert "NOT deterministic" in competitors.render_report(nondeterministic)
+
+
+def test_an_inflection_is_never_a_word_of_the_path_or_symbol_either():
+    # the shapers score snippet, symbol AND path: the guard must see all three.
+    # "results" -> "result" is a word of the path only, not of the code or docstring
+    corpus = _corpus()
+    for row in corpus:
+        row["func_path_in_repository"] = f"p/f{row['func_name'][2:]}_result.py"
+    episodes = competitors.build_inflected_episodes(corpus, n=5)
+    assert episodes
+    by_key = {(r["func_path_in_repository"], r["func_name"]): r for r in corpus}
+    for ep in episodes:
+        assert "results" not in ep["terms"]
+        row = by_key[ep["target"]]
+        seen = inflection.words(" ".join((
+            row["func_documentation_string"], row["func_name"], row["func_path_in_repository"])))
+        assert not set(ep["inflected"]) & seen
