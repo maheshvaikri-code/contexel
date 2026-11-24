@@ -119,6 +119,75 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   public API: it is internal in TypeScript and C#, and in Python `contexel.stem`
   is the module.
 
+### Added — honest benchmarks (brief AC 23 to 27)
+- **Inflected-query episodes.** A second set of ground-truth episodes keeps the
+  hit lists (the retrieval tool searched with the target's own words) but hands
+  the shaper a deterministic inflection of each term (`parse` becomes `parsing`,
+  `returns` becomes `return`, anything else gets `ing`;
+  `benchmarks/inflection.py`), so exact-word matching fails by construction and
+  `rescore(match="stem")` is measured, not assumed. A term is used only when it
+  is a plain lower-case word, the frozen stemmer maps it and its inflection to
+  one stem, and the inflection is not a word of the target's own text. The
+  report says what it measures: inflection robustness, not semantic paraphrase.
+  Exact-word matching drops sharply on these episodes and `match="stem"`
+  recovers it (the table is in `benchmarks/COMPARISON.md`).
+- **A fair hand-written baseline.** The hand-written row exists in two forms:
+  one that trusts the tool's score (as before) and one with its own
+  term-overlap scorer (lower-cased whole words, ties keep the incoming order)
+  and the same budget trimming, so contexel's `rescore` is compared with another
+  rescorer, not only with none.
+- **Native-operation counts are computed, not typed.** Each implementation is an
+  ordered list of steps (`benchmarks/opcount.py`). A step counts as native when
+  running it enters the library's own code (`sys.setprofile` over a small fixed
+  sample), as glue when it is hand-written; an operand conversion, or a library
+  feature that serves none of the six operations, is reported but never counted.
+  The comparison gains an "Operations" table (native, glue, not done, other
+  native steps, conversions); the old hand-typed capability matrix survives only
+  for the libraries the benchmark does not run, labelled as documentation.
+- **Published numbers are generated and checked.** `python -m benchmarks.competitors`
+  and `python -m benchmarks` write `benchmarks/COMPARISON.json` and
+  `benchmarks/RESULTS.json` and render `COMPARISON.md` and `RESULTS.md` from
+  them. The tables in the README and on the site are generated blocks
+  (`<!-- benchmark:NAME:start -->`), the remaining prose numbers and qualitative
+  sentences ("the only row with full marks in every outcome column", "the two
+  slowest budget-compliant rows are contexel and the hand-written term-overlap
+  scorer") are registered claims, and `tools/check_benchmark_numbers.py` (also a
+  test, so CI runs it) fails when anything published differs from the results,
+  when a number with a benchmark unit (ms, msec, milliseconds, %, percent, a
+  multiplication sign or a trailing x), also inside an HTML attribute or an
+  entity, or a bare numeric table cell appears outside a generated block or a
+  registered claim, when a report is not what its JSON renders, or when the
+  results were produced with a dataset other than the pinned one. `--write`
+  regenerates the blocks.
+- **Checksummed dataset.** `benchmarks/fetch_dataset.py` verifies the SHA-256
+  committed in `benchmarks/dataset.sha256` every time the cache is used, and
+  writes a download to a temporary name that is moved into place only after the
+  check; a mismatch raises `DatasetChecksumError` and nothing is read. The
+  digest reads every line ending as LF, because the cache is written by Python
+  (CRLF on Windows).
+
+### Changed — benchmark claims (documentation only)
+- "sub-20 ms import" (PyPI README, home page) is now "about 20 ms": contexel's
+  import measured between 19.3 and 20.8 ms across runs, so "sub-20" held only on
+  some of them. The check accepts a stated figure within 25% of the measured one.
+- The benchmark tables gain a "Fill" column, the hand-written (term overlap) row
+  and computed "Native ops"; "hand-written glue" is now "hand-written". The home
+  page's "the only row green across every column" is now "the only row with full
+  marks in every outcome column", and is checked against the results.
+- The CodeSearchNet cache is written with LF line endings on every operating
+  system (it was CRLF on Windows).
+- "contexel is the slowest budget-compliant row" is now "the two slowest
+  budget-compliant rows are contexel and the hand-written term-overlap scorer,
+  in an order that can change from run to run": the margin was about 15% on a
+  quiet machine, so a sentence naming one of them as the slowest flipped with
+  noise. The benchmark prose also no longer says the timings "vary by a few
+  percent": they vary with machine load and from run to run.
+- The PyPI README now names the hand-written term-overlap baseline with its
+  figures, says that exact-word matching drops on inflected queries and that
+  match="stem" recovers them (on a second set of episodes built only from terms
+  the stemmer maps to one stem, so this is not a coverage figure for the
+  stemmer), and says the comparison is one corpus and one task.
+
 ### Behavior changes
 Valid input with strict mode off keeps byte-identical output; these are the
 exceptions, all intentional:
@@ -501,6 +570,20 @@ same obfuscations.
   untouched and `join` skip it, while `asRecords` accepts only plain objects as
   the whole input (a `Map` there raises `input.not_list`). Typed callers are
   protected by the type system.
+- The benchmark's inflected episodes are synthetic: the rule produces words
+  nobody writes (`partialing`), so the figures show what the stemmer reaches on
+  inflection and say nothing about synonyms, paraphrase or real queries. The
+  episodes come from one corpus, and the timings are the best of three runs on
+  one machine and vary with machine load and from run to run (the other columns
+  do not vary). The dataset check pins the JSONL cache derived from the Hugging
+  Face parquet export, so the parquet file is parsed before it is verified;
+  pinning the parquet digest too needs a one-time download and is recorded as a
+  follow-up. The number check is unit-based: it covers the generated blocks, the
+  registered claims and any number with a benchmark unit or a bare numeric table
+  cell, but not other prose, so the hand-typed cost figures in seconds for very
+  long inputs near the end of the README (about the memory and time of split) are
+  not checked. The stemmer, the inflection and the scorer are measured on
+  English technical text only.
 
 ### Tests
 C# tests that asserted the exact exception type
