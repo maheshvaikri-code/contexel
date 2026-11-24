@@ -7,7 +7,9 @@ list of :class:`Step`: each step names the operation it serves and holds the
 callable that does the work. The same list is what runs, and the count is read
 from it: a step is *native* when running it enters at least one Python function
 defined in the library's own package (checked with ``sys.setprofile`` over a
-small sample), and *glue* otherwise. Nothing about "native" is typed.
+small sample), and *glue* otherwise. Nothing about "native" is typed. The steps
+are run once unmeasured first, so that importing a library inside a step is never
+mistaken for using it.
 
 Three kinds of step exist. An *operation* step serves one of the task's
 operations (``OPS``). An *adapter* step only converts the operand to the shape a
@@ -18,6 +20,7 @@ but never counted as one of them.
 """
 from __future__ import annotations
 
+import copy
 import sys
 from dataclasses import dataclass
 from typing import Any, Callable, List, Optional, Sequence, Tuple
@@ -52,7 +55,7 @@ def enters_library(fn: Callable[[Any], Any], data: Any, root: str) -> Tuple[bool
     entered: List[str] = []
 
     def profiler(frame: Any, event: str, arg: Any) -> None:
-        if event == "call":
+        if event == "call" and frame.f_code.co_name != "<module>":
             module = frame.f_globals.get("__name__", "")
             if isinstance(module, str) and _enters(module, root):
                 entered.append(module)
@@ -99,6 +102,8 @@ def count(steps: Sequence[Step], root: Optional[str], sample: Any,
     which has no native steps by definition). An operation counts as native when
     any step serving it enters the library.
     """
+    if root is not None:
+        run(steps, copy.deepcopy(sample))  # first imports and lazy loads happen here, not in the measured pass
     native, glue, other_native, adapters = [], [], [], []
     data = sample
     for step in steps:

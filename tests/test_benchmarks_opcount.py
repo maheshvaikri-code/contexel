@@ -76,3 +76,42 @@ def test_a_failing_step_still_restores_the_profiler():
     with pytest.raises(RuntimeError):
         opcount.enters_library(boom, 1, "contexel")
     assert sys.getprofile() is before
+
+
+def test_importing_a_library_inside_a_step_is_not_using_it(tmp_path, monkeypatch):
+    # the module body of a library that is imported for the first time is not "library work";
+    # without ignoring module frames and warming up, a glue step that only imports counted as native
+    (tmp_path / "lazylib_a_for_opcount").mkdir()
+    (tmp_path / "lazylib_a_for_opcount" / "__init__.py").write_text("X = 1\n", encoding="utf-8")
+    (tmp_path / "lazylib_b_for_opcount").mkdir()
+    (tmp_path / "lazylib_b_for_opcount" / "__init__.py").write_text(
+        "def helper():\n    return 1\n\n\nX = helper()\n", encoding="utf-8")
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    def import_a(rows):
+        import lazylib_a_for_opcount  # noqa: F401
+        return rows
+
+    def import_b(rows):
+        import lazylib_b_for_opcount  # noqa: F401
+        return rows
+
+    try:
+        assert opcount.enters_library(import_a, [1], "lazylib_a_for_opcount") == (False, [1])
+        counted = opcount.count([opcount.Step("only imports", import_b, "select")],
+                                "lazylib_b_for_opcount", [1, 2])
+        assert counted.native == () and counted.glue == ("select",)
+    finally:
+        sys.modules.pop("lazylib_a_for_opcount", None)
+        sys.modules.pop("lazylib_b_for_opcount", None)
+
+
+def test_the_warm_up_does_not_change_the_sample():
+    sample = [{"k": 1}, {"k": 2}]
+
+    def mutate(rows):
+        rows.append({"k": 3})
+        return rows
+
+    opcount.count([opcount.Step("grow", mutate, "select")], "contexel", sample)
+    assert sample == [{"k": 1}, {"k": 2}, {"k": 3}]  # the measured pass mutates the sample once, the warm-up works on a copy
