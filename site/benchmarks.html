@@ -37,59 +37,60 @@
 <p class="lead">Measured, not asserted — and deliberately without a headline
 "X% reduction" number, because reduction is a property of your data and your
 budget, not of the library. Two reproducible suites; full tables live in the
-repo (<code>benchmarks/RESULTS.md</code>, <code>benchmarks/COMPARISON.md</code>).</p>
+repo (<code>benchmarks/RESULTS.md</code>, <code>benchmarks/COMPARISON.md</code>).
+Every number on this page is generated: the tables are rendered from
+<code>benchmarks/RESULTS.json</code> and <code>benchmarks/COMPARISON.json</code>, and
+<code>python tools/check_benchmark_numbers.py</code>, run in CI, fails when this
+page disagrees with them.</p>
 
 <h2>Suite 1 — contexel's own claims</h2>
-<p><code>python -m benchmarks</code> (needs the <code>accurate</code> extra).
-Highlights:</p>
-<ul>
-  <li><strong>Determinism, 4/4 PASS</strong> — the same contract over 5,000
-  seeded records hashes to the same SHA-256 in three fresh interpreters with
-  different <code>PYTHONHASHSEED</code> values, and shaped output is
-  identical even when raw records carry fresh request ids and timestamps.</li>
-  <li><strong>Budget tightness</strong> — shaped with tiktoken, actual cost
-  lands under budget (1,890/2,000); shaped with the default estimator it can
-  overshoot ~0.5%. <code>truncate_field</code> never exceeded its cap.</li>
-  <li><strong>Speed</strong> — ~190k records/sec through the full contract
-  (100k records ≈ 0.5 s); <code>select</code> has no measurable overhead vs
-  a hand-written comprehension. Tracing: 49.8 ms inactive vs 173.3 ms
-  active (3.48×) over 10k records — inactive adds single-digit
-  milliseconds over the untraced 44.4 ms baseline; active tracing
-  token-counts every stage boundary and is priced accordingly.</li>
-  <li><strong>Default tokenizer accuracy</strong> — ~4 chars/token is
-  roughly on the mark for typical prose and code (−1.5% to +4%), but can
-  over-estimate dense prose by ~18% and <strong>under-estimates JSON-heavy
-  records by ~29%</strong>: install <code>contexel[accurate]</code> when
-  budget precision matters.</li>
-</ul>
+<p><code>python -m benchmarks</code> (needs the <code>accurate</code> extra).</p>
+
+<!-- benchmark:suite1:start -->
+<div class="scroll">
+<table>
+<tr><th>Check</th><th>Measured</th></tr>
+<tr><td>Determinism</td><td>4/4 checks PASS; shaped-output hash prefix 6c9fd99fc2f01c4b</td></tr>
+<tr><td>Budget tightness (tiktoken-shaped)</td><td>1,890 of 2,000 tokens at the largest budget</td></tr>
+<tr><td>Budget tightness (heuristic-shaped)</td><td>worst overshoot +0.5% of the budget, measured with tiktoken</td></tr>
+<tr><td>truncate_field cap</td><td>worst clipped field 24 tokens (heuristic) and 24 tokens (tiktoken) for a cap of 24</td></tr>
+<tr><td>Speed, full contract</td><td>77,070 records/s (1,298 ms for 100,000 records)</td></tr>
+<tr><td>Speed, select vs hand-written</td><td>93.0 ms vs 89.5 ms for 100,000 records</td></tr>
+<tr><td>Tracing overhead</td><td>121.1 ms inactive vs 356.9 ms active (2.95x) over 10,000 records</td></tr>
+<tr><td>Default tokenizer error (heuristic vs tiktoken)</td><td>prose (README.md) −3.0%; prose (the-context-contract.md) +17.5%; code (contexel/stages.py) +3.6%; code (reference_agent/tools.py) +4.2%; json (500 search-hit records) −28.6%</td></tr>
+</table>
+</div>
+<!-- benchmark:suite1:end -->
+
+<p>The default tokenizer estimates ~4 chars/token: roughly right for typical
+prose and code, but it under-estimates JSON-heavy records, so install
+<code>contexel[accurate]</code> when budget precision matters. Inactive
+tracing is the "zero cost" claim; active tracing token-counts every stage
+boundary and is priced accordingly.</p>
 
 <h2>Suite 2 — against the prior art, on real data</h2>
 <p><code>python -m benchmarks.competitors</code> (needs the
-<code>benchmarks</code> extra; first run downloads the CodeSearchNet
-python/test split, ~30&nbsp;MB). The full split — 22,176 real functions —
-is reconstructed into 28,047 search-tool records with genuine duplicates,
-plus 100 ground-truth episodes where the record the agent <em>needed</em> is
-known and guaranteed present in the raw hits, so recall isolates shaping
-loss, not retrieval loss. Budget: 1,500 tokens.</p>
+<code>benchmarks</code> extra; the first run downloads the CodeSearchNet
+python/test split, ~30&nbsp;MB, and refuses it unless its SHA-256 equals the
+digest committed in <code>benchmarks/dataset.sha256</code>). The full split —
+22,176 real functions — is reconstructed into 28,047 search-tool records with
+genuine duplicates, plus 100 ground-truth episodes where the record the agent
+<em>needed</em> is known and guaranteed present in the raw hits, so recall
+isolates shaping loss, not retrieval loss. Budget: 1,500 tokens.</p>
 
+<!-- benchmark:glance:start -->
 <div class="scroll">
 <table>
-<tr><th>Implementation</th><th>Native ops</th><th>ms @28k</th><th>ms/episode</th>
-<th>Recall (strong/weak)</th><th>Compliance</th><th>Fill</th><th>Useful</th>
-<th>Import ms</th><th>Deps</th></tr>
-<tr><td><strong>contexel</strong></td><td class="best">6/6</td><td>69</td><td>15.5</td>
-<td class="best">100% / 100%</td><td class="best">100%</td><td>0.95×</td>
-<td class="best">100%</td><td>19</td><td class="best">0</td></tr>
-<tr><td>hand-written glue</td><td>0/6</td><td>27</td><td>1.6</td>
-<td class="poor">93% / 32%</td><td>100%</td><td>0.95×</td><td>100%</td><td>—</td><td>—</td></tr>
-<tr><td>toolz</td><td>2/6</td><td>45</td><td>6.8</td>
-<td>100% / 100%</td><td class="poor">0%</td><td class="poor">91.6×</td><td>100%</td><td>14</td><td>0</td></tr>
-<tr><td>langchain-core</td><td>1/6</td><td>147</td><td>7.1</td>
-<td class="poor">30% / 30%</td><td>100%</td><td>0.52×</td><td class="poor">89.8%</td><td>96</td><td>25</td></tr>
-<tr><td>llama-index-core</td><td>0/6</td><td>189</td><td>20.8</td>
-<td>100% / 100%</td><td class="poor">0%</td><td class="poor">129×</td><td class="poor">74.2%</td><td>1,209</td><td>60</td></tr>
+<tr><th>Implementation</th><th>Native ops</th><th>ms @28k</th><th>ms/episode</th><th>Recall (strong/weak)</th><th>Compliance</th><th>Fill</th><th>Useful</th><th>Import ms</th><th>Deps</th></tr>
+<tr><td><strong>contexel</strong></td><td class="best">6/6</td><td>74</td><td>39.6</td><td class="best">100% / 100%</td><td class="best">100%</td><td>0.95×</td><td class="best">100%</td><td>20</td><td class="best">0</td></tr>
+<tr><td>hand-written</td><td>0/6</td><td>28</td><td>3.0</td><td class="poor">93% / 32%</td><td class="best">100%</td><td>0.95×</td><td class="best">100%</td><td>—</td><td>—</td></tr>
+<tr><td>hand-written (term overlap)</td><td>0/6</td><td>—</td><td>29.0</td><td>97% / 97%</td><td class="best">100%</td><td>0.94×</td><td class="best">100%</td><td>—</td><td>—</td></tr>
+<tr><td>toolz</td><td>2/6</td><td>44</td><td>14.0</td><td class="best">100% / 100%</td><td class="poor">0%</td><td class="poor">91.62×</td><td class="best">100%</td><td>13</td><td class="best">0</td></tr>
+<tr><td>langchain-core</td><td>1/6</td><td>231</td><td>15.5</td><td class="poor">30% / 30%</td><td class="best">100%</td><td>0.52×</td><td class="poor">89.7%</td><td>91</td><td>25</td></tr>
+<tr><td>llama-index-core</td><td>0/6</td><td>509</td><td>42.3</td><td class="best">100% / 100%</td><td class="poor">0%</td><td class="poor">129.21×</td><td class="poor">74.2%</td><td>1,227</td><td>60</td></tr>
 </table>
 </div>
+<!-- benchmark:glance:end -->
 
 <h3>How to read it</h3>
 <ul>
@@ -98,34 +99,66 @@ loss, not retrieval loss. Budget: 1,500 tokens.</p>
   whatever they lack, so timing differences are theirs. The outcome columns
   (Recall / Compliance / Useful) are the opposite: each library acts
   <em>only</em> through its own operations, so they show what each one
-  actually ships.</li>
-  <li><strong>Recall with 0% compliance is not recall.</strong> toolz and
-  llama-index keep the needed record by emitting 92–129× the budget — a
-  context no window accepts. langchain-core holds the budget but, with no
-  projection or dedupe, fills it with bloat and the needed record survives
-  only 30% of the time.</li>
-  <li><strong>contexel's 15.5 ms/episode is the work, not overhead.</strong>
+  actually ships. Native ops are <em>computed</em> from the code that defines
+  each implementation, not typed.</li>
+  <li><strong>Recall with zero compliance is not recall.</strong> toolz and
+  llama-index keep the needed record by emitting many times the budget (the
+  Fill column) — a context no window accepts. langchain-core holds the budget
+  but, with no projection or dedupe, fills part of it with bloat and the
+  needed record survives only when it happens to arrive early.</li>
+  <li><strong>contexel's ms/episode is the work, not overhead.</strong>
   It is the slowest budget-compliant row because it does the most: deriving
-  relevance from ~1&nbsp;KB of evidence per record on top of projecting,
-  deduping, clipping, ranking, and budgeting. Every faster row is faster by
-  doing less. All rows are noise next to one model call.</li>
+  relevance from each record's own text on top of projecting, deduping,
+  clipping, ranking, and budgeting. Every faster row is faster by doing less.
+  All rows are noise next to one model call. The timings are one run on one
+  machine; the other columns are deterministic.</li>
   <li><strong>The two recall columns bound the semantic concession.</strong>
-  The hand-written row trusts the tool's score: 93% under a decent
-  retrieval signal, 32% under a weak one. contexel's
-  <a href="stages.html#rescore">rescore</a> derives relevance itself, so
-  both columns read 100% — on these episodes.</li>
+  The hand-written row trusts the tool's score, so its recall tracks that
+  score's quality. contexel's <a href="stages.html#rescore">rescore</a>
+  derives relevance itself, so its two columns read the same — on these
+  episodes. The hand-written row with its own term-overlap scorer is the
+  fairest comparison: another rescorer, not none.</li>
 </ul>
+
+<h3>Inflected queries</h3>
+<p>The episodes above query with the target's own words, so exact-word
+matching is never tested. A second set of episodes keeps the hit lists but
+hands the shaper deterministic inflections of those words
+(<code>parse</code> becomes <code>parsing</code>, <code>returns</code> becomes
+<code>return</code>; synthetic, the rule is in
+<code>benchmarks/inflection.py</code>), so exact-word matching fails by
+construction and <code>match="stem"</code> is <em>measured</em>:</p>
+
+<!-- benchmark:inflected:start -->
+<div class="scroll">
+<table>
+<tr><th>Shaper</th><th>Recall (original terms)</th><th>Recall (inflected terms)</th></tr>
+<tr><td>contexel</td><td>99%</td><td>35%</td></tr>
+<tr><td>contexel (match=stem)</td><td>98%</td><td>98%</td></tr>
+<tr><td>hand-written (term overlap)</td><td>96%</td><td>35%</td></tr>
+<tr><td>hand-written</td><td>90%</td><td>90%</td></tr>
+</table>
+</div>
+<!-- benchmark:inflected:end -->
+
+<p>Exact-word matching (the default) collapses on inflected queries, and so
+does the hand-written term-overlap scorer; <code>match="stem"</code> recovers
+them. The hand-written row that trusts the tool's score never reads the
+query, so inflection cannot touch it: it is the control. This measures
+inflection robustness only — <strong>not synonyms, not paraphrase, not
+meaning.</strong></p>
 
 <h2>Limits, stated plainly</h2>
 <div class="note">
 <p><strong>Recall@budget has a ceiling no shaper escapes:</strong> when a
 query legitimately describes more records than the budget holds, some valid
-record is cut — semantic or not. The 100% here means the ambiguity clusters
+record is cut — semantic or not. Full recall here means the ambiguity clusters
 resolved once exact-word evidence was used; vaguer queries, a different
-corpus, or a tighter budget can put it back under 100, and that is the
-data's property, not the policy's.</p>
+corpus, or a tighter budget can put it back below full recall, and that is
+the data's property, not the policy's.</p>
 <p><strong>rescore is lexical:</strong> a query saying <em>parsing</em>
-scores zero against a document saying <em>parse</em>; synonyms and
+scores zero against a document saying <em>parse</em> unless you opt in to
+<code>match="stem"</code>, a small frozen English stemmer; synonyms and
 paraphrase belong to semantic rerankers (LLMLingua, ColBERT,
 cross-encoders), which contexel deliberately does not compete with.</p>
 <p><strong>And shaping is not an injection defense:</strong> rescore ranks

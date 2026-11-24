@@ -101,10 +101,11 @@ contexel is the only implementation among the near-neighbours
 all the operations natively, holds a 1,500-token budget in 100% of
 episodes, keeps the needed record in 100% of them under both a strong and
 a weak retrieval signal, and spends 100% of context tokens on unique,
-needed fields — at 0 dependencies and a sub-20 ms import. It is also the
+needed fields — at 0 dependencies and an import of about 20 ms. It is also the
 slowest budget-compliant row, *because it does the most work per record* —
 and the limits are stated with the same care: recall@budget is bounded by
-query specificity for any shaper, and `rescore` is lexical, not semantic.
+query specificity for any shaper, and `rescore` is lexical, not semantic
+(`match="stem"` opts in to inflections; synonyms stay invisible).
 
 Determinism is proven, not promised: the suite hashes the same contract's
 output across fresh interpreters with different `PYTHONHASHSEED` values —
