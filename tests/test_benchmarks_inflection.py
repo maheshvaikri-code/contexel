@@ -46,3 +46,13 @@ def test_inflection_is_deterministic_and_never_a_verbatim_word_of_the_target():
 ])
 def test_a_term_is_not_inflectable_when(term, words, why):
     assert not inflection.inflectable(term, words), why
+
+
+def test_plain_words_are_inflectable_unless_a_guard_applies():
+    # the positive pin: without it an inflectable() that always said False passed every test
+    for term in ("parse", "config", "class", "simple", "request", "string", "status", "returns"):
+        assert inflection.inflectable(term, set()), term
+    for term in ("queries", "attempting", "_get_item"):  # the stem guard and the plain-word guard
+        assert not inflection.inflectable(term, set()), term
+    assert not inflection.inflectable("parse", {"parsing"})   # the inflection is a word of the target
+    assert not inflection.inflectable("returns", {"return"})
