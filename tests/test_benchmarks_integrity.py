@@ -285,11 +285,71 @@ def test_another_about_n_ms_sentence_does_not_stand_in_for_the_import_claim(tree
 @pytest.mark.parametrize("old, new, label", [
     ("reaches\n97% recall", "reaches\n96% recall", "term-overlap baseline recall"),
     ("recall and 100% budget compliance", "recall and 99% budget compliance", "term-overlap baseline compliance"),
-    ("drops from 99% recall", "drops from 98% recall", "default matching, original terms"),
-    ("words to 35% on inflected", "words to 34% on inflected", "default matching, inflected terms"),
-    ("recovers them (98%)", "recovers them (97%)", "stem matching, inflected terms"),
+    ("finds the record in 99% of those", "finds the record in 98% of those", "default matching, original terms"),
+    ("own words and in 35% with inflections", "own words and in 34% with inflections",
+     "default matching, inflected terms"),
+    ("finds it in 98% with the inflections", "finds it in 97% with the inflections",
+     "stem matching, inflected terms"),
 ])
 def test_a_wrong_number_in_the_pypi_comparison_sentences_is_reported(tree, old, new, label):
     _replace(tree, "README_PYPI.md", old, new)
     problems = publish.check(tree)
     assert any("README_PYPI.md" in p and label in p for p in problems), problems
+
+
+def test_the_pypi_stem_caveat_and_the_second_set_of_episodes_are_registered(tree):
+    _replace(tree, "README_PYPI.md", "not\nhow many English inflections", "not\nhow much of English")
+    assert any("README_PYPI.md" in p and "not a coverage figure" in p and "not found" in p
+               for p in publish.check(tree))
+    _replace(tree, "README_PYPI.md", "On a second set of episodes", "On other episodes")
+    assert any("README_PYPI.md" in p and "second set of episodes" in p and "not found" in p
+               for p in publish.check(tree))
+
+
+def test_the_all_six_operations_claim_needs_a_total_of_six(tree):
+    def edit(data):
+        for row in data["operations"]:
+            if row["impl"] == "contexel":
+                row["native"] = row["native"] + ["extra"]  # seven of seven: still "all", no longer six
+
+    _edit_comparison(tree, edit)
+    problems = publish.check(tree)
+    assert any("README_PYPI.md" in p and "only row with every operation native" in p and "not true" in p
+               for p in problems), problems
+
+
+# --- the unit scan: case, underscores, "per cent", the ASCII x ----------------------------
+@pytest.mark.parametrize("written", [
+    "10X faster", "12 MS", "12 Ms", "40 PERCENT", "40 per cent", "_12 ms_", "1.5x", "2.95x",
+])
+def test_more_ways_of_writing_a_number_with_a_unit_are_reported(tree, written):
+    _replace(tree, "README.md", _ANCHOR, f"Both are noise ({written}) next to a")
+    problems = publish.check(tree)
+    assert any("unregistered benchmark number" in p and "README.md" in p for p in problems), (written, problems)
+
+
+@pytest.mark.parametrize("written", ["a 3 x 4 grid", "Python 3.x", "a12 ms", "0x1f", "a 1990s sample"])
+def test_text_that_is_not_a_number_with_a_unit_is_not_reported(tree, written):
+    _replace(tree, "README.md", _ANCHOR, f"Both are noise ({written}) next to a")
+    assert publish.check(tree) == [], written
+
+
+# --- the bare-cell guard sees through formatting -------------------------------------------
+@pytest.mark.parametrize("rel, anchor, cell", [
+    ("README.md", "How to read each column, plainly:", "| a | `12` |"),
+    ("README.md", "How to read each column, plainly:", "| a | ~12 |"),
+    ("README.md", "How to read each column, plainly:", "| a | 12"),
+    ("README.md", "How to read each column, plainly:", "| a | **12** |"),
+    ("site/benchmarks.html", "<h3>How to read it</h3>", "<table><tr><td><b>12</b></td></tr></table>"),
+    ("site/benchmarks.html", "<h3>How to read it</h3>", "<table><tr><td>&nbsp;12 </td></tr></table>"),
+])
+def test_a_bare_number_cell_is_reported_however_it_is_formatted(tree, rel, anchor, cell):
+    _replace(tree, rel, anchor, cell + "\n\n" + anchor)
+    problems = publish.check(tree)
+    assert any(rel in p and "table cell" in p and "'12'" in p for p in problems), (cell, problems)
+
+
+def test_a_table_cell_with_words_or_a_version_is_not_a_bare_number(tree):
+    _replace(tree, "README.md", "How to read each column, plainly:",
+             "| a | 6/6 |\n| b | v2 |\n|---|---|\n\nHow to read each column, plainly:")
+    assert publish.check(tree) == []

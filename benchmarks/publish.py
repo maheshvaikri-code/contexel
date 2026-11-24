@@ -317,7 +317,7 @@ def _full_marks(r: Dict[str, Any]) -> bool:
 
 def _only_full_native(c: Dict[str, Any], s: Dict[str, Any]) -> bool:
     rows = _rows(c)
-    return rows["contexel"]["native"] == rows["contexel"]["total"] and all(
+    return rows["contexel"]["native"] == rows["contexel"]["total"] == SIX_OPERATIONS and all(
         r["native"] < r["total"] for n, r in rows.items() if n != "contexel")
 
 
@@ -386,7 +386,8 @@ def _json_underestimates(c: Dict[str, Any], s: Dict[str, Any]) -> bool:
     return next(r for r in s["accuracy"] if r["sample"].startswith("json"))["error_pct"] < 0
 
 
-COLLAPSE_POINTS = 30   # "collapses": recall falls by at least this many percentage points
+SIX_OPERATIONS = 6     # the PyPI README says "all six operations": the total must be six
+COLLAPSE_POINTS = 30  # "collapses": recall falls by at least this many percentage points
 RECOVER_POINTS = 5     # "recovers": the stem row's inflected recall is within this of its original
 
 ROWS = r"split\s*(?:\(|" + DASH + r"|-|&mdash;)?\s*([\d,]+)\s+(?:functions|real)"
@@ -425,11 +426,11 @@ CLAIMS += [
           _scored_value("recall", "recall")),
     Claim("README_PYPI.md", "term-overlap baseline compliance", r"recall\s+and\s+(\d+)%\s+budget\s+compliance",
           _scored_value("compliance_pct", "compliance")),
-    Claim("README_PYPI.md", "default matching, original terms", r"drops\s+from\s+(\d+)%\s+recall\s+on\s+the",
+    Claim("README_PYPI.md", "default matching, original terms", r"finds\s+the\s+record\s+in\s+(\d+)%\s+of\s+those",
           _inflected_value("contexel", "recall_original_pct", "with the original terms")),
-    Claim("README_PYPI.md", "default matching, inflected terms", r"own\s+words\s+to\s+(\d+)%\s+on\s+inflected",
+    Claim("README_PYPI.md", "default matching, inflected terms", r"own\s+words\s+and\s+in\s+(\d+)%\s+with\s+inflections",
           _inflected_value("contexel", "recall_inflected_pct", "with the inflected terms")),
-    Claim("README_PYPI.md", "stem matching, inflected terms", r"recovers\s+them\s+\((\d+)%\)",
+    Claim("README_PYPI.md", "stem matching, inflected terms", r"`match=\"stem\"`\s+finds\s+it\s+in\s+(\d+)%",
           _inflected_value("contexel (match=stem)", "recall_inflected_pct", "with the inflected terms")),
 ]
 
@@ -449,6 +450,11 @@ CLAIMS += [
               lambda c, s: bool(c["dataset"]["sha256"])),
     _sentence("README_PYPI.md", r"the\s+default\s+exact-word\s+matching",
               "word mode drops on inflected queries and stem recovers", _inflection_drop),
+    _sentence("README_PYPI.md", r"On\s+a\s+second\s+set\s+of\s+episodes",
+              "the inflected figures come from a second set of episodes",
+              lambda c, s: c["inflected"]["episodes"] > 0 and bool(c["inflected"]["rows"])),
+    _sentence("README_PYPI.md", r"not\s+how\s+many\s+English\s+inflections\s+the\s+stemmer\s+covers",
+              "the stem figure is not a coverage figure", lambda c, s: bool(c["inflected"]["rows"])),
     _sentence("site/index.html",
               r"contexel\s+is\s+the\s+only\s+row\s+with\s+full\s+marks\s+in\s+every\s+outcome\s+column",
               "only row with full marks", _only_contexel_full),
@@ -479,21 +485,42 @@ CLAIMS += [
               "the default tokenizer under-estimates JSON", _json_underestimates),
 ]
 
-# A number with a benchmark unit: ms (msec, milliseconds), a percentage, the multiplication
-# sign or an ASCII x that ends a word ("2.95x"). Whitespace of any kind may sit between the
-# number and its unit. A bare "s" is deliberately not a unit ("1990s"), and neither is
+# A number with a benchmark unit, in any case: ms (msec, milliseconds), a percentage
+# (% / percent / per cent), the multiplication sign (whitespace of any kind may sit between
+# the number and these), or an ASCII x written straight after the number ("2.95x", "10x";
+# "3 x 4" and "3.x" are not). A bare "s" is deliberately not a unit ("1990s"), and neither is
 # "seconds": the README's stemmer-throughput prose ("2 seconds per million chunks") is not
-# benchmark-section data and is not covered by this check.
+# benchmark-section data and is not covered by this check. A number is not one when a letter
+# or digit comes right before it ("a12 ms"), but an underscore does not count as a letter
+# (Markdown italics: "_12 ms_").
+_END = r"(?![^\W_])"
 UNIT_NUMBER = re.compile(
-    r"(?<![\w.])[+" + MINUS + r"-]?\d[\d,.]*\s*(?:ms\b|msec\b|milliseconds?\b|%|percent\b|"
-    + TIMES + r"|x\b)")
+    r"(?<![^\W_])(?<!\.)[+" + MINUS + r"-]?(?:"
+    r"\d[\d,.]*\s*(?:(?:msec|ms|milliseconds?|percent|per\s+cent)" + _END + r"|%|" + TIMES + r")"
+    r"|\d[\d,]*(?:\.\d+)?x" + _END + r")", re.I)
 URLISH = re.compile(r"https?://\S+|(?:href|src)=\"[^\"]*\"|\]\([^)]*\)")
 # Attributes whose value is shown to a reader (a tooltip, alt text, the page description).
 ATTRIBUTE = re.compile(r"""\b(?:title|alt|aria-label|content)\s*=\s*(?:"([^"]*)"|'([^']*)')""", re.I)
-# A table cell that is only a number, on a line of its own kind: "| 12 |" or "<td>12</td>".
-BARE_CELL = re.compile(
-    r"(?<=\|)[ \t]*\**[+" + MINUS + r"-]?\d[\d,]*(?:\.\d+)?%?\**[ \t]*(?=\|)"
-    r"|<t[dh][^>]*>\s*[+" + MINUS + r"-]?\d[\d,]*(?:\.\d+)?%?\s*</t[dh]>")
+# A table cell that is only a number: a Markdown row ("| a | 12 |", "| a | 12", "| `~12` |")
+# or an HTML cell ("<td>12</td>", "<td><b>12</b></td>"). Tags, backticks, emphasis stars and a
+# leading "~" do not hide it.
+BARE_NUMBER = re.compile(r"[+" + MINUS + r"-]?\d[\d,]*(?:\.\d+)?%?")
+HTML_CELL = re.compile(r"<t[dh]\b[^>]*>(.*?)</t[dh]>", re.I | re.S)
+
+
+def _cell_text(raw: str) -> str:
+    text = html.unescape(re.sub(r"<[^>]+>", "", raw)).replace(chr(0xA0), " ")
+    return re.sub(r"[`*]", "", text).strip().lstrip("~").strip()
+
+
+def _bare_cells(text: str) -> List[str]:
+    """The table cells of ``text`` (outside the generated blocks) that are only a number."""
+    raw: List[str] = []
+    for line in text.splitlines():
+        if line.lstrip().startswith("|"):
+            raw += line.strip().strip("|").split("|")
+    raw += [m.group(1) for m in HTML_CELL.finditer(text)]
+    return [c for c in map(_cell_text, raw) if BARE_NUMBER.fullmatch(c)]
 
 
 def _visible(outside: str) -> str:
@@ -588,9 +615,8 @@ def check(root: Path) -> List[str]:
         for hit in UNIT_NUMBER.finditer(_visible(outside)):
             problems.append(f"{rel}: unregistered benchmark number {hit.group(0).strip()!r} "
                             "(put it in a generated block or register it in publish.CLAIMS)")
-        for cell in BARE_CELL.finditer(outside):
-            text_of_cell = re.sub(r"<[^>]+>", "", cell.group(0)).strip()
-            problems.append(f"{rel}: unregistered benchmark number {text_of_cell!r} in a table cell "
+        for cell in _bare_cells(outside):
+            problems.append(f"{rel}: unregistered benchmark number {cell!r} in a table cell "
                             "outside a generated block (generate the table or register the number)")
     return problems
 

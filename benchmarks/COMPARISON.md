@@ -60,10 +60,10 @@ rescore stage ("-" where a row has no timed task).
   deduping, scanning each record's own text to derive relevance, clipping to a
   token-accurate cap, ranking, enforcing the budget); a cheaper row is cheaper
   by doing less.
-- These timings are one selected run (the best of three runs of the command) on
-  one machine ("best of 5" within the run where a column says so): they are
-  published as measured, and they vary with the machine's load and from run to
-  run. The recall, compliance, fill and useful-share columns do not vary.
+- These timings are from one run on one machine ("best of 5" within the run
+  where a column says so): they are published as measured, and they vary with
+  the machine's load and from run to run. The recall, compliance, fill and
+  useful-share columns do not vary.
 
 ## Operations: native versus hand-written (computed)
 

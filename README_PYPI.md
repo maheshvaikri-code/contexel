@@ -108,10 +108,13 @@ term-overlap baseline (a hand-written scorer in place of `rescore`) reaches
 is small; it and contexel are the two slowest budget-compliant rows, in an
 order that can change from run to run, *because they do the most work per
 record*. The limits are stated with the same care: recall@budget is bounded
-by query specificity for any shaper, and `rescore` is lexical, not semantic:
-the default exact-word matching drops from 99% recall on the target's own
-words to 35% on inflected queries, and `match="stem"` recovers them (98%);
-synonyms stay invisible.
+by query specificity for any shaper, and `rescore` is lexical, not semantic.
+On a second set of episodes, built only from terms the frozen stemmer maps to
+one stem, the default exact-word matching finds the record in 99% of those
+episodes with the target's own words and in 35% with inflections of those
+words, while `match="stem"` finds it in 98% with the inflections, recovering
+them. That shows the stem match carrying through ranking and the budget, not
+how many English inflections the stemmer covers; synonyms stay invisible.
 
 Determinism is proven, not promised: the suite hashes the same contract's
 output across fresh interpreters with different `PYTHONHASHSEED` values —
