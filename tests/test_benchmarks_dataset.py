@@ -153,6 +153,26 @@ _PARQUET = "https://huggingface.co/api/datasets/code-search-net/code_search_net/
 
 def test_a_listing_of_https_urls_on_huggingface_is_followed():
     assert fetch_dataset.checked_urls([_PARQUET]) == [_PARQUET]
+    assert fetch_dataset.checked_urls(["https://huggingface.co/x"]) == ["https://huggingface.co/x"]
+
+
+@pytest.mark.parametrize("url", [
+    "https://evil.example" + chr(92) + "@huggingface.co/0.parquet",  # requests connects to evil.example
+    "https://evil.example:443" + chr(92) + "@huggingface.co/0.parquet",
+    "https://huggingface.co:443/x",
+    "https://huggingface.co@evil.example/x",
+    "https://user@huggingface.co/x",
+    "https://huggingface.co/x y",
+    "https://huggingface.co/x\n",
+    "https://huggingface.co/x?y=1",
+    "https://huggingface.co/x#y",
+    "https://huggingface.co.evil.example/x",
+    "http://huggingface.co/x",
+    "https://HUGGINGFACE.co.evil.example/x",
+])
+def test_a_listed_url_that_requests_could_send_elsewhere_is_refused(url):
+    with pytest.raises(fetch_dataset.DatasetSourceError):
+        fetch_dataset.checked_urls([url])
 
 
 @pytest.mark.parametrize("listing", [
@@ -195,7 +215,7 @@ def test_the_download_refuses_the_listing_before_following_any_url(monkeypatch):
     monkeypatch.setitem(sys.modules, "requests", types.SimpleNamespace(get=get))
     monkeypatch.setitem(sys.modules, "pyarrow", pyarrow)
     monkeypatch.setitem(sys.modules, "pyarrow.parquet", parquet)
-    with pytest.raises(fetch_dataset.DatasetSourceError, match="only https URLs on huggingface.co"):
+    with pytest.raises(fetch_dataset.DatasetSourceError, match="only plain https URLs on huggingface.co"):
         fetch_dataset._download_rows()
     assert len(fetched) == 1 and fetched[0].startswith("https://huggingface.co/api/")  # the listing only
 

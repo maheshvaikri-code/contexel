@@ -19,8 +19,9 @@ typed by hand, so they could drift from what the benchmark produced. Now:
   committed in ``benchmarks/dataset.sha256``.
 
 ``check(root)`` returns the problems (empty when everything agrees): a missing,
-unreadable or oversized file and malformed results are problems too, never a
-crash. ``write(root)`` rewrites the generated blocks.
+unreadable or oversized file, and results with a missing key, a value of the wrong
+type, an empty list or a zero divisor (``MALFORMED``), are problems too, not a
+traceback. ``write(root)`` rewrites the generated blocks.
 ``tools/check_benchmark_numbers.py`` is the command.
 """
 from __future__ import annotations
@@ -415,7 +416,9 @@ SIX_OPERATIONS = 6     # the PyPI README says "all six operations": the total mu
 COLLAPSE_POINTS = 30  # "collapses": recall falls by at least this many percentage points
 RECOVER_POINTS = 5     # "recovers": the stem row's inflected recall is within this of its original
 
-ROWS = r"split\s*(?:\(|" + DASH + r"|-|&mdash;)?\s*([\d,]+)\s+(?:functions|real)"
+# One whitespace run before the optional separator and one after it, never two runs that
+# can share the same spaces ("split" followed by a long run of spaces stays linear).
+ROWS = r"split\s*(?:(?:\(|" + DASH + r"|-|&mdash;)\s*)?([\d,]+)\s+(?:functions|real)"
 # (?<![\d,]): a capture starts only where a number starts, never inside a run of digits
 # and commas, so a long run costs one scan instead of one per position (linear time).
 RECORDS = r"(?<![\d,])([\d,]+)\s+(?:real\s+)?search-tool\s+records"
@@ -520,15 +523,19 @@ CLAIMS += [
 # neither is "sec" or "seconds": the README's stemmer-throughput prose ("2 seconds per million
 # chunks") is not benchmark-section data and is not covered by this check. A number is not one
 # when a letter or digit comes right before it ("a12 ms"), but an underscore does not count as
-# a letter (Markdown italics: "_12 ms_"). Nor does it start right after a digit, a comma or a
-# dot, so a long run of digits and commas is scanned once (linear time).
+# a letter (Markdown italics: "_12 ms_"). Nor does it start inside a number (right after a
+# digit, or after a digit and a comma or dot), but it does start after a comma or dot that
+# follows anything else ("fast,12 ms", "...12 ms"). The digits it reads may be separated by
+# single commas or dots only, so no start can scan past a run of separators: linear time.
+# "us" and "ns" count in lower case only ("50 US states" and "8 NS records" are not
+# timings); every other unit is matched in any case.
 _END = r"(?![^\W_])"
 _MICRO = chr(0xB5) + chr(0x3BC)  # the micro sign and the Greek small letter mu
 UNIT_NUMBER = re.compile(
-    r"(?<![^\W_])(?<![\d,.])[+" + MINUS + r"-]?(?:"
-    r"\d[\d,.]*\s*(?:(?:msec|ms|milliseconds?|[u" + _MICRO + r"]s|microseconds?|ns|nanoseconds?"
-    r"|percent|per\s+cent)" + _END + r"|%|" + TIMES + r")"
-    r"|\d[\d,]*(?:\.\d+)?x" + _END + r")", re.I)
+    r"(?<![^\W_])(?<!\d[,.])[+" + MINUS + r"-]?(?:"
+    r"\d(?:[,.]?\d)*[,.]?\s*(?:(?:msec|ms|milliseconds?|[" + _MICRO + r"]s|(?-i:us|ns)"
+    r"|microseconds?|nanoseconds?|percent|per\s+cent)" + _END + r"|%|" + TIMES + r")"
+    r"|\d(?:,?\d)*(?:\.\d+)?x" + _END + r")", re.I)
 # A Markdown link target stops at the next "]" too, so an unclosed "](" run stays linear.
 URLISH = re.compile(r"https?://\S+|(?:href|src)=\"[^\"]*\"|\]\([^)\]]*\)")
 # Attributes whose value is shown to a reader (a tooltip, alt text, the page description, a
@@ -586,7 +593,11 @@ def _visible(outside: str) -> str:
 # --------------------------------------------------------------------------- #
 # The check and the writer
 # --------------------------------------------------------------------------- #
-MALFORMED = (KeyError, TypeError, ValueError, IndexError)  # results missing a key or of the wrong type
+# What rendering and comparing malformed results raise: a missing key or index, a value of
+# the wrong type (TypeError, AttributeError, ValueError), an empty list searched with next()
+# (StopIteration), a zero where a divisor was expected (ArithmeticError).
+MALFORMED = (KeyError, TypeError, ValueError, IndexError, AttributeError, StopIteration,
+             ArithmeticError)
 
 
 class PublishError(RuntimeError):
@@ -594,12 +605,14 @@ class PublishError(RuntimeError):
 
 
 def _read(root: Path, rel: str) -> str:
-    """The file's text with universal newlines; OSError and UnicodeDecodeError propagate."""
-    raw = (root / rel).read_bytes()
-    if len(raw) > MAX_PUBLISHED_BYTES:
-        raise OSError(f"{len(raw):,} bytes is larger than the {MAX_PUBLISHED_BYTES:,} bytes "
+    """The file's text with universal newlines; OSError and UnicodeDecodeError propagate.
+    The size is checked before the file is read, so an oversized file is never loaded."""
+    path = root / rel
+    size = path.stat().st_size
+    if size > MAX_PUBLISHED_BYTES:
+        raise OSError(f"{size:,} bytes is larger than the {MAX_PUBLISHED_BYTES:,} bytes "
                       "the check reads; refusing to scan it")
-    return raw.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
+    return path.read_bytes().decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
 
 
 def _text(problems: List[str], root: Path, rel: str) -> Optional[str]:

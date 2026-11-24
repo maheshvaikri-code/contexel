@@ -7,7 +7,6 @@ import re
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -44,11 +43,14 @@ def test_published_numbers_match_generated_results():
 
 @pytest.fixture
 def tree(tmp_path):
+    """A copy of the published files under ``tmp_path / "tree"`` (the rest of tmp_path is
+    "outside the root" for the tests of ``write``)."""
+    root = tmp_path / "tree"
     for rel in PUBLISHED:
-        target = tmp_path / rel
+        target = root / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT / rel, target)
-    return tmp_path
+    return root
 
 
 def _write(path, text):
@@ -378,7 +380,8 @@ def test_a_table_cell_with_words_or_a_version_is_not_a_bare_number(tree):
 
 # --- the scan sees through Unicode tricks, covers microseconds and more attributes -------
 @pytest.mark.parametrize("written", [
-    "12 " + chr(0xB5) + "s", "12 " + chr(0x3BC) + "s", "12 &micro;s", "12 us", "12 US", "12ns",
+    "12 " + chr(0xB5) + "s", "12 " + chr(0x3BC) + "s", "12 &micro;s", "12 us", "12 ns", "12ns",
+    "12 " + chr(0x39C) + "S", "12 Microseconds", "12 NANOSECONDS",  # these stay case-insensitive
     "12 microseconds", "12 nanoseconds", "40" + chr(0xFF05), chr(0xFF11) + chr(0xFF12) + " ms",
     "12" + chr(0x200B) + "ms", "12" + chr(0xAD) + "ms", "12" + chr(0x2060) + "ms",
     "12" + chr(0x200C) + " ms", "40" + chr(0x200D) + "%", "12" + chr(0xFEFF) + "ms", "12&#8203;ms",
@@ -402,11 +405,20 @@ def test_a_number_inside_a_placeholder_or_data_attribute_is_reported(tree, tag):
 
 @pytest.mark.parametrize("written", [
     "a 3 x 4 grid", "Python 3.x", "12 users", "5 nodes", "12 usb ports", "the US market",
-    "a 12-step plan",
+    "a 12-step plan", "50 US states", "8 NS records", "a12 ms",
 ])
 def test_words_that_start_like_a_unit_are_not_reported(tree, written):
     _replace(tree, "README.md", _ANCHOR, f"Both are noise ({written}) next to a")
     assert publish.check(tree) == [], written
+
+
+@pytest.mark.parametrize("written", ["fast,12 ms", "a,40%", chr(0x2026) + "12 ms"])
+def test_a_number_after_a_comma_or_an_ellipsis_is_reported(tree, written):
+    # a comma or dot blocks a start only when a digit precedes it (inside "1,234" or "3.12");
+    # NFKC turns the ellipsis into three dots, which must not hide the number after them
+    _replace(tree, "README.md", _ANCHOR, f"Both are noise ({written}) next to a")
+    problems = publish.check(tree)
+    assert any("unregistered benchmark number" in p and "README.md" in p for p in problems), (written, problems)
 
 
 # --- linear time on adversarial text; an oversized file is refused --------------------------
@@ -419,14 +431,23 @@ _ADVERSARIAL = {
     "unclosed block start markers": "<!-- benchmark:glance:start -->" * 5_200,
     "a run of <": "<" * 160_000,
     "unclosed Markdown link targets": "](" * 80_000,
+    "1,, repeated": "1,," * 53_000,
+    # a claim's leading word followed by a long run of spaces (ROWS took about 2 minutes)
+    "split and spaces": "split" + " " * 160_000,
+    "about and spaces": "about" + " " * 160_000,
+    "Budget: and spaces": "Budget:" + " " * 160_000,
+    "import and spaces": "import" + " " * 160_000,
+    "slowest and spaces": "slowest" + " " * 160_000,
 }
 
 
 @pytest.mark.parametrize("name", sorted(_ADVERSARIAL))
 def test_the_check_runs_in_linear_time_on_adversarial_text(tree, name):
-    # the earlier patterns backtracked quadratically: seconds to minutes on these
-    path = tree / "README.md"
-    _write(path, path.read_text(encoding="utf-8") + "\n" + _ADVERSARIAL[name] + "\n")
+    # the earlier patterns backtracked quadratically: seconds to minutes on these. The text
+    # goes into every published file, so every file's registered claims see it.
+    for rel in publish.FILES:
+        path = tree / rel
+        _write(path, path.read_text(encoding="utf-8") + "\n" + _ADVERSARIAL[name] + "\n")
     start = time.perf_counter()
     publish.check(tree)
     assert time.perf_counter() - start < 2.0, name
@@ -437,6 +458,23 @@ def test_a_published_file_larger_than_two_megabytes_is_refused_not_scanned(tree)
     _write(path, path.read_text(encoding="utf-8") + "x" * publish.MAX_PUBLISHED_BYTES)
     problems = publish.check(tree)
     assert any("README.md" in p and "larger than" in p for p in problems), problems
+
+
+def test_an_oversized_file_is_refused_before_it_is_read(tree, monkeypatch):
+    path = tree / "README.md"
+    _write(path, "x" * (publish.MAX_PUBLISHED_BYTES + 1))  # one byte over the cap
+    read = []
+    real = Path.read_bytes
+
+    def recording(self):
+        read.append(self.name)
+        return real(self)
+
+    monkeypatch.setattr(Path, "read_bytes", recording)
+    problems = publish.check(tree)
+    assert any("README.md" in p and "larger than" in p for p in problems), problems
+    assert "README.md" not in read  # its size was checked first; it was never loaded
+    assert "README_PYPI.md" in read  # (the other files were read as usual)
 
 
 def test_a_block_marker_without_its_pair_is_reported(tree):
@@ -480,40 +518,39 @@ def _link_directory(link, target):
         return False
 
 
-def test_write_refuses_a_symbolic_link(tree):
+def test_write_refuses_a_symbolic_link(tree, tmp_path):
     readme = tree / "README.md"
-    with tempfile.TemporaryDirectory() as other:
-        target = Path(other) / "README.md"
-        _write(target, readme.read_text(encoding="utf-8").replace("| **contexel** |", "| **edited** |"))
+    target = tmp_path / "outside" / "README.md"  # outside the root, inside the test's directory
+    target.parent.mkdir()
+    _write(target, readme.read_text(encoding="utf-8").replace("| **contexel** |", "| **edited** |"))
+    readme.unlink()
+    try:
+        readme.symlink_to(target)
+    except (OSError, NotImplementedError):
+        pytest.skip("symbolic links cannot be created here")
+    before = target.read_bytes()
+    try:
+        with pytest.raises(publish.PublishError, match="symbolic link"):
+            publish.write(tree)
+        assert target.read_bytes() == before
+    finally:
         readme.unlink()
-        try:
-            readme.symlink_to(target)
-        except (OSError, NotImplementedError):
-            pytest.skip("symbolic links cannot be created here")
-        before = target.read_bytes()
-        try:
-            with pytest.raises(publish.PublishError, match="symbolic link"):
-                publish.write(tree)
-            assert target.read_bytes() == before
-        finally:
-            readme.unlink()
 
 
-def test_write_refuses_a_file_that_resolves_outside_the_root(tree):
-    with tempfile.TemporaryDirectory() as other:
-        outside = Path(other) / "site"
-        shutil.copytree(str(tree / "site"), str(outside))
-        shutil.rmtree(str(tree / "site"))
-        if not _link_directory(tree / "site", outside):
-            pytest.skip("neither a directory symlink nor a junction can be created here")
+def test_write_refuses_a_file_that_resolves_outside_the_root(tree, tmp_path):
+    outside = tmp_path / "outside" / "site"
+    shutil.copytree(str(tree / "site"), str(outside))
+    shutil.rmtree(str(tree / "site"))
+    if not _link_directory(tree / "site", outside):
+        pytest.skip("neither a directory symlink nor a junction can be created here")
+    try:
+        with pytest.raises(publish.PublishError, match="outside"):
+            publish.write(tree)
+    finally:
         try:
-            with pytest.raises(publish.PublishError, match="outside"):
-                publish.write(tree)
-        finally:
-            try:
-                os.unlink(str(tree / "site"))
-            except OSError:
-                os.rmdir(str(tree / "site"))
+            os.unlink(str(tree / "site"))
+        except OSError:
+            os.rmdir(str(tree / "site"))
 
 
 def test_write_refuses_a_target_that_is_not_a_file(tree):
@@ -560,6 +597,27 @@ def test_malformed_results_are_reported(tree, rel, edit):
     _write(path, json.dumps(data, indent=2) + chr(10))
     problems = publish.check(tree)
     assert any("malformed" in p for p in problems), problems
+    script = ROOT / "tools" / "check_benchmark_numbers.py"
+    run = subprocess.run([sys.executable, str(script), "--root", str(tree)], capture_output=True, text=True)
+    assert run.returncode == 1 and "Traceback" not in run.stderr, run.stderr
+
+
+def _set_trim_budget_zero(data):
+    data["budget"]["trim"][0]["budget"] = 0
+
+
+@pytest.mark.parametrize("rel, edit, error", [
+    ("benchmarks/COMPARISON.json", lambda d: d["task"][0].__setitem__("native", None), "AttributeError"),
+    ("benchmarks/COMPARISON.json", lambda d: d.__setitem__("outcomes", []), "StopIteration"),
+    ("benchmarks/RESULTS.json", _set_trim_budget_zero, "ZeroDivisionError"),
+])
+def test_results_that_raise_attribute_iteration_or_arithmetic_errors_are_reported(tree, rel, edit, error):
+    path = tree / rel
+    data = json.loads(path.read_text(encoding="utf-8"))
+    edit(data)
+    _write(path, json.dumps(data, indent=2) + chr(10))
+    problems = publish.check(tree)
+    assert any("malformed" in p and error in p for p in problems), problems
     script = ROOT / "tools" / "check_benchmark_numbers.py"
     run = subprocess.run([sys.executable, str(script), "--root", str(tree)], capture_output=True, text=True)
     assert run.returncode == 1 and "Traceback" not in run.stderr, run.stderr

@@ -33,7 +33,6 @@ import json
 import re
 from pathlib import Path
 from typing import List, Optional
-from urllib.parse import urlparse
 
 DATASET = "code-search-net/code_search_net"
 CONFIG, SPLIT = "python", "test"
@@ -55,6 +54,12 @@ _KEEP = (
 
 MAX_LISTED_FILES = 64     # the split is one parquet file today; a longer listing is refused
 SOURCE_HOST = "huggingface.co"
+# A listed URL must be exactly this shape. It is matched as text rather than parsed with
+# urllib.parse, which disagrees with requests/urllib3 on URLs such as
+# "https://evil.example\@huggingface.co/..." (urllib.parse sees huggingface.co, requests
+# connects to evil.example): no user, port, query, fragment, backslash, space or control
+# character can appear.
+LISTED_URL = re.compile(r"https://huggingface\.co/[A-Za-z0-9._~%/-]+")
 
 
 class DatasetChecksumError(RuntimeError):
@@ -125,8 +130,9 @@ def verify(path: Optional[Path] = None) -> str:
 
 def checked_urls(listing: object) -> List[str]:
     """The parquet URLs of the listing response, refused (DatasetSourceError) unless
-    it is a list of at most MAX_LISTED_FILES strings, each an https URL on
-    huggingface.co. Nothing is downloaded until the whole listing passes."""
+    it is a list of at most MAX_LISTED_FILES strings, each matching LISTED_URL (a
+    plain https URL on huggingface.co). Nothing is downloaded until the whole
+    listing passes."""
     if not isinstance(listing, list) or not 1 <= len(listing) <= MAX_LISTED_FILES:
         raise DatasetSourceError(
             f"the parquet listing must be a list of 1 to {MAX_LISTED_FILES} URLs, "
@@ -134,10 +140,10 @@ def checked_urls(listing: object) -> List[str]:
     for url in listing:
         if not isinstance(url, str):
             raise DatasetSourceError(f"the parquet listing holds a non-URL entry {url!r:.120}")
-        parts = urlparse(url)
-        if parts.scheme != "https" or parts.hostname != SOURCE_HOST:
+        if LISTED_URL.fullmatch(url) is None:
             raise DatasetSourceError(
-                f"refusing to download {url[:200]!r}: only https URLs on {SOURCE_HOST} are followed")
+                f"refusing to download {url[:200]!r}: only plain https URLs on {SOURCE_HOST} "
+                f"(no user, port, query, fragment, backslash or space) are requested")
     return list(listing)
 
 
