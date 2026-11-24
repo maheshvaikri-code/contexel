@@ -76,142 +76,142 @@
       {
         "n": 1000,
         "stage": "select",
-        "ms": 0.22620009258389473,
-        "records_per_sec": 4420864.680367506
+        "ms": 0.20510004833340645,
+        "records_per_sec": 4875669.255691351
       },
       {
         "n": 1000,
         "stage": "hand-written select",
-        "ms": 0.21870003547519445,
-        "records_per_sec": 4572472.966578108
+        "ms": 0.202000024728477,
+        "records_per_sec": 4950494.443474317
       },
       {
         "n": 1000,
         "stage": "dedupe (key)",
-        "ms": 1.1139999842271209,
-        "records_per_sec": 897666.0809324763
+        "ms": 1.081199967302382,
+        "records_per_sec": 924898.2891620153
       },
       {
         "n": 1000,
         "stage": "rank",
-        "ms": 0.14560006093233824,
-        "records_per_sec": 6868128.993879403
+        "ms": 0.1417999155819416,
+        "records_per_sec": 7052190.376108738
       },
       {
         "n": 1000,
         "stage": "truncate_field",
-        "ms": 0.9386000456288457,
-        "records_per_sec": 1065416.526088082
+        "ms": 0.9180000051856041,
+        "records_per_sec": 1089324.6125829997
       },
       {
         "n": 1000,
         "stage": "trim_to_budget",
-        "ms": 3.6860000109300017,
-        "records_per_sec": 271296.7978933059
+        "ms": 3.7007000064477324,
+        "records_per_sec": 270219.14725800505
       },
       {
         "n": 1000,
         "stage": "full contract",
-        "ms": 4.307999974116683,
-        "records_per_sec": 232126.27808918245
+        "ms": 4.088500048965216,
+        "records_per_sec": 244588.4769533258
       },
       {
         "n": 10000,
         "stage": "select",
-        "ms": 2.443699981085956,
-        "records_per_sec": 4092155.369889596
+        "ms": 2.0802998915314674,
+        "records_per_sec": 4806999.241171059
       },
       {
         "n": 10000,
         "stage": "hand-written select",
-        "ms": 2.4275999749079347,
-        "records_per_sec": 4119294.819311919
+        "ms": 2.1161000477150083,
+        "records_per_sec": 4725674.483490573
       },
       {
         "n": 10000,
         "stage": "dedupe (key)",
-        "ms": 14.09609999973327,
-        "records_per_sec": 709416.0796382845
+        "ms": 12.249500025063753,
+        "records_per_sec": 816359.8497521498
       },
       {
         "n": 10000,
         "stage": "rank",
-        "ms": 1.926700002513826,
-        "records_per_sec": 5190221.615691435
+        "ms": 1.7263999907299876,
+        "records_per_sec": 5792400.401816279
       },
       {
         "n": 10000,
         "stage": "truncate_field",
-        "ms": 10.627900017425418,
-        "records_per_sec": 940919.6533279464
+        "ms": 9.496600017882884,
+        "records_per_sec": 1053008.4431448278
       },
       {
         "n": 10000,
         "stage": "trim_to_budget",
-        "ms": 38.33080001641065,
-        "records_per_sec": 260886.80632073106
+        "ms": 36.80619993247092,
+        "records_per_sec": 271693.35650915344
       },
       {
         "n": 10000,
         "stage": "full contract",
-        "ms": 58.83910006377846,
-        "records_per_sec": 169955.01272386103
+        "ms": 42.478299932554364,
+        "records_per_sec": 235414.31780174037
       },
       {
         "n": 100000,
         "stage": "select",
-        "ms": 93.04300008807331,
-        "records_per_sec": 1074771.878651175
+        "ms": 77.6221000123769,
+        "records_per_sec": 1288292.8957610645
       },
       {
         "n": 100000,
         "stage": "hand-written select",
-        "ms": 89.46940000168979,
-        "records_per_sec": 1117700.576935928
+        "ms": 80.78950003255159,
+        "records_per_sec": 1237784.6126007482
       },
       {
         "n": 100000,
         "stage": "dedupe (key)",
-        "ms": 434.88209997303784,
-        "records_per_sec": 229947.38115503002
+        "ms": 436.85309996362776,
+        "records_per_sec": 228909.90131082042
       },
       {
         "n": 100000,
         "stage": "rank",
-        "ms": 70.31440001446754,
-        "records_per_sec": 1422183.791363142
+        "ms": 67.88119999691844,
+        "records_per_sec": 1473161.9359195128
       },
       {
         "n": 100000,
         "stage": "truncate_field",
-        "ms": 259.0589999454096,
-        "records_per_sec": 386012.45284306887
+        "ms": 257.8380999621004,
+        "records_per_sec": 387840.27657161216
       },
       {
         "n": 100000,
         "stage": "trim_to_budget",
-        "ms": 983.9456001063809,
-        "records_per_sec": 101631.63490866602
+        "ms": 994.7343999519944,
+        "records_per_sec": 100529.34733615925
       },
       {
         "n": 100000,
         "stage": "full contract",
-        "ms": 1297.5189000135288,
-        "records_per_sec": 77070.16830271785
+        "ms": 1356.8882999243215,
+        "records_per_sec": 73698.03395428891
       }
     ],
     "trace": {
-      "off_ms": 121.07890006154776,
-      "on_ms": 356.90140002407134,
-      "ratio": 2.947676265993897
+      "off_ms": 141.20680000633,
+      "on_ms": 442.04450002871454,
+      "ratio": 3.1304760111333065
     }
   },
   "accuracy": [
     {
-      "sample": "prose (README.md)",
-      "actual": 10358,
-      "heuristic": 10046,
-      "error_pct": -3.012164510523267
+      "sample": "prose (frozen README copy)",
+      "actual": 10609,
+      "heuristic": 10327,
+      "error_pct": -2.6581204637571876
     },
     {
       "sample": "prose (the-context-contract.md)",

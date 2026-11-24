@@ -59,3 +59,18 @@ def test_a_failed_determinism_check_is_rendered_as_fail():
     rows = suites_report.determinism_rows(results["determinism"])
     assert [r["result"] for r in rows] == ["PASS", "PASS", "PASS", "FAIL"]
     assert "| 3 fresh interpreters (PYTHONHASHSEED 0/1/2) -> same hash | FAIL |" in suites_report.render(results)
+
+
+def test_the_prose_sample_is_a_frozen_copy_not_the_live_readme(monkeypatch):
+    from benchmarks import suites
+
+    sample = suites.PROSE_SAMPLE
+    assert sample.parent == ROOT / "benchmarks" and sample.name == "prose_sample.md"
+    text = sample.read_text(encoding="utf-8")
+    assert len(text) > 1000  # a prose-shaped text, not an empty file
+    monkeypatch.setattr(suites, "_exact_tokenizer", lambda: len)  # no tiktoken needed
+    rows = {r["sample"]: r for r in suites.tokenizer_accuracy()}
+    assert rows[suites.PROSE_LABEL]["actual"] == len(text)  # measured on the frozen copy
+    assert not [name for name in rows if "README.md" in name]  # the live README is not a sample
+    committed = json.loads((ROOT / "benchmarks" / "RESULTS.json").read_text(encoding="utf-8"))
+    assert suites.PROSE_LABEL in [r["sample"] for r in committed["accuracy"]]

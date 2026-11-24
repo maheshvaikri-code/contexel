@@ -203,10 +203,16 @@ def speed() -> Dict[str, Any]:
 # --------------------------------------------------------------------------- #
 # 4. Tokenizer accuracy
 # --------------------------------------------------------------------------- #
+PROSE_SAMPLE = Path(__file__).resolve().parent / "prose_sample.md"
+PROSE_LABEL = "prose (frozen README copy)"
+
+
 def tokenizer_accuracy() -> List[Dict[str, Any]]:
     exact = _exact_tokenizer()
     samples = {
-        "prose (README.md)": (ROOT / "README.md").read_text(encoding="utf-8"),
+        # A frozen copy of the README, not the live file: editing the README must not
+        # change a published number, and the committed results must be reproducible.
+        PROSE_LABEL: PROSE_SAMPLE.read_text(encoding="utf-8"),
         "prose (the-context-contract.md)": (
             ROOT / "the-context-contract.md").read_text(encoding="utf-8"),
         "code (contexel/stages.py)": (

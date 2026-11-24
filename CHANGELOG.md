@@ -212,6 +212,11 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   proximity, deduplication on a key, field projection, a stage-by-stage
   budget). The timings are described as one run of the command on one
   machine, not as the best of three runs.
+- The default tokenizer's error on prose is measured on a frozen copy of the
+  README (`benchmarks/prose_sample.md`, labelled "prose (frozen README copy)")
+  instead of the live README, so editing the README no longer changes a
+  published number and the committed results can be reproduced. The row still
+  measures a prose-shaped text.
 
 ### Changed — benchmark extra
 - The `benchmarks` extra now requires `pyarrow>=14.0.1`: the dataset fetch

@@ -54,10 +54,10 @@ page disagrees with them.</p>
 <tr><td>Budget tightness (tiktoken-shaped)</td><td>1,890 of 2,000 tokens at the largest budget</td></tr>
 <tr><td>Budget tightness (heuristic-shaped)</td><td>worst overshoot +0.5% of the budget, measured with tiktoken</td></tr>
 <tr><td>truncate_field cap</td><td>worst clipped field 24 tokens (heuristic) and 24 tokens (tiktoken) for a cap of 24</td></tr>
-<tr><td>Speed, full contract</td><td>77,070 records/s (1,298 ms for 100,000 records)</td></tr>
-<tr><td>Speed, select vs hand-written</td><td>93.0 ms vs 89.5 ms for 100,000 records</td></tr>
-<tr><td>Tracing overhead</td><td>121.1 ms inactive vs 356.9 ms active (2.95x) over 10,000 records</td></tr>
-<tr><td>Default tokenizer error (heuristic vs tiktoken)</td><td>prose (README.md) −3.0%; prose (the-context-contract.md) +17.5%; code (contexel/stages.py) +3.6%; code (reference_agent/tools.py) +4.2%; json (500 search-hit records) −28.6%</td></tr>
+<tr><td>Speed, full contract</td><td>73,698 records/s (1,357 ms for 100,000 records)</td></tr>
+<tr><td>Speed, select vs hand-written</td><td>77.6 ms vs 80.8 ms for 100,000 records</td></tr>
+<tr><td>Tracing overhead</td><td>141.2 ms inactive vs 442.0 ms active (3.13x) over 10,000 records</td></tr>
+<tr><td>Default tokenizer error (heuristic vs tiktoken)</td><td>prose (frozen README copy) −2.7%; prose (the-context-contract.md) +17.5%; code (contexel/stages.py) +3.6%; code (reference_agent/tools.py) +4.2%; json (500 search-hit records) −28.6%</td></tr>
 </table>
 </div>
 <!-- benchmark:suite1:end -->
