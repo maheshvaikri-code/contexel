@@ -2,9 +2,12 @@
 computed operation counts of the competitor comparison. Nothing here needs the
 network or the dataset."""
 import copy
+import hashlib
 import json
 import sys
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -48,6 +51,27 @@ def test_the_default_episodes_are_not_changed_by_the_new_options():
     plain = competitors.build_episodes(corpus, n=5)
     assert plain == competitors.build_episodes(corpus, n=5, term_ok=None, pool=2)
     assert plain and plain[0]["terms"][0] == "parses"  # the unfiltered first term
+    # the golden targets: a change to the seed or to the order of the random calls moves them
+    assert [ep["target"] for ep in plain] == [
+        ("p/f28.py", "fn28"), ("p/f35.py", "fn35"), ("p/f29.py", "fn29"),
+        ("p/f39.py", "fn39"), ("p/f32.py", "fn32"),
+    ]
+
+
+# SHA-256 of json.dumps([[target, terms], ...]) over the 100 default episodes of the real,
+# verified dataset: the episodes every published outcome figure is measured on.
+REAL_EPISODES_SHA256 = "61b29d1f116a07e0d231be42596e96bd04a6b76286f4c14d72971d6c10b33b9e"
+
+
+def test_the_real_default_episodes_are_the_published_ones():
+    from benchmarks import fetch_dataset
+
+    if not fetch_dataset.DATA_FILE.exists():
+        pytest.skip("the dataset cache is not downloaded (CI never downloads it)")
+    episodes = competitors.build_episodes(fetch_dataset.load())
+    assert len(episodes) == competitors.N_EPISODES
+    pairs = json.dumps([[ep["target"], ep["terms"]] for ep in episodes])
+    assert hashlib.sha256(pairs.encode("utf-8")).hexdigest() == REAL_EPISODES_SHA256
 
 
 def test_the_hand_written_term_overlap_scorer():
@@ -61,6 +85,29 @@ def test_the_hand_written_term_overlap_scorer():
     assert [r["path"] for r in scored] == ["a.py", "b.py", "c.py"]  # nothing reordered
     assert records[0]["score"] == 9  # the input is not modified
     assert competitors.g_score_overlap([], ["x"]) == []
+    # the query is tokenized like the record: "value." is the word "value" (alone, not
+    # masked by a duplicate term); an untokenized query would score 0 here
+    assert competitors.g_score_overlap([records[0]], ["value."])[0]["score"] == 1
+
+
+def _hit(path, snippet, score):
+    return {"path": path, "symbol": path[:-3], "snippet": snippet, "score_strong": score,
+            "score_weak": score, "repo": "r", "url": "u", "language": "python"}
+
+
+def test_the_inflected_outcomes_measure_word_and_stem_matching():
+    # 80 decoys the tool ranks first fill the budget; only the query can lift the target
+    hits = [_hit(f"d{i}.py", "build the cache entry for the worker queue and flush it", 50)
+            for i in range(80)] + [_hit("t.py", "parse the header block", 1)]
+    episode = {"target": ("t.py", "t"), "terms": ["parse"], "inflected": ["parsing"], "hits": hits}
+    result = competitors.inflected_outcomes([episode])
+    rows = {r["shaper"]: r for r in result["rows"]}
+    assert result["episodes"] == 1 and result["terms"] == 1 and result["examples"] == [["parse", "parsing"]]
+    assert rows["contexel"]["recall_original_pct"] == 100.0
+    assert rows["contexel"]["recall_inflected_pct"] == 0.0      # exact words miss "parsing"
+    assert rows["contexel (match=stem)"]["recall_inflected_pct"] == 100.0  # the stemmer reaches it
+    assert rows["hand-written (term overlap)"]["recall_inflected_pct"] == 0.0
+    assert rows["hand-written"]["recall_original_pct"] == rows["hand-written"]["recall_inflected_pct"] == 0.0
 
 
 def test_the_scored_hand_written_baseline_ranks_by_its_own_score():

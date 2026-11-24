@@ -14,7 +14,7 @@ from contexel.stem import stem  # noqa: E402
 @pytest.mark.parametrize("term, inflected", [
     ("parse", "parsing"), ("returns", "return"), ("config", "configing"),
     ("class", "classing"), ("status", "statusing"), ("progress", "progressing"),
-    ("simple", "simpling"), ("values", "value"),
+    ("simple", "simpling"), ("values", "value"), ("analysis", "analysising"),
 ])
 def test_inflect_is_the_three_line_rule(term, inflected):
     assert inflection.inflect(term) == inflected

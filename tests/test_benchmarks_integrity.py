@@ -47,11 +47,17 @@ def tree(tmp_path):
     return tmp_path
 
 
+def _write(path, text):
+    """Write ``text`` (LF line endings) as UTF-8 bytes. ``Path.write_text`` has no
+    ``newline`` argument before Python 3.10, and CI runs these tests on 3.9."""
+    path.write_bytes(text.encode("utf-8"))
+
+
 def _replace(root, rel, old, new, count=1):
     path = root / rel
     text = path.read_text(encoding="utf-8")
     assert text.count(old) >= 1, (rel, old)
-    path.write_text(text.replace(old, new, count), encoding="utf-8", newline="\n")
+    _write(path, text.replace(old, new, count))
 
 
 def test_the_copy_of_the_tree_used_below_is_clean(tree):
@@ -104,20 +110,18 @@ def test_a_false_qualitative_claim_is_reported(tree):
     for row in data["outcomes"]:
         if row["impl"] == "hand-written":
             row["ms_per_episode"] = 10_000.0  # now a third row is one of the two slowest
-    results.write_text(json.dumps(data, indent=2, ensure_ascii=False) + chr(10), encoding="utf-8", newline="\n")
-    (tree / "benchmarks" / "COMPARISON.md").write_text(competitors.render_report(data), encoding="utf-8",
-                                                         newline="\n")
+    _write(results, json.dumps(data, indent=2, ensure_ascii=False) + chr(10))
+    _write(tree / "benchmarks" / "COMPARISON.md", competitors.render_report(data))
     problems = publish.check(tree)
     assert any("two slowest budget-compliant rows" in p and "not true" in p for p in problems), problems
 
 
 def test_a_stale_report_is_reported(tree):
     comparison = tree / "benchmarks" / "COMPARISON.md"
-    comparison.write_text(comparison.read_text(encoding="utf-8").replace("contexel", "contexel ", 1),
-                          encoding="utf-8", newline="\n")
+    _write(comparison, comparison.read_text(encoding="utf-8").replace("contexel", "contexel ", 1))
     assert any("COMPARISON.md" in p and "not the report rendered" in p for p in publish.check(tree))
     results = tree / "benchmarks" / "RESULTS.md"
-    results.write_text(results.read_text(encoding="utf-8") + "x", encoding="utf-8", newline="\n")
+    _write(results, results.read_text(encoding="utf-8") + "x")
     assert any("RESULTS.md" in p for p in publish.check(tree))
 
 
@@ -125,9 +129,8 @@ def test_results_made_with_another_dataset_are_reported(tree):
     results = tree / "benchmarks" / "COMPARISON.json"
     data = json.loads(results.read_text(encoding="utf-8"))
     data["dataset"]["sha256"] = "0" * 64
-    results.write_text(json.dumps(data, indent=2, ensure_ascii=False) + chr(10), encoding="utf-8", newline="\n")
-    (tree / "benchmarks" / "COMPARISON.md").write_text(competitors.render_report(data), encoding="utf-8",
-                                                         newline="\n")
+    _write(results, json.dumps(data, indent=2, ensure_ascii=False) + chr(10))
+    _write(tree / "benchmarks" / "COMPARISON.md", competitors.render_report(data))
     assert any("dataset digest" in p for p in publish.check(tree))
 
 
@@ -210,9 +213,8 @@ def _edit_comparison(tree, edit):
     path = tree / "benchmarks" / "COMPARISON.json"
     data = json.loads(path.read_text(encoding="utf-8"))
     edit(data)
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + chr(10), encoding="utf-8", newline="\n")
-    (tree / "benchmarks" / "COMPARISON.md").write_text(competitors.render_report(data), encoding="utf-8",
-                                                         newline="\n")
+    _write(path, json.dumps(data, indent=2, ensure_ascii=False) + chr(10))
+    _write(tree / "benchmarks" / "COMPARISON.md", competitors.render_report(data))
 
 
 def _outcome(data, impl):
