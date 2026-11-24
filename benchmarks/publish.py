@@ -546,7 +546,7 @@ HTML_CELL = re.compile(r"<t[dh]\b[^<>]*>((?:(?!</?t[dh]\b).)*)</t[dh]>", re.I | 
 TAG = re.compile(r"<[^<>]+>")
 # Characters that render as nothing (zero-width space, non-joiner and joiner, word joiner,
 # soft hyphen, byte-order mark): deleted before the scan so they cannot split a number.
-INVISIBLE = dict.fromkeys(map(ord, "​‌‍⁠­﻿"))
+INVISIBLE = dict.fromkeys([0x200B, 0x200C, 0x200D, 0x2060, 0x00AD, 0xFEFF])
 
 
 def _plain(text: str) -> str:
