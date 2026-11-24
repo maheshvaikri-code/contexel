@@ -109,14 +109,16 @@ isolates shaping loss, not retrieval loss. Budget: 1,500 tokens.</p>
   <li><strong>contexel's ms/episode is the work, not overhead.</strong>
   It and the hand-written term-overlap scorer are the two slowest
   budget-compliant rows, in an order that can change from run to run: contexel
-  derives relevance from each record's own text on top of projecting, deduping,
-  clipping, ranking, and budgeting, and the scorer does less of that record
-  work (whole-word overlap, character-based cuts, a heuristic trim). Every
+  derives relevance from each record's own text (batch relevance with IDF,
+  saturating term frequency and in-order proximity) on top of projecting,
+  deduping on a key, clipping, ranking, and budgeting stage by stage, and the
+  scorer does less of that record work (whole-word overlap). Both clip and
+  price with the same estimate: contexel computes every cap with the active
+  tokenizer, here the default of about four characters per token. Every
   other compliant row is faster by doing less still. All rows are noise next to
   one model call. The timing columns (the ms columns and Import ms) are one
-  selected run, the best of three runs of the command, on one machine, and
-  vary with the machine's load and from run to run; the other columns are
-  deterministic.</li>
+  run of the command on one machine, and vary with the machine's load and
+  from run to run; the other columns are deterministic.</li>
   <li><strong>The two recall columns bound the semantic concession.</strong>
   The hand-written row trusts the tool's score, so its recall tracks that
   score's quality. contexel's <a href="stages.html#rescore">rescore</a>
@@ -127,11 +129,14 @@ isolates shaping loss, not retrieval loss. Budget: 1,500 tokens.</p>
 
 <h3>Inflected queries</h3>
 <p>The episodes above query with the target's own words, so exact-word
-matching is never tested. A second set of episodes keeps the hit lists but
-hands the shaper deterministic inflections of those words
-(<code>parse</code> becomes <code>parsing</code>, <code>returns</code> becomes
-<code>return</code>; synthetic, the rule is in
-<code>benchmarks/inflection.py</code>), so exact-word matching fails by
+matching is never tested. A second set of episodes, chosen so that every
+query term can be inflected, hands the shaper deterministic inflections of
+those words (<code>parse</code> becomes <code>parsing</code>,
+<code>returns</code> becomes <code>return</code>; synthetic, the rule is in
+<code>benchmarks/inflection.py</code>), while its hit lists come from the
+original terms. Its target records differ from the main table's, so
+contexel's recall with the original terms there need not equal its recall in
+the main table. Exact-word matching fails by
 construction and <code>match="stem"</code> is <em>measured</em> (only terms the
 frozen stemmer maps to one stem are used, so the stem row shows the stem match
 carrying through ranking and the budget, not how many English inflections the

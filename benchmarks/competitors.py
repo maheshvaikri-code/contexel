@@ -23,9 +23,11 @@ Fairness rules:
   episodes query with deterministic inflections of them (inflection.py) and are
   reported separately: they measure inflection robustness, not semantic
   paraphrase.
-- Competitors are guard-imported; a missing library becomes a report note,
-  never an error. Semantic tools (embedding dedupe, LLMLingua, rerankers)
-  are matrix-only: contexel concedes semantic quality by design.
+- The competitor libraries are imported only inside their steps, so this module
+  imports without them; running the benchmark needs them all (a missing library
+  is an ImportError: install the ``benchmarks`` extra). Semantic tools
+  (embedding dedupe, LLMLingua, rerankers) are matrix-only: contexel concedes
+  semantic quality by design.
 
 The run collects every number into one dictionary (``collect``), writes it as
 COMPARISON.json, and renders COMPARISON.md from that dictionary alone
@@ -504,12 +506,7 @@ def time_task(data: List[dict]) -> Dict[str, Any]:
             return runner(steps, records)
 
         label = f"{len(native)}/{len(TIMED_OPS)}"
-        try:
-            out_a, out_b = fn(data), fn(data)
-        except Exception as exc:  # keep the report going if a library breaks
-            rows.append({"impl": impl.name, "native": label, "note": impl.note, "ms": None,
-                         "kept": 0, "tokens_out": 0, "deterministic": f"ERROR: {exc}"})
-            continue
+        out_a, out_b = fn(data), fn(data)  # a missing or broken library is an error
         secs = _best_of(lambda: fn(data))
         rows.append({
             "impl": impl.name,
@@ -645,6 +642,8 @@ def _useful_tokens(context: List[dict]) -> int:
 
 
 def native_outcomes(episodes: List[dict]) -> List[Dict[str, Any]]:
+    if not episodes:
+        raise ValueError("native_outcomes needs at least one episode")
     n = len(episodes)
     rows = []
     for impl in IMPLEMENTATIONS:
@@ -681,6 +680,8 @@ def _recall_pct(impl: Impl, episodes: List[dict], key: str, signal: str = "stron
 
 
 def inflected_outcomes(episodes: List[dict]) -> Dict[str, Any]:
+    if not episodes:
+        raise ValueError("inflected_outcomes needs at least one episode")
     rows = []
     for impl in INFLECTION_SHAPERS:
         row = {
@@ -969,10 +970,13 @@ rescore stage ("-" where a row has no timed task).
 - Rows that keep the needed record under both retrieval signals, respect the
   budget in every episode and spend no tokens on duplicates or bloat:
   {_list(all_full)}.
-- `ms/episode`: {slow_line}. contexel does the most per episode (projecting,
-  deduping, scanning each record's own text to derive relevance, clipping to a
-  token-accurate cap, ranking, enforcing the budget); a cheaper row is cheaper
-  by doing less.
+- `ms/episode`: {slow_line}. contexel does the most per episode (projecting
+  fields, deduping on a key, deriving relevance from each record's own text with
+  batch IDF, saturating term frequency and in-order proximity, clipping, ranking,
+  enforcing the budget stage by stage); a cheaper row is cheaper by doing less.
+  Every cap and price is computed with the active tokenizer, here the default
+  estimate of ~4 characters per token, the same estimate the hand-written glue
+  uses.
 - These timings are from one run on one machine ("best of 5" within the run
   where a column says so): they are published as measured, and they vary with
   the machine's load and from run to run. The recall, compliance, fill and
@@ -1048,8 +1052,8 @@ What the numbers say each is best at:
   This is contexel's fairest comparison for `rescore`: another rescorer, not none.
 - Recall@budget has a ceiling no shaper escapes, semantic or not: when a
   query legitimately describes more records than the budget can hold, some
-  valid record is cut. Any recall short of 100% below is that ambiguity,
-  now measured — not a scoring defect.
+  valid record is cut. Where contexel's recall in the table above falls short
+  of 100%, that is this ambiguity, measured — not a scoring defect.
 - **toolz** performs {len(ops["toolz"]["native"])} of the six operations
   ({_list(ops["toolz"]["native"])}); no step performs {_list(ops["toolz"]["missing"])},
   so the "context" blows the budget by the fill factor shown ({toolz_o["fill_x"]:.1f}x).
@@ -1107,11 +1111,12 @@ deps counts installed distributions the package requires (recursive).
 
 - {"No library in the timed set expresses more than " + str(others_native) + f" of the {timed_ops} stages natively on tool-output records; contexel is the only {timed_ops}/{timed_ops}." if only_full else "Native stages in the timed set: see the table above."} That gap — not
   raw speed — is the claim this comparison tests.
-- contexel is slower than the hand-written glue on this task, and that is the
-  honest price of accuracy: `truncate_field` binary-searches to a true token
-  cap where the glue slices at 4 chars/token, which is why contexel's output
-  lands tighter under budget. All rows are microseconds per record —
-  negligible next to a single model call.
+- contexel is slower than the hand-written glue on this task: each stage checks
+  its input and the pipeline adds its plumbing, while the cuts are of the same
+  kind. Both clip and price with the ~4 characters per token estimate here;
+  `truncate_field` finds the longest prefix that fits the cap in closed form for
+  the built-in estimator and by binary search for a custom tokenizer. All rows
+  are microseconds per record — negligible next to a single model call.
 - {"All timed implementations are deterministic on this task: mechanical shaping is reproducible whoever provides it." if deterministic else "At least one timed implementation was NOT deterministic on this task: see the table."}
   The nondeterminism contexel removes lives in the *hand-written baseline
   being re-improvised per run* (and in the semantic alternatives), not in these

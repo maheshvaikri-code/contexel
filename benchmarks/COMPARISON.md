@@ -56,10 +56,13 @@ rescore stage ("-" where a row has no timed task).
 - Rows that keep the needed record under both retrieval signals, respect the
   budget in every episode and spend no tokens on duplicates or bloat:
   contexel.
-- `ms/episode`: contexel is the slowest budget-compliant row (39.6 ms). contexel does the most per episode (projecting,
-  deduping, scanning each record's own text to derive relevance, clipping to a
-  token-accurate cap, ranking, enforcing the budget); a cheaper row is cheaper
-  by doing less.
+- `ms/episode`: contexel is the slowest budget-compliant row (39.6 ms). contexel does the most per episode (projecting
+  fields, deduping on a key, deriving relevance from each record's own text with
+  batch IDF, saturating term frequency and in-order proximity, clipping, ranking,
+  enforcing the budget stage by stage); a cheaper row is cheaper by doing less.
+  Every cap and price is computed with the active tokenizer, here the default
+  estimate of ~4 characters per token, the same estimate the hand-written glue
+  uses.
 - These timings are from one run on one machine ("best of 5" within the run
   where a column says so): they are published as measured, and they vary with
   the machine's load and from run to run. The recall, compliance, fill and
@@ -150,8 +153,8 @@ What the numbers say each is best at:
   This is contexel's fairest comparison for `rescore`: another rescorer, not none.
 - Recall@budget has a ceiling no shaper escapes, semantic or not: when a
   query legitimately describes more records than the budget can hold, some
-  valid record is cut. Any recall short of 100% below is that ambiguity,
-  now measured — not a scoring defect.
+  valid record is cut. Where contexel's recall in the table above falls short
+  of 100%, that is this ambiguity, measured — not a scoring defect.
 - **toolz** performs 2 of the six operations
   (select, dedupe); no step performs rescore, truncate, rank, trim,
   so the "context" blows the budget by the fill factor shown (91.6x).
@@ -216,11 +219,12 @@ deps counts installed distributions the package requires (recursive).
 
 - No library in the timed set expresses more than 2 of the 5 stages natively on tool-output records; contexel is the only 5/5. That gap — not
   raw speed — is the claim this comparison tests.
-- contexel is slower than the hand-written glue on this task, and that is the
-  honest price of accuracy: `truncate_field` binary-searches to a true token
-  cap where the glue slices at 4 chars/token, which is why contexel's output
-  lands tighter under budget. All rows are microseconds per record —
-  negligible next to a single model call.
+- contexel is slower than the hand-written glue on this task: each stage checks
+  its input and the pipeline adds its plumbing, while the cuts are of the same
+  kind. Both clip and price with the ~4 characters per token estimate here;
+  `truncate_field` finds the longest prefix that fits the cap in closed form for
+  the built-in estimator and by binary search for a custom tokenizer. All rows
+  are microseconds per record — negligible next to a single model call.
 - All timed implementations are deterministic on this task: mechanical shaping is reproducible whoever provides it.
   The nondeterminism contexel removes lives in the *hand-written baseline
   being re-improvised per run* (and in the semantic alternatives), not in these

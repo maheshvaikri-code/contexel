@@ -95,6 +95,13 @@ def _hit(path, snippet, score):
             "score_weak": score, "repo": "r", "url": "u", "language": "python"}
 
 
+def test_outcomes_of_no_episodes_are_a_clear_error():
+    with pytest.raises(ValueError, match="at least one episode"):
+        competitors.native_outcomes([])
+    with pytest.raises(ValueError, match="at least one episode"):
+        competitors.inflected_outcomes([])
+
+
 def test_the_inflected_outcomes_measure_word_and_stem_matching():
     # 80 decoys the tool ranks first fill the budget; only the query can lift the target
     hits = [_hit(f"d{i}.py", "build the cache entry for the worker queue and flush it", 50)

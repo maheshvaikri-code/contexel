@@ -111,8 +111,9 @@ How to read each column, plainly:
 
 - **Native ops** — how many of the task's six operations (select, dedupe,
   rescore, truncate, rank, trim) the library expresses itself, *computed* from
-  the code that defines each implementation (`benchmarks/opcount.py`), not
-  typed. The two speed columns are different experiments: in `ms @28k`,
+  the code that defines each implementation (the step lists are in
+  `benchmarks/competitors.py`; `benchmarks/opcount.py` holds the step type and
+  the counter), not typed. The two speed columns are different experiments: in `ms @28k`,
   everything a library lacks was filled with the *same* hand-written glue,
   so timing differences are the library's; the Recall / Compliance / Useful
   columns are the opposite — each library acts *only* through its own
@@ -133,29 +134,34 @@ How to read each column, plainly:
 - **Useful %** — share of final-context tokens spent on needed fields of
   unique records. langchain-core honors the budget but spends part of it on
   duplicates and field bloat it cannot remove; llama-index spends more.
-- **ms/episode is the work, not overhead.** Per episode contexel projects,
-  dedupes, scans each record's own text to compute relevance, clips to a
-  token-accurate cap, ranks, and enforces the budget. It and the hand-written
-  term-overlap scorer are the two slowest budget-compliant rows, in an order
-  that can change from run to run: the scorer does less record work (whole-word
-  overlap instead of IDF, saturating term frequency and proximity), cuts by
-  characters instead of tokens, and trims with a heuristic. Every other
+- **ms/episode is the work, not overhead.** Per episode contexel projects the
+  fields, dedupes on a key, derives relevance from each record's own text
+  (batch relevance with IDF, saturating term frequency and in-order
+  proximity), clips the snippet, ranks, and enforces the budget stage by
+  stage. Every cap and every price is computed with the active tokenizer,
+  here the default estimator of about four characters per token, the same
+  estimate the hand-written glue uses. It and the hand-written term-overlap
+  scorer are the two slowest budget-compliant rows, in an order that can
+  change from run to run: the scorer does less record work (whole-word overlap
+  instead of IDF, saturating term frequency and proximity). Every other
   compliant row is faster because it does less still: the hand-written glue
   trusts the score, langchain-core skips the record work. The timings are one
-  selected run (the best of three runs of the command) on one machine; they
-  vary with the machine's load and from run to run, and the other columns do
-  not.
+  run of the command on one machine; they vary with the machine's load and
+  from run to run, and the other columns do not.
 
-The same trade shows in `ms @28k`: contexel's time includes token-accurate
-truncation and the pipeline's plumbing; the hand-written glue slices at ~4
-chars/token and lands looser under the budget. Both are noise next to a
+The same trade shows in `ms @28k`: contexel's time includes the checks each
+stage runs on its input and the pipeline's plumbing, while the hand-written
+glue does the same cuts with no checks. Both are noise next to a
 single model call.
 
 **Inflected queries.** The episodes above query with the target's own words,
-so exact-word matching is never tested. A second set of episodes keeps the
-hit lists but hands the shaper deterministic inflections of those words
-(`parse` becomes `parsing`, `returns` becomes `return`; synthetic, the rule is
-in `benchmarks/inflection.py`), so exact-word matching fails by construction
+so exact-word matching is never tested. A second set of episodes, chosen so
+that every query term can be inflected, hands the shaper deterministic
+inflections of those words (`parse` becomes `parsing`, `returns` becomes
+`return`; synthetic, the rule is in `benchmarks/inflection.py`), while its hit
+lists come from the original terms. Its target records differ from the main
+table's, so contexel's recall with the original terms there need not equal
+its recall in the main table. Exact-word matching fails by construction
 and `match="stem"` is measured (only terms the frozen stemmer maps to one stem
 are used, so the stem row shows the stem match carrying through ranking and the
 budget, not how many English inflections the stemmer covers):

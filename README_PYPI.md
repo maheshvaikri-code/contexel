@@ -112,7 +112,8 @@ by query specificity for any shaper, and `rescore` is lexical, not semantic.
 On a second set of episodes, built only from terms the frozen stemmer maps to
 one stem, the default exact-word matching finds the record in 99% of those
 episodes with the target's own words and in 35% with inflections of those
-words, while `match="stem"` finds it in 98% with the inflections, recovering
+words (synthetic inflections from a three-line rule, some of them words nobody
+writes), while `match="stem"` finds it in 98% with the inflections, recovering
 them. That shows the stem match carrying through ranking and the budget, not
 how many English inflections the stemmer covers; synonyms stay invisible.
 

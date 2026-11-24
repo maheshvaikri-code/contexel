@@ -120,10 +120,11 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   is the module.
 
 ### Added — honest benchmarks (brief AC 23 to 27)
-- **Inflected-query episodes.** A second set of ground-truth episodes keeps the
-  hit lists (the retrieval tool searched with the target's own words) but hands
-  the shaper a deterministic inflection of each term (`parse` becomes `parsing`,
-  `returns` becomes `return`, anything else gets `ing`;
+- **Inflected-query episodes.** A second set of ground-truth episodes, chosen
+  so that every query term can be inflected, takes its hit lists from the
+  original terms (the retrieval tool searched with the target's own words) but
+  hands the shaper a deterministic inflection of each term (`parse` becomes
+  `parsing`, `returns` becomes `return`, anything else gets `ing`;
   `benchmarks/inflection.py`), so exact-word matching fails by construction and
   `rescore(match="stem")` is measured, not assumed. A term is used only when it
   is a plain lower-case word, the frozen stemmer maps it and its inflection to
@@ -138,28 +139,37 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   rescorer, not only with none.
 - **Native-operation counts are computed, not typed.** Each implementation is an
   ordered list of steps (the lists are in `benchmarks/competitors.py`;
-  `benchmarks/opcount.py` holds the step type and the counter). A step counts as native when
-  running it enters the library's own code (`sys.setprofile` over a small fixed
-  sample), as glue when it is hand-written; an operand conversion, or a library
-  feature that serves none of the six operations, is reported but never counted.
+  `benchmarks/opcount.py` holds the step type and the counter). A step counts
+  as native when running it enters the library's own code (`sys.setprofile`
+  over a small fixed sample), as glue when it is hand-written; an operand
+  conversion, or a library feature that serves none of the six operations, is
+  reported but never counted.
   The comparison gains an "Operations" table (native, glue, not done, other
   native steps, conversions); the old hand-typed capability matrix survives only
   for the libraries the benchmark does not run, labelled as documentation.
-- **Published numbers are generated and checked.** `python -m benchmarks.competitors`
-  and `python -m benchmarks` write `benchmarks/COMPARISON.json` and
-  `benchmarks/RESULTS.json` and render `COMPARISON.md` and `RESULTS.md` from
-  them. The tables in the README and on the site are generated blocks
-  (`<!-- benchmark:NAME:start -->`), the remaining prose numbers and qualitative
-  sentences ("the only row with full marks in every outcome column", "the two
-  slowest budget-compliant rows are contexel and the hand-written term-overlap
-  scorer") are registered claims, and `tools/check_benchmark_numbers.py` (also a
-  test, so CI runs it) fails when anything published differs from the results,
-  when a number with a benchmark unit (ms, msec, milliseconds, %, percent, a
-  multiplication sign or a trailing x), also inside the title, alt, aria-label
-  or content attribute of an HTML element or inside an entity, or a bare numeric table cell appears outside a generated block or a
-  registered claim, when a report is not what its JSON renders, or when the
-  results were produced with a dataset other than the pinned one. `--write`
-  regenerates the blocks.
+- **Published numbers are generated and checked.**
+  `python -m benchmarks.competitors` and `python -m benchmarks` write
+  `benchmarks/COMPARISON.json` and `benchmarks/RESULTS.json` and render
+  `COMPARISON.md` and `RESULTS.md` from them. The tables in the README and on
+  the site are generated blocks (`<!-- benchmark:NAME:start -->`), the
+  remaining prose numbers and qualitative sentences ("the only row with full
+  marks in every outcome column", "the two slowest budget-compliant rows are
+  contexel and the hand-written term-overlap scorer") are registered claims,
+  and `tools/check_benchmark_numbers.py` (also a test, so CI runs it) fails
+  when anything published differs from the results, when a number with a
+  benchmark unit (ms, msec, milliseconds, µs, us, microseconds, ns,
+  nanoseconds, %, percent, a multiplication sign or a trailing x), also inside
+  an entity or the title, alt, aria-label, content, placeholder or data-*
+  attribute of an HTML element, or a bare numeric table cell appears outside a
+  generated block or a registered claim, when a report is not what its JSON
+  renders, or when the results were produced with a dataset other than the
+  pinned one. Compatibility forms (fullwidth digits and percent sign, the
+  micro sign) are folded and zero-width characters and soft hyphens are
+  deleted before the scan. The check runs in linear time on any input,
+  refuses a published file over 2 MB, and reports a missing or non-UTF-8 file
+  and malformed results instead of crashing. `--write` regenerates the blocks
+  through a temporary file and refuses a symbolic link or a path outside the
+  root.
 - **Checksummed dataset.** `benchmarks/fetch_dataset.py` verifies the SHA-256
   committed in `benchmarks/dataset.sha256` every time the cache is used, and
   writes a download to a temporary name that is moved into place only after the
@@ -167,12 +177,17 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   digest reads every line ending as LF so that it does not depend on the
   operating system and still verifies a cache that an earlier version wrote with
   CRLF on Windows. New downloads are written with LF line endings on every
-  operating system.
+  operating system. The pin file must be exactly one line (the digest,
+  optionally two spaces and the cache's file name) and is read before anything
+  is downloaded; the download follows only https URLs on huggingface.co from a
+  listing of at most 64 files, and its temporary file is removed on any
+  failure.
 
 ### Changed — benchmark claims (documentation only)
 - "sub-20 ms import" (PyPI README, home page) is now "about 20 ms": contexel's
   import measured between 19.3 and 20.8 ms across runs, so "sub-20" held only on
-  some of them. The check accepts a stated figure within 25% of the measured one.
+  some of them. The check accepts a stated figure within 25% of the measured
+  one.
 - The benchmark tables gain a "Fill" column, the hand-written (term overlap) row
   and computed "Native ops"; "hand-written glue" is now "hand-written". The home
   page's "the only row green across every column" is now "the only row with full
@@ -181,13 +196,27 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   budget-compliant rows are contexel and the hand-written term-overlap scorer,
   in an order that can change from run to run": the margin between the two rows
   was small, so a sentence naming one of them as the slowest flipped with
-  run-to-run noise. The benchmark prose also no longer says the timings "vary by a few
-  percent": they vary with machine load and from run to run.
+  run-to-run noise. The benchmark prose also no longer says the timings "vary
+  by a few percent": they vary with machine load and from run to run.
 - The PyPI README now names the hand-written term-overlap baseline with its
   figures, says that exact-word matching drops on inflected queries and that
   match="stem" recovers them (on a second set of episodes built only from terms
   the stemmer maps to one stem, so this is not a coverage figure for the
-  stemmer), and says the comparison is one corpus and one task.
+  stemmer), says the inflections are synthetic, and says the comparison is one
+  corpus and one task.
+- The explanation of why contexel is slower than the term-overlap scorer no
+  longer says the scorer cuts by characters while contexel clips to a
+  token-accurate cap: in the benchmark both clip and price with the same
+  estimate of about four characters per token. contexel is slower because it
+  does more record work (relevance with IDF, saturating term frequency and
+  proximity, deduplication on a key, field projection, a stage-by-stage
+  budget). The timings are described as one run of the command on one
+  machine, not as the best of three runs.
+
+### Changed — benchmark extra
+- The `benchmarks` extra now requires `pyarrow>=14.0.1`: the dataset fetch
+  parses the parquet export before the derived file can be verified, and
+  pyarrow before 14.0.1 is affected by CVE-2023-47248.
 
 ### Behavior changes
 Valid input with strict mode off keeps byte-identical output; these are the
@@ -574,18 +603,20 @@ same obfuscations.
 - The benchmark's inflected episodes are synthetic: the rule produces words
   nobody writes (`partialing`), so the figures show what the stemmer reaches on
   inflection and say nothing about synonyms, paraphrase or real queries. The
-  episodes come from one corpus, and the timings are the best of three runs on
+  episodes come from one corpus, and the timings are one run of the command on
   one machine and vary with machine load and from run to run (the other columns
   do not vary). The dataset check pins the JSONL cache derived from the Hugging
-  Face parquet export, so the parquet file is parsed before it is verified;
-  pinning the parquet digest too needs a one-time download and is recorded as a
-  follow-up. The number check is unit-based: it covers the generated blocks, the
-  registered claims, any number with a benchmark unit (ms, µs, ns, %, x) and any
-  bare numeric table cell. It does not check other prose: figures in seconds
-  (the hand-typed cost figures for very long inputs in the README's Limits
-  paragraph about `split`), numbers without a unit and numbers in words. The
-  home page's hand-typed "~2.4 µs per record" cost of the tenant-isolation
-  plumbing, which no benchmark measures, is removed. The stemmer, the inflection and the scorer are measured on
+  Face parquet export, so the parquet file is parsed before it is verified (the
+  `benchmarks` extra requires pyarrow 14.0.1 or later, and only https URLs on
+  huggingface.co are followed); pinning the parquet digest too needs a one-time
+  download and is recorded as a follow-up. The number check is unit-based: it
+  covers the generated blocks, the registered claims, any number with a
+  benchmark unit (ms, µs, ns, %, x) and any bare numeric table cell. It does
+  not check other prose: figures in seconds (the hand-typed cost figures for
+  very long inputs in the README's Limits paragraph about `split`), numbers
+  without a unit and numbers in words. The home page's hand-typed "~2.4 µs per
+  record" cost of the tenant-isolation plumbing, which no benchmark measures,
+  is removed. The stemmer, the inflection and the scorer are measured on
   English technical text only.
 
 ### Tests
