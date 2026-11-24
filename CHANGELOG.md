@@ -137,7 +137,8 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   and the same budget trimming, so contexel's `rescore` is compared with another
   rescorer, not only with none.
 - **Native-operation counts are computed, not typed.** Each implementation is an
-  ordered list of steps (`benchmarks/opcount.py`). A step counts as native when
+  ordered list of steps (the lists are in `benchmarks/competitors.py`;
+  `benchmarks/opcount.py` holds the step type and the counter). A step counts as native when
   running it enters the library's own code (`sys.setprofile` over a small fixed
   sample), as glue when it is hand-written; an operand conversion, or a library
   feature that serves none of the six operations, is reported but never counted.
@@ -154,8 +155,8 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   scorer") are registered claims, and `tools/check_benchmark_numbers.py` (also a
   test, so CI runs it) fails when anything published differs from the results,
   when a number with a benchmark unit (ms, msec, milliseconds, %, percent, a
-  multiplication sign or a trailing x), also inside an HTML attribute or an
-  entity, or a bare numeric table cell appears outside a generated block or a
+  multiplication sign or a trailing x), also inside the title, alt, aria-label
+  or content attribute of an HTML element or inside an entity, or a bare numeric table cell appears outside a generated block or a
   registered claim, when a report is not what its JSON renders, or when the
   results were produced with a dataset other than the pinned one. `--write`
   regenerates the blocks.
@@ -163,8 +164,10 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   committed in `benchmarks/dataset.sha256` every time the cache is used, and
   writes a download to a temporary name that is moved into place only after the
   check; a mismatch raises `DatasetChecksumError` and nothing is read. The
-  digest reads every line ending as LF, because the cache is written by Python
-  (CRLF on Windows).
+  digest reads every line ending as LF so that it does not depend on the
+  operating system and still verifies a cache that an earlier version wrote with
+  CRLF on Windows. New downloads are written with LF line endings on every
+  operating system.
 
 ### Changed — benchmark claims (documentation only)
 - "sub-20 ms import" (PyPI README, home page) is now "about 20 ms": contexel's
@@ -174,13 +177,11 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   and computed "Native ops"; "hand-written glue" is now "hand-written". The home
   page's "the only row green across every column" is now "the only row with full
   marks in every outcome column", and is checked against the results.
-- The CodeSearchNet cache is written with LF line endings on every operating
-  system (it was CRLF on Windows).
 - "contexel is the slowest budget-compliant row" is now "the two slowest
   budget-compliant rows are contexel and the hand-written term-overlap scorer,
-  in an order that can change from run to run": the margin was about 15% on a
-  quiet machine, so a sentence naming one of them as the slowest flipped with
-  noise. The benchmark prose also no longer says the timings "vary by a few
+  in an order that can change from run to run": the margin between the two rows
+  was small, so a sentence naming one of them as the slowest flipped with
+  run-to-run noise. The benchmark prose also no longer says the timings "vary by a few
   percent": they vary with machine load and from run to run.
 - The PyPI README now names the hand-written term-overlap baseline with its
   figures, says that exact-word matching drops on inflected queries and that
@@ -581,8 +582,8 @@ same obfuscations.
   follow-up. The number check is unit-based: it covers the generated blocks, the
   registered claims and any number with a benchmark unit or a bare numeric table
   cell, but not other prose, so the hand-typed cost figures in seconds for very
-  long inputs near the end of the README (about the memory and time of split) are
-  not checked. The stemmer, the inflection and the scorer are measured on
+  long inputs in the Limits paragraph about `split` (memory and time) are not
+  checked. The stemmer, the inflection and the scorer are measured on
   English technical text only.
 
 ### Tests

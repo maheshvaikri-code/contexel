@@ -13,9 +13,10 @@ The cache is never trusted on sight: its SHA-256 is compared with the digest
 committed in benchmarks/dataset.sha256 every time it is used, and a download
 is written to a temporary name and only moved into place once that comparison
 passes. A mismatch raises DatasetChecksumError; nothing is read, shaped or
-published from a file that failed it. The digest reads every line ending as LF,
-because the cache is written by Python, which ends lines with CRLF on Windows
-and LF elsewhere, and the digest must not depend on the operating system.
+published from a file that failed it. The digest reads every line ending as LF
+so that it does not depend on the operating system and still verifies a cache
+that an earlier version wrote with CRLF on Windows (new caches are written
+with LF).
 
     python -m benchmarks.fetch_dataset
 """
