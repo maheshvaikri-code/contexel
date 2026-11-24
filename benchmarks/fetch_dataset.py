@@ -18,6 +18,11 @@ so that it does not depend on the operating system and still verifies a cache
 that an earlier version wrote with CRLF on Windows (new caches are written
 with LF).
 
+The pin is read before anything is downloaded, and the download follows only
+https URLs on huggingface.co (DatasetSourceError otherwise). The parquet files
+are parsed before the derived JSONL can be verified, so the ``benchmarks``
+extra requires a pyarrow without CVE-2023-47248 (14.0.1 or later).
+
     python -m benchmarks.fetch_dataset
 """
 from __future__ import annotations
@@ -27,7 +32,8 @@ import io
 import json
 import re
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
+from urllib.parse import urlparse
 
 DATASET = "code-search-net/code_search_net"
 CONFIG, SPLIT = "python", "test"
@@ -47,8 +53,16 @@ _KEEP = (
 )
 
 
+MAX_LISTED_FILES = 64     # the split is one parquet file today; a longer listing is refused
+SOURCE_HOST = "huggingface.co"
+
+
 class DatasetChecksumError(RuntimeError):
     """The dataset (or the committed digest) is not what the benchmark expects."""
+
+
+class DatasetSourceError(RuntimeError):
+    """The download listing is not a short list of https URLs on huggingface.co."""
 
 
 def digest(path: Path) -> str:
@@ -62,28 +76,44 @@ def digest(path: Path) -> str:
     return sha.hexdigest()
 
 
-def expected_digest() -> str:
-    """The committed digest. A missing, empty or malformed file is an error:
-    the check fails closed rather than passing because nothing was pinned."""
+def expected_digest(pin: Optional[Path] = None) -> str:
+    """The committed digest, read from ``pin`` (default: benchmarks/dataset.sha256).
+
+    The file must be exactly one line: a 64-character lower-case hexadecimal
+    SHA-256, optionally followed by two spaces and the cache's file name, with at
+    most one trailing newline (LF or CRLF). A missing, empty or malformed file is
+    an error: the check fails closed rather than passing because nothing (or
+    something ambiguous) was pinned."""
+    source = CHECKSUM_FILE if pin is None else pin
     try:
-        text = CHECKSUM_FILE.read_text(encoding="ascii")
+        text = source.read_bytes().decode("ascii")
     except (OSError, UnicodeDecodeError) as exc:
         raise DatasetChecksumError(
-            f"cannot read the committed checksum {CHECKSUM_FILE.name}: {exc}") from exc
-    words = text.split()
-    if not words or not re.fullmatch(r"[0-9a-f]{64}", words[0]):
+            f"cannot read the committed checksum {source.name}: {exc}") from exc
+    if not text:
+        raise DatasetChecksumError(f"{source.name} is empty: it must hold the dataset's SHA-256")
+    line = re.fullmatch(
+        r"([0-9a-f]{64})(?:  " + re.escape(DATA_FILE.name) + r")?(?:\r\n|\n)?", text)
+    if line is None:
         raise DatasetChecksumError(
-            f"{CHECKSUM_FILE.name} must start with a 64-character lower-case "
-            f"hexadecimal SHA-256, got {text.strip()[:80]!r}")
-    return words[0]
+            f"{source.name} must be one line: a 64-character lower-case hexadecimal "
+            f"SHA-256, optionally followed by two spaces and {DATA_FILE.name}; "
+            f"got {text[:120]!r}")
+    return line.group(1)
 
 
 def verify(path: Optional[Path] = None) -> str:
     """Return the digest of ``path`` (default: the cache) when it equals the
-    committed one; raise DatasetChecksumError when it does not."""
+    committed one; raise DatasetChecksumError when it does not (or when the file
+    cannot be read)."""
     target = DATA_FILE if path is None else path
     want = expected_digest()
-    got = digest(target)
+    try:
+        got = digest(target)
+    except OSError as exc:
+        raise DatasetChecksumError(
+            f"cannot read {target.name} to verify it ({exc}); fetch it with "
+            f"python -m benchmarks.fetch_dataset") from exc
     if got != want:
         raise DatasetChecksumError(
             f"{target.name}: SHA-256 {got} does not match the committed "
@@ -93,18 +123,36 @@ def verify(path: Optional[Path] = None) -> str:
     return got
 
 
+def checked_urls(listing: object) -> List[str]:
+    """The parquet URLs of the listing response, refused (DatasetSourceError) unless
+    it is a list of at most MAX_LISTED_FILES strings, each an https URL on
+    huggingface.co. Nothing is downloaded until the whole listing passes."""
+    if not isinstance(listing, list) or not 1 <= len(listing) <= MAX_LISTED_FILES:
+        raise DatasetSourceError(
+            f"the parquet listing must be a list of 1 to {MAX_LISTED_FILES} URLs, "
+            f"got {type(listing).__name__} {str(listing)[:120]!r}")
+    for url in listing:
+        if not isinstance(url, str):
+            raise DatasetSourceError(f"the parquet listing holds a non-URL entry {url!r:.120}")
+        parts = urlparse(url)
+        if parts.scheme != "https" or parts.hostname != SOURCE_HOST:
+            raise DatasetSourceError(
+                f"refusing to download {url[:200]!r}: only https URLs on {SOURCE_HOST} are followed")
+    return list(listing)
+
+
 def _download_rows() -> list:
     """Download every row of the split (needs the network, pyarrow, requests)."""
     import pyarrow.parquet as pq  # only needed on first fetch
     import requests
 
     listing = requests.get(
-        f"https://huggingface.co/api/datasets/{DATASET}/parquet/{CONFIG}/{SPLIT}",
+        f"https://{SOURCE_HOST}/api/datasets/{DATASET}/parquet/{CONFIG}/{SPLIT}",
         timeout=60,
     )
     listing.raise_for_status()
     rows: list = []
-    for url in listing.json():
+    for url in checked_urls(listing.json()):
         print(f"  downloading {url}")
         blob = requests.get(url, timeout=600)
         blob.raise_for_status()
@@ -118,17 +166,20 @@ def fetch() -> Path:
     if DATA_FILE.exists():
         verify(DATA_FILE)
         return DATA_FILE
+    expected_digest()  # a missing or malformed pin fails before anything is downloaded
     rows = _download_rows()
     print(f"  {len(rows)} rows")
     DATA_DIR.mkdir(exist_ok=True)
     partial = DATA_FILE.with_name(DATA_FILE.name + ".part")
-    with partial.open("w", encoding="utf-8", newline="\n") as fh:
-        for row in rows:
-            fh.write(json.dumps(row, ensure_ascii=False) + "\n")
     try:
+        with partial.open("w", encoding="utf-8", newline="\n") as fh:
+            for row in rows:
+                fh.write(json.dumps(row, ensure_ascii=False) + "\n")
         verify(partial)
-    except DatasetChecksumError:
-        partial.unlink()  # never leave an unverified file behind
+    except BaseException:
+        # whatever failed (the write, the encoding, the check, an interrupt), the
+        # temporary file is removed; only a verified download is moved into place
+        partial.unlink(missing_ok=True)
         raise
     partial.replace(DATA_FILE)
     return DATA_FILE

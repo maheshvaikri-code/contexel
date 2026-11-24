@@ -28,6 +28,7 @@ from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple
 
 from . import suites_report
 from .competitors import render_report
+from .fetch_dataset import DatasetChecksumError, expected_digest
 
 FILES = ("README.md", "README_PYPI.md", "site/index.html", "site/benchmarks.html")
 BLOCK = re.compile(
@@ -571,10 +572,10 @@ def check(root: Path) -> List[str]:
         problems.append("benchmarks/RESULTS.md is not the report rendered from "
                         "benchmarks/RESULTS.json (regenerate it with python -m benchmarks)")
     try:
-        committed = (root / "benchmarks" / "dataset.sha256").read_text(encoding="ascii").split()[0]
-    except (OSError, IndexError, UnicodeDecodeError) as exc:
+        committed = expected_digest(root / "benchmarks" / "dataset.sha256")
+    except DatasetChecksumError as exc:
         committed = ""
-        problems.append(f"cannot read benchmarks/dataset.sha256: {exc}")
+        problems.append(f"benchmarks/dataset.sha256: {exc}")
     if committed and comparison["dataset"]["sha256"] != committed:
         problems.append("benchmarks/COMPARISON.json was produced with dataset digest "
                         f"{comparison['dataset']['sha256']}, not the committed {committed}")

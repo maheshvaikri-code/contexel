@@ -34,7 +34,7 @@ lint = ["ruff>=0.15,<1", "mypy>=2.3,<3"]
 benchmarks = [
     "tiktoken>=0.5",
     "requests",
-    "pyarrow",
+    "pyarrow>=14.0.1",
     "toolz",
     "langchain-core",
     "llama-index-core",

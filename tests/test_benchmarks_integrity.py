@@ -134,6 +134,15 @@ def test_results_made_with_another_dataset_are_reported(tree):
     assert any("dataset digest" in p for p in publish.check(tree))
 
 
+def test_a_pin_that_is_not_one_line_is_reported_by_the_check(tree):
+    pin = tree / "benchmarks" / "dataset.sha256"
+    _write(pin, pin.read_text(encoding="ascii") + "0" * 64 + "\n")  # a second line
+    problems = publish.check(tree)
+    assert any("dataset.sha256" in p and "must be one line" in p for p in problems), problems
+    _write(pin, "")
+    assert any("dataset.sha256" in p and "is empty" in p for p in publish.check(tree))
+
+
 def test_a_missing_or_unknown_block_marker_is_reported(tree):
     _replace(tree, "README.md", "<!-- benchmark:inflected:start -->", "")
     assert any("benchmark:inflected" in p for p in publish.check(tree))

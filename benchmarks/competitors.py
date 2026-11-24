@@ -728,6 +728,19 @@ def operations(names: Optional[Sequence[str]] = None) -> List[Dict[str, Any]]:
     return rows
 
 
+def dataset_info(corpus: List[dict], records: int) -> Dict[str, Any]:
+    """The dataset entry of the results. The digest is the one ``verify`` computes
+    for the cache, not the pin copied: what was measured, not what was expected."""
+    return {
+        "name": "CodeSearchNet python/test",
+        "rows": len(corpus),
+        "sha256": fetch_dataset.verify(),
+        "queries": len(QUERIES),
+        "per_query_cap": PER_QUERY_CAP,
+        "records": records,
+    }
+
+
 def collect() -> Dict[str, Any]:
     corpus = load()
     data = build_tool_output(corpus)
@@ -744,14 +757,7 @@ def collect() -> Dict[str, Any]:
             "contexel": contexel.__version__,
             "libraries": {d: _version(d) for d in ("toolz", "langchain-core", "llama-index-core")},
         },
-        "dataset": {
-            "name": "CodeSearchNet python/test",
-            "rows": len(corpus),
-            "sha256": fetch_dataset.expected_digest(),
-            "queries": len(QUERIES),
-            "per_query_cap": PER_QUERY_CAP,
-            "records": timed["records_in"],
-        },
+        "dataset": dataset_info(corpus, timed["records_in"]),
         "settings": {
             "fields": len(FIELDS),
             "snippet_cap": SNIPPET_CAP,
