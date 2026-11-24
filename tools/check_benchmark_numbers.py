@@ -14,7 +14,9 @@ no dataset), so it runs in CI on every push.
     python tools/check_benchmark_numbers.py --root DIR # check another tree (the tests do)
 
 Exit status: 0 everything agrees, 1 something differs (each problem is printed;
-a missing, unreadable or malformed input is a problem, not a crash).
+a missing, unreadable or oversized file, and results with a missing key, a value
+of the wrong type, an empty list or a zero divisor, are reported as problems
+rather than a traceback).
 """
 from __future__ import annotations
 

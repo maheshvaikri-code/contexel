@@ -157,17 +157,22 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   contexel and the hand-written term-overlap scorer") are registered claims,
   and `tools/check_benchmark_numbers.py` (also a test, so CI runs it) fails
   when anything published differs from the results, when a number with a
-  benchmark unit (ms, msec, milliseconds, µs, us, microseconds, ns,
-  nanoseconds, %, percent, a multiplication sign or a trailing x), also inside
+  benchmark unit (ms, msec, milliseconds, µs, microseconds, nanoseconds, %,
+  percent, a multiplication sign or a trailing x, in any case; us and ns in
+  lower case only, so "50 US states" is not one), also inside
   an entity or the title, alt, aria-label, content, placeholder or data-*
   attribute of an HTML element, or a bare numeric table cell appears outside a
   generated block or a registered claim, when a report is not what its JSON
   renders, or when the results were produced with a dataset other than the
   pinned one. Compatibility forms (fullwidth digits and percent sign, the
   micro sign) are folded and zero-width characters and soft hyphens are
-  deleted before the scan. The check runs in linear time on any input,
-  refuses a published file over 2 MB, and reports a missing or non-UTF-8 file
-  and malformed results instead of crashing. `--write` regenerates the blocks
+  deleted before the scan. Its patterns are written so that no start can
+  rescan a run of digits, separators or spaces (the tests time long runs of
+  digits, commas, spaces after a claim's first word, unclosed cells and
+  unclosed block markers), it refuses a published file over 2 MB before
+  reading it, and it reports a missing or non-UTF-8 file and results with a
+  missing key, a value of the wrong type, an empty list or a zero divisor as
+  problems instead of a traceback. `--write` regenerates the blocks
   through a temporary file and refuses a symbolic link or a path outside the
   root.
 - **Checksummed dataset.** `benchmarks/fetch_dataset.py` verifies the SHA-256
@@ -179,9 +184,11 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   CRLF on Windows. New downloads are written with LF line endings on every
   operating system. The pin file must be exactly one line (the digest,
   optionally two spaces and the cache's file name) and is read before anything
-  is downloaded; the download follows only https URLs on huggingface.co from a
-  listing of at most 64 files, and its temporary file is removed on any
-  failure.
+  is downloaded. Only listed URLs of the plain form
+  `https://huggingface.co/<path>` (no user, port, query, fragment, backslash or
+  space) from a listing of at most 64 files are requested, and the redirects
+  Hugging Face answers them with are followed. The temporary file is removed
+  on any failure.
 
 ### Changed — benchmark claims (documentation only)
 - "sub-20 ms import" (PyPI README, home page) is now "about 20 ms": contexel's
@@ -611,10 +618,13 @@ same obfuscations.
   episodes come from one corpus, and the timings are one run of the command on
   one machine and vary with machine load and from run to run (the other columns
   do not vary). The dataset check pins the JSONL cache derived from the Hugging
-  Face parquet export, so the parquet file is parsed before it is verified (the
-  `benchmarks` extra requires pyarrow 14.0.1 or later, and only https URLs on
-  huggingface.co are followed); pinning the parquet digest too needs a one-time
-  download and is recorded as a follow-up. The number check is unit-based: it
+  Face parquet export, and the digest of the parquet file itself is not
+  pinned, so the parquet file is parsed before the derived JSONL is verified
+  (the `benchmarks` extra requires pyarrow 14.0.1 or later; only listed https
+  URLs on huggingface.co are requested, and the redirects Hugging Face answers
+  with are followed). The download has no size cap. Pinning the
+  parquet digest too needs a one-time download and is recorded as a
+  follow-up. The number check is unit-based: it
   covers the generated blocks, the registered claims, any number with a
   benchmark unit (ms, µs, ns, %, x) and any bare numeric table cell. It does
   not check other prose: figures in seconds (the hand-typed cost figures for

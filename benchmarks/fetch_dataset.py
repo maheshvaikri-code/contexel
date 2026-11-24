@@ -18,10 +18,13 @@ so that it does not depend on the operating system and still verifies a cache
 that an earlier version wrote with CRLF on Windows (new caches are written
 with LF).
 
-The pin is read before anything is downloaded, and the download follows only
-https URLs on huggingface.co (DatasetSourceError otherwise). The parquet files
-are parsed before the derived JSONL can be verified, so the ``benchmarks``
-extra requires a pyarrow without CVE-2023-47248 (14.0.1 or later).
+The pin is read before anything is downloaded. Only listed URLs of the plain
+form https://huggingface.co/<path> are requested (DatasetSourceError
+otherwise), and the redirects Hugging Face answers them with are followed. The
+download has no size cap and the parquet file's own digest is not pinned: the
+parquet files are parsed before the derived JSONL can be verified, so the
+``benchmarks`` extra requires a pyarrow without CVE-2023-47248 (14.0.1 or
+later).
 
     python -m benchmarks.fetch_dataset
 """

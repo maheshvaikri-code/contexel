@@ -219,8 +219,9 @@ deps counts installed distributions the package requires (recursive).
 
 - No library in the timed set expresses more than 2 of the 5 stages natively on tool-output records; contexel is the only 5/5. That gap — not
   raw speed — is the claim this comparison tests.
-- contexel is slower than the hand-written glue on this task: each stage checks
-  its input and the pipeline adds its plumbing, while the cuts are of the same
+- contexel is slower than the hand-written glue on this task. Its time includes
+  the checks each stage runs on its input and the pipeline's plumbing (how much
+  of the gap each accounts for is not measured), while the cuts are of the same
   kind. Both clip and price with the ~4 characters per token estimate here;
   `truncate_field` finds the longest prefix that fits the cap in closed form for
   the built-in estimator and by binary search for a custom tokenizer. All rows
