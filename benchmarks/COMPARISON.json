@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generated": "2026-11-23",
+  "generated": "2026-11-24",
   "environment": {
     "python": "3.12.7",
     "platform": "Windows (AMD64)",
@@ -147,7 +147,7 @@
       "impl": "contexel",
       "native": "5/5",
       "note": "full pipeline",
-      "ms": 73.67559999693185,
+      "ms": 67.40509998053312,
       "kept": 36,
       "tokens_out": 1909,
       "deterministic": "yes"
@@ -156,7 +156,7 @@
       "impl": "hand-written",
       "native": "0/5",
       "note": "what model-improvised shaping looks like (trusts the tool's score)",
-      "ms": 28.047399944625795,
+      "ms": 19.641500199213624,
       "kept": 36,
       "tokens_out": 1924,
       "deterministic": "yes"
@@ -165,7 +165,7 @@
       "impl": "toolz",
       "native": "2/5",
       "note": "keyfilter + unique; token stages are glue",
-      "ms": 44.22120004892349,
+      "ms": 37.84759994596243,
       "kept": 36,
       "tokens_out": 1924,
       "deterministic": "yes"
@@ -174,7 +174,7 @@
       "impl": "langchain-core",
       "native": "1/5",
       "note": "trim_messages on records wrapped as messages",
-      "ms": 230.9631999814883,
+      "ms": 395.771199837327,
       "kept": 36,
       "tokens_out": 1924,
       "deterministic": "yes"
@@ -183,7 +183,7 @@
       "impl": "llama-index-core",
       "native": "0/5",
       "note": "node round-trip tax; postprocessors fit no stage",
-      "ms": 508.63890000618994,
+      "ms": 463.7550001498312,
       "kept": 36,
       "tokens_out": 1924,
       "deterministic": "yes"
@@ -196,7 +196,7 @@
       "compliance_pct": 100.0,
       "fill_x": 0.9454866666666666,
       "useful_share_pct": 100.0,
-      "ms_per_episode": 39.560502000385895,
+      "ms_per_episode": 37.59656899841502,
       "recall_weak_pct": 100.0
     },
     {
@@ -205,7 +205,7 @@
       "compliance_pct": 100.0,
       "fill_x": 0.9472333333333333,
       "useful_share_pct": 100.0,
-      "ms_per_episode": 3.0145260004792362,
+      "ms_per_episode": 3.0632540001533926,
       "recall_weak_pct": 32.0
     },
     {
@@ -214,7 +214,7 @@
       "compliance_pct": 100.0,
       "fill_x": 0.9441866666666666,
       "useful_share_pct": 100.0,
-      "ms_per_episode": 28.972279999870807,
+      "ms_per_episode": 33.92928200075403,
       "recall_weak_pct": 97.0
     },
     {
@@ -223,7 +223,7 @@
       "compliance_pct": 0.0,
       "fill_x": 91.62397999999999,
       "useful_share_pct": 100.0,
-      "ms_per_episode": 13.966175999958068,
+      "ms_per_episode": 14.164076999295503,
       "recall_weak_pct": 100.0
     },
     {
@@ -232,7 +232,7 @@
       "compliance_pct": 100.0,
       "fill_x": 0.5210133333333333,
       "useful_share_pct": 89.74563815445694,
-      "ms_per_episode": 15.524090999970213,
+      "ms_per_episode": 17.934717000462115,
       "recall_weak_pct": 30.0
     },
     {
@@ -241,29 +241,29 @@
       "compliance_pct": 0.0,
       "fill_x": 129.21278,
       "useful_share_pct": 74.15087126994709,
-      "ms_per_episode": 42.33745799981989,
+      "ms_per_episode": 49.574251000303775,
       "recall_weak_pct": 100.0
     }
   ],
   "footprint": [
     {
       "library": "contexel",
-      "import_ms": 19.881100044585764,
+      "import_ms": 20.96619992516935,
       "transitive_deps": 0
     },
     {
       "library": "toolz",
-      "import_ms": 12.817499926313758,
+      "import_ms": 12.093800120055676,
       "transitive_deps": 0
     },
     {
       "library": "langchain-core",
-      "import_ms": 90.57800006121397,
+      "import_ms": 87.9196000751108,
       "transitive_deps": 25
     },
     {
       "library": "llama-index-core",
-      "import_ms": 1226.7991999397054,
+      "import_ms": 1155.9297000057995,
       "transitive_deps": 60
     }
   ],

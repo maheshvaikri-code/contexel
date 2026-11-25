@@ -246,3 +246,34 @@ def test_an_inflection_is_never_a_word_of_the_path_or_symbol_either():
         seen = inflection.words(" ".join((
             row["func_documentation_string"], row["func_name"], row["func_path_in_repository"])))
         assert not set(ep["inflected"]) & seen
+
+
+def test_the_import_time_is_the_median_of_fresh_interpreter_runs(monkeypatch):
+    runs = iter([46.0, 20.0, 31.0, 22.0, 90.0])
+    seen = []
+
+    def once(module):
+        seen.append(module)
+        return next(runs)
+
+    monkeypatch.setattr(competitors, "_import_once_ms", once)
+    # Not the first run (46), the minimum (20) or the maximum (90).
+    assert competitors.import_ms("somelib") == 31.0
+    assert seen == ["somelib"] * competitors.IMPORT_REPEATS == ["somelib"] * 5
+    runs2 = iter([3.0, 1.0])
+    monkeypatch.setattr(competitors, "_import_once_ms", lambda module: next(runs2))
+    assert competitors.import_ms("somelib", repeats=2) == 2.0   # mean of the middle pair
+    with pytest.raises(ValueError):
+        competitors.import_ms("somelib", repeats=0)
+
+
+def test_one_real_fresh_interpreter_import_is_measured():
+    ms = competitors.import_ms("json", repeats=1)
+    assert 0 < ms < 10_000
+
+
+def test_the_report_says_how_the_import_time_was_taken():
+    text = competitors.render_report(_comparison())
+    assert f"Import time is the median of {competitors.IMPORT_REPEATS} fresh interpreters" in text
+    n = competitors.IMPORT_REPEATS
+    assert f"the import time is the median of\n  {n} fresh interpreters" in text

@@ -99,12 +99,12 @@ PyPI README or the site disagree with it.
 <!-- benchmark:glance:start -->
 | Implementation | Native ops | ms @28k | ms/episode | Recall % (strong / weak) | Compliance % | Fill × | Useful % | Import ms | Deps |
 |---|---|---|---|---|---|---|---|---|---|
-| **contexel** | **6/6** | 74 | 39.6 | **100 / 100** | **100** | 0.95 | **100** | 20 | **0** |
-| hand-written | 0/6 | 28 | 3.0 | 93 / 32 | **100** | 0.95 | **100** | — | — |
-| hand-written (term overlap) | 0/6 | — | 29.0 | 97 / 97 | **100** | 0.94 | **100** | — | — |
-| toolz | 2/6 | 44 | 14.0 | **100 / 100** | 0 | 91.62 | **100** | 13 | **0** |
-| langchain-core | 1/6 | 231 | 15.5 | 30 / 30 | **100** | 0.52 | 89.7 | 91 | 25 |
-| llama-index-core | 0/6 | 509 | 42.3 | **100 / 100** | 0 | 129.21 | 74.2 | 1,227 | 60 |
+| **contexel** | **6/6** | 67 | 37.6 | **100 / 100** | **100** | 0.95 | **100** | 21 | **0** |
+| hand-written | 0/6 | 20 | 3.1 | 93 / 32 | **100** | 0.95 | **100** | — | — |
+| hand-written (term overlap) | 0/6 | — | 33.9 | 97 / 97 | **100** | 0.94 | **100** | — | — |
+| toolz | 2/6 | 38 | 14.2 | **100 / 100** | 0 | 91.62 | **100** | 12 | **0** |
+| langchain-core | 1/6 | 396 | 17.9 | 30 / 30 | **100** | 0.52 | 89.7 | 88 | 25 |
+| llama-index-core | 0/6 | 464 | 49.6 | **100 / 100** | 0 | 129.21 | 74.2 | 1,156 | 60 |
 <!-- benchmark:glance:end -->
 
 How to read each column, plainly:

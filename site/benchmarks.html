@@ -54,9 +54,9 @@ page disagrees with them.</p>
 <tr><td>Budget tightness (tiktoken-shaped)</td><td>1,890 of 2,000 tokens at the largest budget</td></tr>
 <tr><td>Budget tightness (heuristic-shaped)</td><td>worst overshoot +0.5% of the budget, measured with tiktoken</td></tr>
 <tr><td>truncate_field cap</td><td>worst clipped field 24 tokens (heuristic) and 24 tokens (tiktoken) for a cap of 24</td></tr>
-<tr><td>Speed, full contract</td><td>73,698 records/s (1,357 ms for 100,000 records)</td></tr>
-<tr><td>Speed, select vs hand-written</td><td>77.6 ms vs 80.8 ms for 100,000 records</td></tr>
-<tr><td>Tracing overhead</td><td>141.2 ms inactive vs 442.0 ms active (3.13x) over 10,000 records</td></tr>
+<tr><td>Speed, full contract</td><td>65,438 records/s (1,528 ms for 100,000 records)</td></tr>
+<tr><td>Speed, select vs hand-written</td><td>94.2 ms vs 94.5 ms for 100,000 records</td></tr>
+<tr><td>Tracing overhead</td><td>166.5 ms inactive vs 436.0 ms active (2.62x) over 10,000 records</td></tr>
 <tr><td>Default tokenizer error (heuristic vs tiktoken)</td><td>prose (frozen README copy) −2.7%; prose (the-context-contract.md) +17.5%; code (contexel/stages.py) +3.6%; code (reference_agent/tools.py) +4.2%; json (500 search-hit records) −28.6%</td></tr>
 </table>
 </div>
@@ -82,12 +82,12 @@ isolates shaping loss, not retrieval loss. Budget: 1,500 tokens.</p>
 <div class="scroll">
 <table>
 <tr><th>Implementation</th><th>Native ops</th><th>ms @28k</th><th>ms/episode</th><th>Recall (strong/weak)</th><th>Compliance</th><th>Fill</th><th>Useful</th><th>Import ms</th><th>Deps</th></tr>
-<tr><td><strong>contexel</strong></td><td class="best">6/6</td><td>74</td><td>39.6</td><td class="best">100% / 100%</td><td class="best">100%</td><td>0.95×</td><td class="best">100%</td><td>20</td><td class="best">0</td></tr>
-<tr><td>hand-written</td><td>0/6</td><td>28</td><td>3.0</td><td class="poor">93% / 32%</td><td class="best">100%</td><td>0.95×</td><td class="best">100%</td><td>—</td><td>—</td></tr>
-<tr><td>hand-written (term overlap)</td><td>0/6</td><td>—</td><td>29.0</td><td>97% / 97%</td><td class="best">100%</td><td>0.94×</td><td class="best">100%</td><td>—</td><td>—</td></tr>
-<tr><td>toolz</td><td>2/6</td><td>44</td><td>14.0</td><td class="best">100% / 100%</td><td class="poor">0%</td><td class="poor">91.62×</td><td class="best">100%</td><td>13</td><td class="best">0</td></tr>
-<tr><td>langchain-core</td><td>1/6</td><td>231</td><td>15.5</td><td class="poor">30% / 30%</td><td class="best">100%</td><td>0.52×</td><td class="poor">89.7%</td><td>91</td><td>25</td></tr>
-<tr><td>llama-index-core</td><td>0/6</td><td>509</td><td>42.3</td><td class="best">100% / 100%</td><td class="poor">0%</td><td class="poor">129.21×</td><td class="poor">74.2%</td><td>1,227</td><td>60</td></tr>
+<tr><td><strong>contexel</strong></td><td class="best">6/6</td><td>67</td><td>37.6</td><td class="best">100% / 100%</td><td class="best">100%</td><td>0.95×</td><td class="best">100%</td><td>21</td><td class="best">0</td></tr>
+<tr><td>hand-written</td><td>0/6</td><td>20</td><td>3.1</td><td class="poor">93% / 32%</td><td class="best">100%</td><td>0.95×</td><td class="best">100%</td><td>—</td><td>—</td></tr>
+<tr><td>hand-written (term overlap)</td><td>0/6</td><td>—</td><td>33.9</td><td>97% / 97%</td><td class="best">100%</td><td>0.94×</td><td class="best">100%</td><td>—</td><td>—</td></tr>
+<tr><td>toolz</td><td>2/6</td><td>38</td><td>14.2</td><td class="best">100% / 100%</td><td class="poor">0%</td><td class="poor">91.62×</td><td class="best">100%</td><td>12</td><td class="best">0</td></tr>
+<tr><td>langchain-core</td><td>1/6</td><td>396</td><td>17.9</td><td class="poor">30% / 30%</td><td class="best">100%</td><td>0.52×</td><td class="poor">89.7%</td><td>88</td><td>25</td></tr>
+<tr><td>llama-index-core</td><td>0/6</td><td>464</td><td>49.6</td><td class="best">100% / 100%</td><td class="poor">0%</td><td class="poor">129.21×</td><td class="poor">74.2%</td><td>1,156</td><td>60</td></tr>
 </table>
 </div>
 <!-- benchmark:glance:end -->

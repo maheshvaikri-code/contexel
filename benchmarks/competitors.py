@@ -43,6 +43,7 @@ import platform
 import random
 import re
 import subprocess
+import statistics
 import sys
 import time
 from dataclasses import dataclass
@@ -446,7 +447,11 @@ INFLECTION_SHAPERS = [
 # --------------------------------------------------------------------------- #
 # Footprint: import time (fresh interpreter) + installed dependency closure
 # --------------------------------------------------------------------------- #
-def import_ms(module: str) -> float:
+IMPORT_REPEATS = 5
+
+
+def _import_once_ms(module: str) -> float:
+    """Milliseconds one fresh interpreter spends importing ``module``."""
     code = (
         "import time; t0 = time.perf_counter(); "
         f"import {module}; print((time.perf_counter() - t0) * 1000)"
@@ -454,6 +459,17 @@ def import_ms(module: str) -> float:
     run = subprocess.run([sys.executable, "-c", code], capture_output=True,
                          text=True, check=True, cwd=ROOT)
     return float(run.stdout.strip())
+
+
+def import_ms(module: str, repeats: int = IMPORT_REPEATS) -> float:
+    """The median of ``repeats`` fresh-interpreter imports of ``module``.
+
+    One import is too noisy to publish (the same import measured 20 to 46 ms
+    within minutes on one idle machine: file cache, antivirus, scheduling), so
+    the figure is the median of several, each in its own interpreter."""
+    if repeats < 1:
+        raise ValueError("repeats must be at least 1")
+    return statistics.median(_import_once_ms(module) for _ in range(repeats))
 
 
 def dep_closure(dist_name: str) -> Optional[int]:
@@ -978,7 +994,8 @@ rescore stage ("-" where a row has no timed task).
   estimate of ~4 characters per token, the same estimate the hand-written glue
   uses.
 - These timings are from one run on one machine ("best of 5" within the run
-  where a column says so): they are published as measured, and they vary with
+  where a column says so, and the import time is the median of
+  {IMPORT_REPEATS} fresh interpreters): they are published as measured, and they vary with
   the machine's load and from run to run. The recall, compliance, fill and
   useful-share columns do not vary.
 
@@ -1099,8 +1116,9 @@ else: **not synonyms, not paraphrase, not meaning.**
 
 ## Footprint
 
-Import time is a fresh interpreter importing only the library; transitive
-deps counts installed distributions the package requires (recursive).
+Import time is the median of {IMPORT_REPEATS} fresh interpreters, each importing
+only the library; transitive deps counts installed distributions the package
+requires (recursive).
 
 {table(results["footprint"], [
     ("library", "Library"), ("import_ms", "Import ms"),

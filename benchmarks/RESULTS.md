@@ -1,6 +1,6 @@
 # contexel benchmark results
 
-Generated 2026-11-23 by `python -m benchmarks`. The numbers below are
+Generated 2026-11-24 by `python -m benchmarks`. The numbers below are
 rendered from `benchmarks/RESULTS.json`; `tools/check_benchmark_numbers.py` fails
 when the README or the site disagree with it.
 
@@ -57,29 +57,29 @@ field, measured with the tokenizer that shaped it (docstring claims
 
 | Records | Stage | ms (best of 5) | Records/sec |
 |---|---|---|---|
-| 1,000 | select | 0.21 | 4,875,669.26 |
-| 1,000 | hand-written select | 0.20 | 4,950,494.44 |
-| 1,000 | dedupe (key) | 1.08 | 924,898.29 |
-| 1,000 | rank | 0.14 | 7,052,190.38 |
-| 1,000 | truncate_field | 0.92 | 1,089,324.61 |
-| 1,000 | trim_to_budget | 3.70 | 270,219.15 |
-| 1,000 | full contract | 4.09 | 244,588.48 |
-| 10,000 | select | 2.08 | 4,806,999.24 |
-| 10,000 | hand-written select | 2.12 | 4,725,674.48 |
-| 10,000 | dedupe (key) | 12.25 | 816,359.85 |
-| 10,000 | rank | 1.73 | 5,792,400.40 |
-| 10,000 | truncate_field | 9.50 | 1,053,008.44 |
-| 10,000 | trim_to_budget | 36.81 | 271,693.36 |
-| 10,000 | full contract | 42.48 | 235,414.32 |
-| 100,000 | select | 77.62 | 1,288,292.90 |
-| 100,000 | hand-written select | 80.79 | 1,237,784.61 |
-| 100,000 | dedupe (key) | 436.85 | 228,909.90 |
-| 100,000 | rank | 67.88 | 1,473,161.94 |
-| 100,000 | truncate_field | 257.84 | 387,840.28 |
-| 100,000 | trim_to_budget | 994.73 | 100,529.35 |
-| 100,000 | full contract | 1,356.89 | 73,698.03 |
+| 1,000 | select | 0.21 | 4,796,161.36 |
+| 1,000 | hand-written select | 0.21 | 4,766,444.97 |
+| 1,000 | dedupe (key) | 1.15 | 868,206.34 |
+| 1,000 | rank | 0.14 | 7,137,757.77 |
+| 1,000 | truncate_field | 0.93 | 1,075,500.27 |
+| 1,000 | trim_to_budget | 3.66 | 272,948.11 |
+| 1,000 | full contract | 4.57 | 218,823.17 |
+| 10,000 | select | 2.12 | 4,720,766.77 |
+| 10,000 | hand-written select | 2.13 | 4,697,481.83 |
+| 10,000 | dedupe (key) | 13.93 | 717,679.30 |
+| 10,000 | rank | 1.80 | 5,543,544.90 |
+| 10,000 | truncate_field | 9.75 | 1,025,788.32 |
+| 10,000 | trim_to_budget | 37.41 | 267,331.07 |
+| 10,000 | full contract | 77.45 | 129,119.06 |
+| 100,000 | select | 94.24 | 1,061,174.59 |
+| 100,000 | hand-written select | 94.48 | 1,058,454.19 |
+| 100,000 | dedupe (key) | 414.64 | 241,174.00 |
+| 100,000 | rank | 75.03 | 1,332,722.06 |
+| 100,000 | truncate_field | 257.85 | 387,820.42 |
+| 100,000 | trim_to_budget | 1,117.86 | 89,456.62 |
+| 100,000 | full contract | 1,528.16 | 65,438.08 |
 
-Trace overhead on the full contract over 10,000 records: 141.2 ms inactive vs 442.0 ms active (3.13x). Inactive tracing is the "zero cost" claim; active tracing token-counts every stage boundary and is priced accordingly.
+Trace overhead on the full contract over 10,000 records: 166.5 ms inactive vs 436.0 ms active (2.62x). Inactive tracing is the "zero cost" claim; active tracing token-counts every stage boundary and is priced accordingly.
 
 ## 4. Default tokenizer accuracy (heuristic vs tiktoken cl100k_base)
 

@@ -195,6 +195,11 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   import measured between 19.3 and 20.8 ms across runs, so "sub-20" held only on
   some of them. The check accepts a stated figure within 25% of the measured
   one.
+- The import time in the comparison is the median of 5 fresh interpreters
+  instead of a single import: one import of contexel measured 20 to 46 ms within
+  minutes on an idle machine, so a single sample could not support the "about
+  20 ms" claim. Six runs of the median measured 18.6 to 20.8 ms. The timing
+  columns of `COMPARISON` and `RESULTS` were regenerated on a quiet machine.
 - The benchmark tables gain a "Fill" column, the hand-written (term overlap) row
   and computed "Native ops"; "hand-written glue" is now "hand-written". The home
   page's "the only row green across every column" is now "the only row with full

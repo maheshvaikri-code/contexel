@@ -1,6 +1,6 @@
 # contexel vs prior art — comparative benchmark
 
-Generated 2026-11-23 by `python -m benchmarks.competitors`. The numbers
+Generated 2026-11-24 by `python -m benchmarks.competitors`. The numbers
 below are rendered from `benchmarks/COMPARISON.json`; `tools/check_benchmark_numbers.py`
 fails when the README or the site disagree with it.
 
@@ -41,12 +41,12 @@ fit the 1,500-token budget; *fill* = mean context tokens / budget), and
 
 | Implementation | Native ops | ms @28k | ms/episode | Recall % s/w | Compliance % | Fill x | Useful % | Import ms | Deps |
 |---|---|---|---|---|---|---|---|---|---|
-| contexel | 6/6 (select, dedupe, rescore, truncate, rank, trim) | 73.68 | 39.56 | 100 / 100 | 100.00 | 0.95 | 100.00 | 19.88 | 0 |
-| hand-written | 0/6 | 28.05 | 3.01 | 93 / 32 | 100.00 | 0.95 | 100.00 | - | - |
-| hand-written (term overlap) | 0/6 | - | 28.97 | 97 / 97 | 100.00 | 0.94 | 100.00 | - | - |
-| toolz | 2/6 (select, dedupe) | 44.22 | 13.97 | 100 / 100 | 0.00 | 91.62 | 100.00 | 12.82 | 0 |
-| langchain-core | 1/6 (trim) | 230.96 | 15.52 | 30 / 30 | 100.00 | 0.52 | 89.75 | 90.58 | 25 |
-| llama-index-core | 0/6 | 508.64 | 42.34 | 100 / 100 | 0.00 | 129.21 | 74.15 | 1,226.80 | 60 |
+| contexel | 6/6 (select, dedupe, rescore, truncate, rank, trim) | 67.41 | 37.60 | 100 / 100 | 100.00 | 0.95 | 100.00 | 20.97 | 0 |
+| hand-written | 0/6 | 19.64 | 3.06 | 93 / 32 | 100.00 | 0.95 | 100.00 | - | - |
+| hand-written (term overlap) | 0/6 | - | 33.93 | 97 / 97 | 100.00 | 0.94 | 100.00 | - | - |
+| toolz | 2/6 (select, dedupe) | 37.85 | 14.16 | 100 / 100 | 0.00 | 91.62 | 100.00 | 12.09 | 0 |
+| langchain-core | 1/6 (trim) | 395.77 | 17.93 | 30 / 30 | 100.00 | 0.52 | 89.75 | 87.92 | 25 |
+| llama-index-core | 0/6 | 463.76 | 49.57 | 100 / 100 | 0.00 | 129.21 | 74.15 | 1,155.93 | 60 |
 
 Recall columns come from the ground-truth outcome benchmark, where contexel's
 standard contract includes `rescore` (relevance derived from the query, not
@@ -56,7 +56,7 @@ rescore stage ("-" where a row has no timed task).
 - Rows that keep the needed record under both retrieval signals, respect the
   budget in every episode and spend no tokens on duplicates or bloat:
   contexel.
-- `ms/episode`: contexel is the slowest budget-compliant row (39.6 ms). contexel does the most per episode (projecting
+- `ms/episode`: contexel is the slowest budget-compliant row (37.6 ms). contexel does the most per episode (projecting
   fields, deduping on a key, deriving relevance from each record's own text with
   batch IDF, saturating term frequency and in-order proximity, clipping, ranking,
   enforcing the budget stage by stage); a cheaper row is cheaper by doing less.
@@ -64,7 +64,8 @@ rescore stage ("-" where a row has no timed task).
   estimate of ~4 characters per token, the same estimate the hand-written glue
   uses.
 - These timings are from one run on one machine ("best of 5" within the run
-  where a column says so): they are published as measured, and they vary with
+  where a column says so, and the import time is the median of
+  5 fresh interpreters): they are published as measured, and they vary with
   the machine's load and from run to run. The recall, compliance, fill and
   useful-share columns do not vary.
 
@@ -100,11 +101,11 @@ not counted above):
 
 | Implementation | Native stages (of 5) | ms (best of 5) | Records kept | Tokens out | Deterministic |
 |---|---|---|---|---|---|
-| contexel | 5/5 | 73.68 | 36 | 1,909 | yes |
-| hand-written | 0/5 | 28.05 | 36 | 1,924 | yes |
-| toolz | 2/5 | 44.22 | 36 | 1,924 | yes |
-| langchain-core | 1/5 | 230.96 | 36 | 1,924 | yes |
-| llama-index-core | 0/5 | 508.64 | 36 | 1,924 | yes |
+| contexel | 5/5 | 67.41 | 36 | 1,909 | yes |
+| hand-written | 0/5 | 19.64 | 36 | 1,924 | yes |
+| toolz | 2/5 | 37.85 | 36 | 1,924 | yes |
+| langchain-core | 1/5 | 395.77 | 36 | 1,924 | yes |
+| llama-index-core | 0/5 | 463.76 | 36 | 1,924 | yes |
 
 ## What each achieves natively (ground-truth outcome benchmark)
 
@@ -132,12 +133,12 @@ buries the target under term-happy decoys.
 
 | Implementation | Recall % (strong) | Recall % (weak) | Compliance % | Fill x | Useful share % | ms/episode |
 |---|---|---|---|---|---|---|
-| contexel | 100.00 | 100.00 | 100.00 | 0.95 | 100.00 | 39.56 |
-| hand-written | 93.00 | 32.00 | 100.00 | 0.95 | 100.00 | 3.01 |
-| hand-written (term overlap) | 97.00 | 97.00 | 100.00 | 0.94 | 100.00 | 28.97 |
-| toolz | 100.00 | 100.00 | 0.00 | 91.62 | 100.00 | 13.97 |
-| langchain-core | 30.00 | 30.00 | 100.00 | 0.52 | 89.75 | 15.52 |
-| llama-index-core | 100.00 | 100.00 | 0.00 | 129.21 | 74.15 | 42.34 |
+| contexel | 100.00 | 100.00 | 100.00 | 0.95 | 100.00 | 37.60 |
+| hand-written | 93.00 | 32.00 | 100.00 | 0.95 | 100.00 | 3.06 |
+| hand-written (term overlap) | 97.00 | 97.00 | 100.00 | 0.94 | 100.00 | 33.93 |
+| toolz | 100.00 | 100.00 | 0.00 | 91.62 | 100.00 | 14.16 |
+| langchain-core | 30.00 | 30.00 | 100.00 | 0.52 | 89.75 | 17.93 |
+| llama-index-core | 100.00 | 100.00 | 0.00 | 129.21 | 74.15 | 49.57 |
 
 What the numbers say each is best at:
 
@@ -205,15 +206,16 @@ else: **not synonyms, not paraphrase, not meaning.**
 
 ## Footprint
 
-Import time is a fresh interpreter importing only the library; transitive
-deps counts installed distributions the package requires (recursive).
+Import time is the median of 5 fresh interpreters, each importing
+only the library; transitive deps counts installed distributions the package
+requires (recursive).
 
 | Library | Import ms | Transitive deps |
 |---|---|---|
-| contexel | 19.88 | 0 |
-| toolz | 12.82 | 0 |
-| langchain-core | 90.58 | 25 |
-| llama-index-core | 1,226.80 | 60 |
+| contexel | 20.97 | 0 |
+| toolz | 12.09 | 0 |
+| langchain-core | 87.92 | 25 |
+| llama-index-core | 1,155.93 | 60 |
 
 ## Reading the results
 
