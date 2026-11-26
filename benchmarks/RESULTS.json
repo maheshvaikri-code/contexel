@@ -1,0 +1,341 @@
+{
+  "schema": 1,
+  "generated": "2026-11-24",
+  "environment": {
+    "python": "3.12.7",
+    "platform": "Windows (AMD64)",
+    "contexel": "0.1.17"
+  },
+  "determinism": {
+    "same_process": true,
+    "raw_noise_differs": true,
+    "noise_neutralized": true,
+    "cross_process": true,
+    "hash_prefix": "6c9fd99fc2f01c4b"
+  },
+  "budget": {
+    "trim": [
+      {
+        "budget": 500,
+        "shaped_with": "heuristic",
+        "records_kept": 10,
+        "heuristic_tokens": 479,
+        "actual_tokens": 500
+      },
+      {
+        "budget": 500,
+        "shaped_with": "tiktoken",
+        "records_kept": 8,
+        "heuristic_tokens": 514,
+        "actual_tokens": 472
+      },
+      {
+        "budget": 1000,
+        "shaped_with": "heuristic",
+        "records_kept": 20,
+        "heuristic_tokens": 958,
+        "actual_tokens": 1001
+      },
+      {
+        "budget": 1000,
+        "shaped_with": "tiktoken",
+        "records_kept": 16,
+        "heuristic_tokens": 1023,
+        "actual_tokens": 946
+      },
+      {
+        "budget": 2000,
+        "shaped_with": "heuristic",
+        "records_kept": 40,
+        "heuristic_tokens": 1912,
+        "actual_tokens": 2010
+      },
+      {
+        "budget": 2000,
+        "shaped_with": "tiktoken",
+        "records_kept": 32,
+        "heuristic_tokens": 2032,
+        "actual_tokens": 1890
+      }
+    ],
+    "truncate": [
+      {
+        "shaped_with": "heuristic",
+        "cap": 24,
+        "worst_field_tokens": 24
+      },
+      {
+        "shaped_with": "tiktoken",
+        "cap": 24,
+        "worst_field_tokens": 24
+      }
+    ]
+  },
+  "speed": {
+    "stages": [
+      {
+        "n": 1000,
+        "stage": "select",
+        "ms": 0.2085000742226839,
+        "records_per_sec": 4796161.3621872
+      },
+      {
+        "n": 1000,
+        "stage": "hand-written select",
+        "ms": 0.20979996770620346,
+        "records_per_sec": 4766444.966285052
+      },
+      {
+        "n": 1000,
+        "stage": "dedupe (key)",
+        "ms": 1.1517999228090048,
+        "records_per_sec": 868206.3439987078
+      },
+      {
+        "n": 1000,
+        "stage": "rank",
+        "ms": 0.1401000190526247,
+        "records_per_sec": 7137757.773069093
+      },
+      {
+        "n": 1000,
+        "stage": "truncate_field",
+        "ms": 0.9297998622059822,
+        "records_per_sec": 1075500.2669364412
+      },
+      {
+        "n": 1000,
+        "stage": "trim_to_budget",
+        "ms": 3.6637000739574432,
+        "records_per_sec": 272948.1070539225
+      },
+      {
+        "n": 1000,
+        "stage": "full contract",
+        "ms": 4.569899989292026,
+        "records_per_sec": 218823.16950986956
+      },
+      {
+        "n": 10000,
+        "stage": "select",
+        "ms": 2.118299948051572,
+        "records_per_sec": 4720766.768274755
+      },
+      {
+        "n": 10000,
+        "stage": "hand-written select",
+        "ms": 2.128800144419074,
+        "records_per_sec": 4697481.8308878355
+      },
+      {
+        "n": 10000,
+        "stage": "dedupe (key)",
+        "ms": 13.933800160884857,
+        "records_per_sec": 717679.303889554
+      },
+      {
+        "n": 10000,
+        "stage": "rank",
+        "ms": 1.8038998823612928,
+        "records_per_sec": 5543544.903894593
+      },
+      {
+        "n": 10000,
+        "stage": "truncate_field",
+        "ms": 9.748599957674742,
+        "records_per_sec": 1025788.322776271
+      },
+      {
+        "n": 10000,
+        "stage": "trim_to_budget",
+        "ms": 37.40679984912276,
+        "records_per_sec": 267331.07457291655
+      },
+      {
+        "n": 10000,
+        "stage": "full contract",
+        "ms": 77.44790008291602,
+        "records_per_sec": 129119.05925524076
+      },
+      {
+        "n": 100000,
+        "stage": "select",
+        "ms": 94.23520020209253,
+        "records_per_sec": 1061174.5906576794
+      },
+      {
+        "n": 100000,
+        "stage": "hand-written select",
+        "ms": 94.47739995084703,
+        "records_per_sec": 1058454.1917117338
+      },
+      {
+        "n": 100000,
+        "stage": "dedupe (key)",
+        "ms": 414.6384000778198,
+        "records_per_sec": 241173.99638150225
+      },
+      {
+        "n": 100000,
+        "stage": "rank",
+        "ms": 75.0343999825418,
+        "records_per_sec": 1332722.0584594123
+      },
+      {
+        "n": 100000,
+        "stage": "truncate_field",
+        "ms": 257.8513000626117,
+        "records_per_sec": 387820.42198630725
+      },
+      {
+        "n": 100000,
+        "stage": "trim_to_budget",
+        "ms": 1117.8602001164109,
+        "records_per_sec": 89456.62435212049
+      },
+      {
+        "n": 100000,
+        "stage": "full contract",
+        "ms": 1528.1623001210392,
+        "records_per_sec": 65438.07551860128
+      }
+    ],
+    "trace": {
+      "off_ms": 166.47369996644557,
+      "on_ms": 435.95920014195144,
+      "ratio": 2.618787233237583
+    }
+  },
+  "accuracy": [
+    {
+      "sample": "prose (frozen README copy)",
+      "actual": 10609,
+      "heuristic": 10327,
+      "error_pct": -2.6581204637571876
+    },
+    {
+      "sample": "prose (the-context-contract.md)",
+      "actual": 2365,
+      "heuristic": 2779,
+      "error_pct": 17.505285412262158
+    },
+    {
+      "sample": "code (contexel/stages.py)",
+      "actual": 6274,
+      "heuristic": 6497,
+      "error_pct": 3.5543512910423973
+    },
+    {
+      "sample": "code (reference_agent/tools.py)",
+      "actual": 1709,
+      "heuristic": 1781,
+      "error_pct": 4.212990052662375
+    },
+    {
+      "sample": "json (500 search-hit records)",
+      "actual": 56877,
+      "heuristic": 40606,
+      "error_pct": -28.607345675756456
+    }
+  ],
+  "reduction": [
+    {
+      "dup_rate": 0.0,
+      "budget": 1000,
+      "records": "2000 -> 20",
+      "tokens": "331,999 -> 952",
+      "lossless_pct": 21.69313762993262,
+      "by_choice_pct": 78.02011451841723,
+      "total_pct": 99.71325214834984
+    },
+    {
+      "dup_rate": 0.0,
+      "budget": 4000,
+      "records": "2000 -> 80",
+      "tokens": "331,999 -> 3,812",
+      "lossless_pct": 21.69313762993262,
+      "by_choice_pct": 77.15866614056065,
+      "total_pct": 98.85180377049329
+    },
+    {
+      "dup_rate": 0.25,
+      "budget": 1000,
+      "records": "2000 -> 20",
+      "tokens": "332,056 -> 956",
+      "lossless_pct": 41.08102247813622,
+      "by_choice_pct": 58.631074276628034,
+      "total_pct": 99.71209675476426
+    },
+    {
+      "dup_rate": 0.25,
+      "budget": 4000,
+      "records": "2000 -> 80",
+      "tokens": "332,056 -> 3,817",
+      "lossless_pct": 41.08102247813622,
+      "by_choice_pct": 57.7694726190763,
+      "total_pct": 98.85049509721252
+    },
+    {
+      "dup_rate": 0.5,
+      "budget": 1000,
+      "records": "2000 -> 20",
+      "tokens": "332,155 -> 957",
+      "lossless_pct": 60.45249958603664,
+      "by_choice_pct": 39.259381915069774,
+      "total_pct": 99.71188150110642
+    },
+    {
+      "dup_rate": 0.5,
+      "budget": 4000,
+      "records": "2000 -> 80",
+      "tokens": "332,155 -> 3,819",
+      "lossless_pct": 60.45249958603664,
+      "by_choice_pct": 38.39773599674851,
+      "total_pct": 98.85023558278515
+    }
+  ],
+  "encoding": [
+    {
+      "encoding": "json",
+      "budget": 500,
+      "records_kept": 10,
+      "actual_tokens": 500,
+      "tokens_per_record": 50.0
+    },
+    {
+      "encoding": "ison",
+      "budget": 500,
+      "records_kept": 13,
+      "actual_tokens": 442,
+      "tokens_per_record": 34.0
+    },
+    {
+      "encoding": "json",
+      "budget": 1000,
+      "records_kept": 20,
+      "actual_tokens": 1001,
+      "tokens_per_record": 50.05
+    },
+    {
+      "encoding": "ison",
+      "budget": 1000,
+      "records_kept": 27,
+      "actual_tokens": 908,
+      "tokens_per_record": 33.629629629629626
+    },
+    {
+      "encoding": "json",
+      "budget": 2000,
+      "records_kept": 40,
+      "actual_tokens": 2010,
+      "tokens_per_record": 50.25
+    },
+    {
+      "encoding": "ison",
+      "budget": 2000,
+      "records_kept": 54,
+      "actual_tokens": 1800,
+      "tokens_per_record": 33.333333333333336
+    }
+  ]
+}

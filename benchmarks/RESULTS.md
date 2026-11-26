@@ -1,8 +1,10 @@
 # contexel benchmark results
 
-Generated 2026-07-26 by `python -m benchmarks`.
+Generated 2026-11-24 by `python -m benchmarks`. The numbers below are
+rendered from `benchmarks/RESULTS.json`; `tools/check_benchmark_numbers.py` fails
+when the README or the site disagree with it.
 
-Environment: Python 3.12.7 on Windows (AMD64), single process, wall-clock via `perf_counter`, best of 5 runs. Datasets are seeded and byte-identical across machines (`benchmarks/datasets.py`).
+Environment: Python 3.12.7 on Windows (AMD64), contexel 0.1.17, single process, wall-clock via `perf_counter`, best of 5 runs. Datasets are seeded and byte-identical across machines (`benchmarks/datasets.py`).
 
 ## What this measures, and deliberately doesn't
 
@@ -55,29 +57,29 @@ field, measured with the tokenizer that shaped it (docstring claims
 
 | Records | Stage | ms (best of 5) | Records/sec |
 |---|---|---|---|
-| 1,000 | select | 0.23 | 4,321,520.88 |
-| 1,000 | hand-written select | 0.22 | 4,640,370.99 |
-| 1,000 | dedupe (key) | 1.05 | 956,571.61 |
-| 1,000 | rank | 0.14 | 6,983,238.14 |
-| 1,000 | truncate_field | 0.91 | 1,098,177.09 |
-| 1,000 | trim_to_budget | 3.88 | 258,011.25 |
-| 1,000 | full contract | 4.19 | 238,743.26 |
-| 10,000 | select | 2.46 | 4,072,324.36 |
-| 10,000 | hand-written select | 2.24 | 4,472,672.15 |
-| 10,000 | dedupe (key) | 12.48 | 801,243.53 |
-| 10,000 | rank | 1.96 | 5,110,906.68 |
-| 10,000 | truncate_field | 9.89 | 1,010,979.22 |
-| 10,000 | trim_to_budget | 38.39 | 260,504.86 |
-| 10,000 | full contract | 44.35 | 225,487.28 |
-| 100,000 | select | 33.97 | 2,944,163.93 |
-| 100,000 | hand-written select | 33.89 | 2,950,792.59 |
-| 100,000 | dedupe (key) | 165.25 | 605,152.51 |
-| 100,000 | rank | 30.19 | 3,312,640.38 |
-| 100,000 | truncate_field | 113.11 | 884,074.03 |
-| 100,000 | trim_to_budget | 393.53 | 254,109.14 |
-| 100,000 | full contract | 524.81 | 190,546.86 |
+| 1,000 | select | 0.21 | 4,796,161.36 |
+| 1,000 | hand-written select | 0.21 | 4,766,444.97 |
+| 1,000 | dedupe (key) | 1.15 | 868,206.34 |
+| 1,000 | rank | 0.14 | 7,137,757.77 |
+| 1,000 | truncate_field | 0.93 | 1,075,500.27 |
+| 1,000 | trim_to_budget | 3.66 | 272,948.11 |
+| 1,000 | full contract | 4.57 | 218,823.17 |
+| 10,000 | select | 2.12 | 4,720,766.77 |
+| 10,000 | hand-written select | 2.13 | 4,697,481.83 |
+| 10,000 | dedupe (key) | 13.93 | 717,679.30 |
+| 10,000 | rank | 1.80 | 5,543,544.90 |
+| 10,000 | truncate_field | 9.75 | 1,025,788.32 |
+| 10,000 | trim_to_budget | 37.41 | 267,331.07 |
+| 10,000 | full contract | 77.45 | 129,119.06 |
+| 100,000 | select | 94.24 | 1,061,174.59 |
+| 100,000 | hand-written select | 94.48 | 1,058,454.19 |
+| 100,000 | dedupe (key) | 414.64 | 241,174.00 |
+| 100,000 | rank | 75.03 | 1,332,722.06 |
+| 100,000 | truncate_field | 257.85 | 387,820.42 |
+| 100,000 | trim_to_budget | 1,117.86 | 89,456.62 |
+| 100,000 | full contract | 1,528.16 | 65,438.08 |
 
-Trace overhead on the full contract over 10,000 records: 49.8 ms inactive vs 173.3 ms active (3.48x). Inactive tracing is the "zero cost" claim; active tracing token-counts every stage boundary and is priced accordingly.
+Trace overhead on the full contract over 10,000 records: 166.5 ms inactive vs 436.0 ms active (2.62x). Inactive tracing is the "zero cost" claim; active tracing token-counts every stage boundary and is priced accordingly.
 
 ## 4. Default tokenizer accuracy (heuristic vs tiktoken cl100k_base)
 
@@ -85,9 +87,9 @@ Positive error = the heuristic over-estimates (conservative for budgets).
 
 | Sample | Actual | Heuristic | Error % |
 |---|---|---|---|
-| prose (README.md) | 3,749 | 3,693 | -1.49 |
+| prose (frozen README copy) | 10,609 | 10,327 | -2.66 |
 | prose (the-context-contract.md) | 2,365 | 2,779 | 17.51 |
-| code (contexel/stages.py) | 2,640 | 2,667 | 1.02 |
+| code (contexel/stages.py) | 6,274 | 6,497 | 3.55 |
 | code (reference_agent/tools.py) | 1,709 | 1,781 | 4.21 |
 | json (500 search-hit records) | 56,877 | 40,606 | -28.61 |
 

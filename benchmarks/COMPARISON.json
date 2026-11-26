@@ -1,0 +1,324 @@
+{
+  "schema": 1,
+  "generated": "2026-11-24",
+  "environment": {
+    "python": "3.12.7",
+    "platform": "Windows (AMD64)",
+    "contexel": "0.1.17",
+    "libraries": {
+      "toolz": "1.1.0",
+      "langchain-core": "1.4.9",
+      "llama-index-core": "0.14.23"
+    }
+  },
+  "dataset": {
+    "name": "CodeSearchNet python/test",
+    "rows": 22176,
+    "sha256": "05049f798a197a8a80844707abe8b1319bf5c39d37a22fab303aba7625b868e5",
+    "queries": 16,
+    "per_query_cap": 2000,
+    "records": 28047
+  },
+  "settings": {
+    "fields": 5,
+    "snippet_cap": 24,
+    "budget": 2000,
+    "eval_budget": 1500,
+    "episodes": 100,
+    "llama_cutoff": 2.0
+  },
+  "operations": [
+    {
+      "impl": "contexel",
+      "operand": "list[dict]",
+      "label": "6/6 (select, dedupe, rescore, truncate, rank, trim)",
+      "native": [
+        "select",
+        "dedupe",
+        "rescore",
+        "truncate",
+        "rank",
+        "trim"
+      ],
+      "glue": [],
+      "missing": [],
+      "other_native": [],
+      "adapters": []
+    },
+    {
+      "impl": "hand-written",
+      "operand": "list[dict]",
+      "label": "0/6",
+      "native": [],
+      "glue": [
+        "select",
+        "dedupe",
+        "truncate",
+        "rank",
+        "trim"
+      ],
+      "missing": [
+        "rescore"
+      ],
+      "other_native": [],
+      "adapters": []
+    },
+    {
+      "impl": "hand-written (term overlap)",
+      "operand": "list[dict]",
+      "label": "0/6",
+      "native": [],
+      "glue": [
+        "select",
+        "dedupe",
+        "rescore",
+        "truncate",
+        "rank",
+        "trim"
+      ],
+      "missing": [],
+      "other_native": [],
+      "adapters": []
+    },
+    {
+      "impl": "toolz",
+      "operand": "any dicts",
+      "label": "2/6 (select, dedupe)",
+      "native": [
+        "select",
+        "dedupe"
+      ],
+      "glue": [],
+      "missing": [
+        "rescore",
+        "truncate",
+        "rank",
+        "trim"
+      ],
+      "other_native": [],
+      "adapters": []
+    },
+    {
+      "impl": "langchain-core",
+      "operand": "BaseMessage",
+      "label": "1/6 (trim)",
+      "native": [
+        "trim"
+      ],
+      "glue": [],
+      "missing": [
+        "select",
+        "dedupe",
+        "rescore",
+        "truncate",
+        "rank"
+      ],
+      "other_native": [],
+      "adapters": [
+        "wrap as messages"
+      ]
+    },
+    {
+      "impl": "llama-index-core",
+      "operand": "NodeWithScore",
+      "label": "0/6",
+      "native": [],
+      "glue": [],
+      "missing": [
+        "select",
+        "dedupe",
+        "rescore",
+        "truncate",
+        "rank",
+        "trim"
+      ],
+      "other_native": [
+        "score cutoff",
+        "long-context reorder"
+      ],
+      "adapters": [
+        "to nodes",
+        "from nodes"
+      ]
+    }
+  ],
+  "task": [
+    {
+      "impl": "contexel",
+      "native": "5/5",
+      "note": "full pipeline",
+      "ms": 67.40509998053312,
+      "kept": 36,
+      "tokens_out": 1909,
+      "deterministic": "yes"
+    },
+    {
+      "impl": "hand-written",
+      "native": "0/5",
+      "note": "what model-improvised shaping looks like (trusts the tool's score)",
+      "ms": 19.641500199213624,
+      "kept": 36,
+      "tokens_out": 1924,
+      "deterministic": "yes"
+    },
+    {
+      "impl": "toolz",
+      "native": "2/5",
+      "note": "keyfilter + unique; token stages are glue",
+      "ms": 37.84759994596243,
+      "kept": 36,
+      "tokens_out": 1924,
+      "deterministic": "yes"
+    },
+    {
+      "impl": "langchain-core",
+      "native": "1/5",
+      "note": "trim_messages on records wrapped as messages",
+      "ms": 395.771199837327,
+      "kept": 36,
+      "tokens_out": 1924,
+      "deterministic": "yes"
+    },
+    {
+      "impl": "llama-index-core",
+      "native": "0/5",
+      "note": "node round-trip tax; postprocessors fit no stage",
+      "ms": 463.7550001498312,
+      "kept": 36,
+      "tokens_out": 1924,
+      "deterministic": "yes"
+    }
+  ],
+  "outcomes": [
+    {
+      "impl": "contexel",
+      "recall_strong_pct": 100.0,
+      "compliance_pct": 100.0,
+      "fill_x": 0.9454866666666666,
+      "useful_share_pct": 100.0,
+      "ms_per_episode": 37.59656899841502,
+      "recall_weak_pct": 100.0
+    },
+    {
+      "impl": "hand-written",
+      "recall_strong_pct": 93.0,
+      "compliance_pct": 100.0,
+      "fill_x": 0.9472333333333333,
+      "useful_share_pct": 100.0,
+      "ms_per_episode": 3.0632540001533926,
+      "recall_weak_pct": 32.0
+    },
+    {
+      "impl": "hand-written (term overlap)",
+      "recall_strong_pct": 97.0,
+      "compliance_pct": 100.0,
+      "fill_x": 0.9441866666666666,
+      "useful_share_pct": 100.0,
+      "ms_per_episode": 33.92928200075403,
+      "recall_weak_pct": 97.0
+    },
+    {
+      "impl": "toolz",
+      "recall_strong_pct": 100.0,
+      "compliance_pct": 0.0,
+      "fill_x": 91.62397999999999,
+      "useful_share_pct": 100.0,
+      "ms_per_episode": 14.164076999295503,
+      "recall_weak_pct": 100.0
+    },
+    {
+      "impl": "langchain-core",
+      "recall_strong_pct": 30.0,
+      "compliance_pct": 100.0,
+      "fill_x": 0.5210133333333333,
+      "useful_share_pct": 89.74563815445694,
+      "ms_per_episode": 17.934717000462115,
+      "recall_weak_pct": 30.0
+    },
+    {
+      "impl": "llama-index-core",
+      "recall_strong_pct": 100.0,
+      "compliance_pct": 0.0,
+      "fill_x": 129.21278,
+      "useful_share_pct": 74.15087126994709,
+      "ms_per_episode": 49.574251000303775,
+      "recall_weak_pct": 100.0
+    }
+  ],
+  "footprint": [
+    {
+      "library": "contexel",
+      "import_ms": 20.96619992516935,
+      "transitive_deps": 0
+    },
+    {
+      "library": "toolz",
+      "import_ms": 12.093800120055676,
+      "transitive_deps": 0
+    },
+    {
+      "library": "langchain-core",
+      "import_ms": 87.9196000751108,
+      "transitive_deps": 25
+    },
+    {
+      "library": "llama-index-core",
+      "import_ms": 1155.9297000057995,
+      "transitive_deps": 60
+    }
+  ],
+  "inflected": {
+    "episodes": 100,
+    "terms": 296,
+    "examples": [
+      [
+        "partial",
+        "partialing"
+      ],
+      [
+        "bounds",
+        "bound"
+      ],
+      [
+        "none",
+        "noning"
+      ],
+      [
+        "simple",
+        "simpling"
+      ],
+      [
+        "extractor",
+        "extractoring"
+      ],
+      [
+        "anchor",
+        "anchoring"
+      ]
+    ],
+    "rows": [
+      {
+        "shaper": "contexel",
+        "recall_original_pct": 99.0,
+        "recall_inflected_pct": 35.0
+      },
+      {
+        "shaper": "contexel (match=stem)",
+        "recall_original_pct": 98.0,
+        "recall_inflected_pct": 98.0
+      },
+      {
+        "shaper": "hand-written (term overlap)",
+        "recall_original_pct": 96.0,
+        "recall_inflected_pct": 35.0
+      },
+      {
+        "shaper": "hand-written",
+        "recall_original_pct": 90.0,
+        "recall_inflected_pct": 90.0,
+        "recall_original_weak_pct": 22.0,
+        "recall_inflected_weak_pct": 22.0
+      }
+    ]
+  }
+}

@@ -87,58 +87,110 @@ genuine duplicates, plus 100 ground-truth episodes where the record the
 agent *needed* is known in advance. Full method and tables in
 [benchmarks/COMPARISON.md](benchmarks/COMPARISON.md); reproduce with
 `python -m benchmarks.competitors` after `pip install -e ".[benchmarks]"`
-(the first run downloads the CodeSearchNet split, ~30 MB).
+(the first run downloads the CodeSearchNet split, ~30 MB, and refuses it
+unless its SHA-256 equals the digest committed in
+`benchmarks/dataset.sha256`).
 
-| Implementation | Native ops | ms @28k | ms/episode | Recall % | Compliance % | Useful % | Import ms | Deps |
-|---|---|---|---|---|---|---|---|---|
-| **contexel** | **6/6** | 69 | 15.5 | **100 / 100** | **100** | **100** | 19 | **0** |
-| hand-written | 0/6 | 27 | 1.6 | 93 / 32 | 100 | 100 | — | — |
-| toolz | 2/6 | 45 | 6.8 | 100 / 100 | 0 | 100 | 14 | 0 |
-| langchain-core | 1/6 | 147 | 7.1 | 30 / 30 | 100 | 89.8 | 96 | 25 |
-| llama-index-core | 0/6 | 189 | 20.8 | 100 / 100 | 0 | 74.2 | 1,209 | 60 |
+Every number in this section is generated, or checked against the results: the
+tables are rendered from `benchmarks/COMPARISON.json`, and
+`python tools/check_benchmark_numbers.py` (run in CI) fails when this file, the
+PyPI README or the site disagree with it.
+
+<!-- benchmark:glance:start -->
+| Implementation | Native ops | ms @28k | ms/episode | Recall % (strong / weak) | Compliance % | Fill × | Useful % | Import ms | Deps |
+|---|---|---|---|---|---|---|---|---|---|
+| **contexel** | **6/6** | 67 | 37.6 | **100 / 100** | **100** | 0.95 | **100** | 21 | **0** |
+| hand-written | 0/6 | 20 | 3.1 | 93 / 32 | **100** | 0.95 | **100** | — | — |
+| hand-written (term overlap) | 0/6 | — | 33.9 | 97 / 97 | **100** | 0.94 | **100** | — | — |
+| toolz | 2/6 | 38 | 14.2 | **100 / 100** | 0 | 91.62 | **100** | 12 | **0** |
+| langchain-core | 1/6 | 396 | 17.9 | 30 / 30 | **100** | 0.52 | 89.7 | 88 | 25 |
+| llama-index-core | 0/6 | 464 | 49.6 | **100 / 100** | 0 | 129.21 | 74.2 | 1,156 | 60 |
+<!-- benchmark:glance:end -->
 
 How to read each column, plainly:
 
-- **Native ops** — how many of the task's operations the library expresses
-  itself. The two speed columns are different experiments: in `ms @28k`,
+- **Native ops** — how many of the task's six operations (select, dedupe,
+  rescore, truncate, rank, trim) the library expresses itself, *computed* from
+  the code that defines each implementation (the step lists are in
+  `benchmarks/competitors.py`; `benchmarks/opcount.py` holds the step type and
+  the counter), not typed. The two speed columns are different experiments: in `ms @28k`,
   everything a library lacks was filled with the *same* hand-written glue,
   so timing differences are the library's; the Recall / Compliance / Useful
   columns are the opposite — each library acts *only* through its own
-  operations, so those numbers show what each one ships.
+  operations, so those numbers show what each one ships. `ms @28k` is the
+  query-free bulk task, and "—" marks a row with no timed task.
 - **Recall %** (strong / weak retrieval signal) — did the record the agent
   actually needed survive into a 1,500-token context? The episodes guarantee
   that record is present in the raw hits, so recall here isolates *shaping*
-  loss, not retrieval loss. contexel kept it in 100/100 episodes under both
-  signals because `rescore` derives relevance from the records' own text;
-  the hand-written row trusts the tool's score and drops to 32% when that
-  score is poor.
-- **Compliance %** — did the final context actually fit the budget? The rows
-  showing 100% recall with 0% compliance (toolz, llama-index) achieved
-  recall by emitting 92–129× the budget: a context no window accepts.
+  loss, not retrieval loss. contexel's recall is the same under both signals,
+  because `rescore` derives relevance from the records' own text; the
+  hand-written row trusts the tool's score, so its recall falls when that
+  score is poor. The *hand-written (term overlap)* row adds the scorer such
+  code would improvise: it is the fairest comparison for `rescore`, another
+  rescorer rather than none.
+- **Compliance %** — did the final context actually fit the budget? A row with
+  full recall and zero compliance (toolz, llama-index) got there by emitting
+  many times the budget (the Fill column): a context no window accepts.
 - **Useful %** — share of final-context tokens spent on needed fields of
-  unique records. langchain-core honors the budget but fills 10% of it with
-  duplicates and field bloat it cannot remove; llama-index 26%.
-- **ms/episode — contexel is the slowest compliant row, and that is the
-  work, not overhead.** Per episode it projects, dedupes, scans ~1 KB of
-  evidence per record to compute relevance, clips to a token-accurate cap,
-  ranks, and enforces the budget. Every faster row does less: the
-  hand-written glue trusts the score (1.6 ms, 32% recall on a weak signal),
-  toolz skips the token layer entirely, langchain-core skips the record
-  work. The extra milliseconds are the rescore and token-accuracy work
-  itself — and every row here is negligible next to a single model call.
+  unique records. langchain-core honors the budget but spends part of it on
+  duplicates and field bloat it cannot remove; llama-index spends more.
+- **ms/episode is the work, not overhead.** Per episode contexel projects the
+  fields, dedupes on a key, derives relevance from each record's own text
+  (batch relevance with IDF, saturating term frequency and in-order
+  proximity), clips the snippet, ranks, and enforces the budget stage by
+  stage. Every cap and every price is computed with the active tokenizer,
+  here the default estimator of about four characters per token, the same
+  estimate the hand-written glue uses. It and the hand-written term-overlap
+  scorer are the two slowest budget-compliant rows, in an order that can
+  change from run to run: the scorer does less record work (whole-word overlap
+  instead of IDF, saturating term frequency and proximity). Every other
+  compliant row is faster because it does less still: the hand-written glue
+  trusts the score, langchain-core skips the record work. The timings are one
+  run of the command on one machine; they vary with the machine's load and
+  from run to run, and the other columns do not.
 
-The same trade shows in `ms @28k` (the query-free bulk task): contexel's
-69 ms includes token-accurate truncation and tenant-isolation plumbing; the
-27 ms glue slices at ~4 chars/token and lands looser under the budget. Both
-are noise next to a single model call.
+The same trade shows in `ms @28k`: contexel's time includes the checks each
+stage runs on its input and the pipeline's plumbing, while the hand-written
+glue does the same cuts with no checks. Both are noise next to a
+single model call.
+
+**Inflected queries.** The episodes above query with the target's own words,
+so exact-word matching is never tested. A second set of episodes, chosen so
+that every query term can be inflected, hands the shaper deterministic
+inflections of those words (`parse` becomes `parsing`, `returns` becomes
+`return`; synthetic, the rule is in `benchmarks/inflection.py`), while its hit
+lists come from the original terms. Its target records differ from the main
+table's, so contexel's recall with the original terms there need not equal
+its recall in the main table. Exact-word matching fails by construction
+and `match="stem"` is measured (only terms the frozen stemmer maps to one stem
+are used, so the stem row shows the stem match carrying through ranking and the
+budget, not how many English inflections the stemmer covers):
+
+<!-- benchmark:inflected:start -->
+| Shaper | Recall % (original terms) | Recall % (inflected terms) |
+|---|---|---|
+| contexel | 99 | 35 |
+| contexel (match=stem) | 98 | 98 |
+| hand-written (term overlap) | 96 | 35 |
+| hand-written | 90 | 90 |
+<!-- benchmark:inflected:end -->
+
+Exact-word matching (the default) collapses on inflected queries, and so does
+the hand-written term-overlap scorer; `match="stem"` recovers them (for the
+terms the stemmer maps to one stem, which is what the episodes use). The
+hand-written row that trusts the tool's score never reads the query, so
+inflection cannot touch it: it is the control. This measures inflection
+robustness only — not synonyms, not paraphrase, not meaning.
 
 **Limits, measured and stated:** recall@budget has a ceiling no shaper
 escapes — when a query legitimately describes more records than the budget
 holds, some valid record is cut, semantic or not. And `rescore` is lexical:
-exact words, not meaning. A query saying *parsing* scores zero against a
-document saying *parse*; synonyms and paraphrase are invisible. When you
-need that, put a semantic reranker in front — contexel's own suite measures
-what the lexical lane cannot reach instead of hiding it
+exact words by default, so a query saying *parsing* scores zero against a
+document saying *parse*. `match="stem"` opts in to a small, frozen English
+stemmer that matches those inflections (the table above shows what it
+recovers); synonyms and paraphrase are invisible either way. When you need
+that, put a semantic reranker in front — contexel's own suite measures what
+the lexical lane cannot reach instead of hiding it
 ([RESULTS.md](benchmarks/RESULTS.md) also quantifies the default
 tokenizer's error: −29% on JSON-heavy records — hard token limits require
 an exact tokenizer: `contexel[accurate]` + `tokens.use_tiktoken()` where

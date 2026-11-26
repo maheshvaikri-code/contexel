@@ -75,7 +75,7 @@ boundary</strong>. Same input, byte-identical context, every run — a
     search tool's score quality.</p>
   </div>
   <div class="card"><span class="k">Zero dependencies</span>
-    <h3>Plain Python, sub-20&nbsp;ms import</h3>
+    <h3>Plain Python, about 20&nbsp;ms import</h3>
     <p>No embeddings, no model calls, no packages. Eight pipeline stages
     (including provenance and injection-tripwire gates) plus a
     <code>merge</code> combiner, function composition, an audit-grade
@@ -91,23 +91,29 @@ acts <em>only</em> through its own operations; <code>ms @28k</code> is the
 separate shared-glue canonical task. Details and method on the
 <a href="benchmarks.html">benchmarks page</a>.</p>
 
+<!-- benchmark:glance:start -->
 <div class="scroll">
 <table>
 <tr><th>Implementation</th><th>Native ops</th><th>ms @28k</th><th>Recall (strong/weak signal)</th><th>Budget compliance</th><th>Useful tokens</th><th>Deps</th></tr>
-<tr><td><strong>contexel</strong></td><td class="best">6/6</td><td>69</td><td class="best">100% / 100%</td><td class="best">100%</td><td class="best">100%</td><td class="best">0</td></tr>
-<tr><td>hand-written glue</td><td>0/6</td><td>27</td><td class="poor">93% / 32%</td><td>100%</td><td>100%</td><td>—</td></tr>
-<tr><td>toolz</td><td>2/6</td><td>45</td><td>100% / 100%</td><td class="poor">0% (92× budget)</td><td>100%</td><td>0</td></tr>
-<tr><td>langchain-core</td><td>1/6</td><td>147</td><td class="poor">30% / 30%</td><td>100%</td><td class="poor">89.8%</td><td>25</td></tr>
-<tr><td>llama-index-core</td><td>0/6</td><td>189</td><td>100% / 100%</td><td class="poor">0% (129× budget)</td><td class="poor">74.2%</td><td>60</td></tr>
+<tr><td><strong>contexel</strong></td><td class="best">6/6</td><td>67</td><td class="best">100% / 100%</td><td class="best">100%</td><td class="best">100%</td><td class="best">0</td></tr>
+<tr><td>hand-written</td><td>0/6</td><td>20</td><td class="poor">93% / 32%</td><td class="best">100%</td><td class="best">100%</td><td>—</td></tr>
+<tr><td>hand-written (term overlap)</td><td>0/6</td><td>—</td><td>97% / 97%</td><td class="best">100%</td><td class="best">100%</td><td>—</td></tr>
+<tr><td>toolz</td><td>2/6</td><td>38</td><td class="best">100% / 100%</td><td class="poor">0% (92× budget)</td><td class="best">100%</td><td class="best">0</td></tr>
+<tr><td>langchain-core</td><td>1/6</td><td>396</td><td class="poor">30% / 30%</td><td class="best">100%</td><td class="poor">89.7%</td><td>25</td></tr>
+<tr><td>llama-index-core</td><td>0/6</td><td>464</td><td class="best">100% / 100%</td><td class="poor">0% (129× budget)</td><td class="poor">74.2%</td><td>60</td></tr>
 </table>
 </div>
+<!-- benchmark:glance:end -->
 
 <div class="note"><strong>Read it honestly:</strong> contexel is the only row
-green across every column — and it is the slowest budget-compliant row
-<em>because it does the most work</em>: deriving relevance from ~1&nbsp;KB of
-evidence per record on top of projecting, deduping, clipping, ranking, and
-budgeting. Every faster row is faster by doing less. All rows are negligible
-next to a single model call.</div>
+with full marks in every outcome column — and, in the ms/episode column
+of the <a href="benchmarks.html">benchmarks page</a> (this table shows only
+ms @28k), it and the hand-written term-overlap scorer are the two slowest
+budget-compliant rows, in an order that can change from run to run.
+contexel <em>does the most work</em>: deriving relevance from each record's
+own text on top of projecting, deduping, clipping, ranking, and budgeting; the
+scorer does less of that. Every other compliant row is faster by doing less
+still. All rows are negligible next to a single model call.</div>
 
 <h2>Newly landed — toward a context shaping plane</h2>
 <p>A readiness audit set the bar: pilot-ready is not enterprise-ready.
@@ -124,8 +130,7 @@ review:</p>
     <h3>tokens.scoped(…)</h3>
     <p>Context-local tokenizer/serializer overlay: each async task or
     tenant counts with its own accounting, others untouched. Bare threads
-    fall back to the process default — stated, not hidden. Costs ~2.4 µs
-    per record on token-counting paths.</p></div>
+    fall back to the process default — stated, not hidden.</p></div>
   <div class="card"><span class="k">Governance</span>
     <h3>Audit-grade traces</h3>
     <p>Every pipeline carries a stable policy fingerprint;
