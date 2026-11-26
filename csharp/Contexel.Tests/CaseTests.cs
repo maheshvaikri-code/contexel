@@ -27,7 +27,7 @@ public class CaseTests
         ["quarantine"] = ["fields", "patterns", "action", "into", "replace_patterns", "normalize"],
         ["rescore"] = ["query", "fields", "into", "proximity", "match", "normalize"],
         ["rank"] = ["by", "desc"],
-        ["truncate_field"] = ["field", "max_tokens"],
+        ["truncate_field"] = ["field", "max_tokens", "suffix"],
         ["trim_to_budget"] = ["max_tokens", "min_records"],
         ["merge"] = ["schema", "dedupe_key"],
         ["pipeline"] = ["stages"],
@@ -131,7 +131,8 @@ public class CaseTests
             OptStrs(a, "fields"), Str(a, "into", "score"), Flag(a, "proximity", true),
             Str(a, "match", "word"), OptStr(a, "normalize")),
         "rank" => Stages.Rank(r, (string)a["by"]!, Flag(a, "desc", true)),
-        "truncate_field" => Stages.TruncateField(r, (string)a["field"]!, (int)(long)a["max_tokens"]!),
+        "truncate_field" => Stages.TruncateField(r, (string)a["field"]!, (int)(long)a["max_tokens"]!,
+            suffix: Str(a, "suffix", "…")),
         "trim_to_budget" => Stages.TrimToBudget(r, (int)(long)a["max_tokens"]!,
             minRecords: a.TryGetValue("min_records", out var m) ? (int)(long)m! : 0),
         // size goes in as the raw JSON value (SplitCore): a bool, a fraction or a
