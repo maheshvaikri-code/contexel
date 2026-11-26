@@ -711,7 +711,10 @@ runs its test suite against the same golden vectors
 [parity/generate_vectors.py](parity/generate_vectors.py)) — every stage,
 the composed contract pipeline, the audit record, canonical serialization,
 token counts, and a growing block of adversarial edge cases must match or
-the build is red, on Linux, Windows, and macOS.
+the build is red, on Linux, Windows, and macOS. A seeded differential fuzz
+corpus ([parity/generate_fuzz.py](parity/generate_fuzz.py)), generated from
+the canon on every run and never committed, is replayed by the TypeScript and
+C# suites too.
 
 What carries over exactly: all eight record stages, `merge` and the
 payload stages `as_records`, `split` and `join`,

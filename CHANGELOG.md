@@ -190,6 +190,18 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   Hugging Face answers them with are followed. The temporary file is removed
   on any failure.
 
+### Added — differential fuzz (ADR-007; tests and CI only, no library change)
+- `parity/generate_fuzz.py` writes a seeded corpus of random cases inside the documented parity envelope, in
+  the format of `parity/vectors.json`, with every expectation computed by the Python canon. The TypeScript
+  (`ts/test/fuzz.test.ts`) and C# (`FuzzTests.cs`) suites replay it through the runners that replay the shared
+  vectors. CI and the release workflow generate it and set `CONTEXEL_FUZZ_CASES`; locally the replay is skipped
+  unless that variable names the corpus, and under CI an unset variable fails. The corpus is the same on every
+  Python and operating system, is never committed, and a divergence is reproduced with
+  `python parity/generate_fuzz.py --seed S --show INDEX`.
+- The fuzz found one gap, in the C# test adapter (it did not pass `truncate_field`'s `suffix`), fixed with three
+  new shared cases, and one margin that was not recorded: C# `rescore` treats U+0130 differently from Python and
+  JavaScript. The domain, the margins it excludes and why are in ADR-007.
+
 ### Changed — benchmark claims (documentation only)
 - "sub-20 ms import" (PyPI README, home page) is now "about 20 ms": contexel's
   import measured between 19.3 and 20.8 ms across runs, so "sub-20" held only on

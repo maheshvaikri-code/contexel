@@ -64,6 +64,9 @@ nested value, so the nested-container repr margin no longer applies to it
    - `round()` normalizes `-0` to `0` (Python can emit `-0.0` for an
      audit `reduction` when tokens grow marginally) — same margin as
      ADR-001; the ports agree with each other.
+   - U+0130 (capital I with dot above): Python and JavaScript lower-case it to `i` and U+0307; `ToLowerInvariant`
+     leaves it, so `rescore` tokenizes text containing it differently (found by the differential fuzz, ADR-007;
+     excluded from its domain).
    - Lone surrogates (out of the JSON-safe envelope) advance one unit
      like Python's per-code-point strings — never a crash.
    - Unicode normalization (`normalize="nfc"`, ADR-006) uses each runtime's own
