@@ -81,13 +81,13 @@ isolates shaping loss, not retrieval loss. Budget: 1,500 tokens.</p>
 <!-- benchmark:glance:start -->
 <div class="scroll">
 <table>
-<tr><th>Implementation</th><th>Native ops</th><th>ms @28k</th><th>ms/episode</th><th>Recall (strong/weak)</th><th>Compliance</th><th>Fill</th><th>Useful</th><th>Import ms</th><th>Deps</th></tr>
-<tr><td><strong>contexel</strong></td><td class="best">6/6</td><td>67</td><td>37.6</td><td class="best">100% / 100%</td><td class="best">100%</td><td>0.95×</td><td class="best">100%</td><td>21</td><td class="best">0</td></tr>
-<tr><td>hand-written</td><td>0/6</td><td>20</td><td>3.1</td><td class="poor">93% / 32%</td><td class="best">100%</td><td>0.95×</td><td class="best">100%</td><td>—</td><td>—</td></tr>
-<tr><td>hand-written (term overlap)</td><td>0/6</td><td>—</td><td>33.9</td><td>97% / 97%</td><td class="best">100%</td><td>0.94×</td><td class="best">100%</td><td>—</td><td>—</td></tr>
-<tr><td>toolz</td><td>2/6</td><td>38</td><td>14.2</td><td class="best">100% / 100%</td><td class="poor">0%</td><td class="poor">91.62×</td><td class="best">100%</td><td>12</td><td class="best">0</td></tr>
-<tr><td>langchain-core</td><td>1/6</td><td>396</td><td>17.9</td><td class="poor">30% / 30%</td><td class="best">100%</td><td>0.52×</td><td class="poor">89.7%</td><td>88</td><td>25</td></tr>
-<tr><td>llama-index-core</td><td>0/6</td><td>464</td><td>49.6</td><td class="best">100% / 100%</td><td class="poor">0%</td><td class="poor">129.21×</td><td class="poor">74.2%</td><td>1,156</td><td>60</td></tr>
+<tr><th>Implementation</th><th>Native ops (in this wiring)</th><th>ms @28k</th><th>ms/episode</th><th>Recall (strong/weak)</th><th>Fill × (estimated tokens ÷ budget)</th><th>Useful</th><th>Import ms</th><th>Transitive deps</th></tr>
+<tr><td><strong>contexel</strong></td><td class="best">6/6</td><td>67</td><td>37.6</td><td class="best">100% / 100%</td><td>0.95×</td><td class="best">100%</td><td>21</td><td class="best">0</td></tr>
+<tr><td>hand-written</td><td>0/6</td><td>20</td><td>3.1</td><td class="poor">93% / 32%</td><td>0.95×</td><td class="best">100%</td><td>—</td><td>—</td></tr>
+<tr><td>hand-written (term overlap)</td><td>0/6</td><td>—</td><td>33.9</td><td>97% / 97%</td><td>0.94×</td><td class="best">100%</td><td>—</td><td>—</td></tr>
+<tr><td>toolz</td><td>2/6</td><td>38</td><td>14.2</td><td>100% / 100%</td><td class="poor">91.62×</td><td class="best">100%</td><td>12</td><td class="best">0</td></tr>
+<tr><td>langchain-core</td><td>1/6</td><td>396</td><td>17.9</td><td class="poor">30% / 30%</td><td>0.52×</td><td class="poor">89.7%</td><td>88</td><td>25</td></tr>
+<tr><td>llama-index-core</td><td>0/6</td><td>464</td><td>49.6</td><td>100% / 100%</td><td class="poor">129.21×</td><td class="poor">74.2%</td><td>1,156</td><td>60</td></tr>
 </table>
 </div>
 <!-- benchmark:glance:end -->

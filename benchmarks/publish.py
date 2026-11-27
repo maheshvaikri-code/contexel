@@ -21,8 +21,15 @@ typed by hand, so they could drift from what the benchmark produced. Now:
 ``check(root)`` returns the problems (empty when everything agrees): a missing,
 unreadable or oversized file, and results with a missing key, a value of the wrong
 type, an empty list or a zero divisor (``MALFORMED``), are problems too, not a
-traceback. ``write(root)`` rewrites the generated blocks.
+traceback. ``write(root)`` rewrites the generated blocks and ``write_reports(root)``
+re-renders the two reports from the committed JSON (neither runs a benchmark).
 ``tools/check_benchmark_numbers.py`` is the command.
+
+No published table has a Compliance column: the share of contexts that fit the budget was
+counted with the same estimator (about four characters per token) the rows cut with, so
+every row with a budget step scored 100% by construction. The results keep
+``compliance_pct``; Fill (mean estimated tokens / budget) is the column that shows a row
+running over the budget.
 """
 from __future__ import annotations
 
@@ -51,7 +58,14 @@ BLOCK = re.compile(
 MARKER = re.compile(r"<!--\s*benchmark:[a-z0-9-]+:(?:start|end)\s*-->")
 MINUS = chr(0x2212)
 TIMES = chr(0xD7)
+DIVIDE = chr(0xF7)
 DASH = chr(0x2014)
+# The column headers that say what they count: the native operations are counted over the
+# step lists benchmarks/competitors.py chose; Fill is measured with the default estimator;
+# the dependency count is the installed transitive closure.
+OPS_HEADER = "Native ops (in this wiring)"
+FILL_HEADER = f"Fill {TIMES} (estimated tokens {DIVIDE} budget)"
+DEPS_HEADER = "Transitive deps"
 
 
 # --------------------------------------------------------------------------- #
@@ -66,15 +80,15 @@ def _g1(x: float) -> str:
 
 
 def _tier(metric: str, row: Dict[str, Any]) -> str:
-    """'best' for a full-marks cell, 'poor' for a failing one, '' otherwise."""
+    """'best' for a full-marks cell, 'poor' for a failing one, '' otherwise. Recall is not
+    'best' on a row whose contexts run over the budget (Fill above 1): keeping the record by
+    emitting many times the budget is not the best result."""
     if metric == "ops":
         return "best" if row["native"] == row["total"] else ""
     if metric == "recall":
         if row["rs"] == 100 and row["rw"] == 100:
-            return "best"
+            return "best" if row["fill"] <= 1 else ""
         return "poor" if min(row["rs"], row["rw"]) < 50 else ""
-    if metric == "compliance":
-        return "best" if row["compliance"] == 100 else ("poor" if row["compliance"] < 50 else "")
     if metric == "fill":
         return "poor" if row["fill"] > 1 else ""
     if metric == "useful":
@@ -99,6 +113,7 @@ def glance(comparison: Dict[str, Any]) -> List[Dict[str, Any]]:
             "ms": t["ms"] if t and t["ms"] is not None else None,
             "ms_ep": o["ms_per_episode"],
             "rs": o["recall_strong_pct"], "rw": o["recall_weak_pct"],
+            # not rendered (no published table has a Compliance column); two claims read it
             "compliance": o["compliance_pct"], "fill": o["fill_x"],
             "useful": o["useful_share_pct"],
             "import_ms": f["import_ms"] if f else None,
@@ -115,7 +130,6 @@ def _cells(row: Dict[str, Any]) -> List[Tuple[str, str, str]]:
         ("ms", _n0(row["ms"]) if row["ms"] is not None else absent, ""),
         ("ms_ep", f"{row['ms_ep']:.1f}", ""),
         ("recall", f"{row['rs']:.0f} / {row['rw']:.0f}", _tier("recall", row)),
-        ("compliance", f"{row['compliance']:.0f}", _tier("compliance", row)),
         ("fill", f"{row['fill']:.2f}", _tier("fill", row)),
         ("useful", _g1(row["useful"]), _tier("useful", row)),
         ("import_ms", _n0(row["import_ms"]) if row["import_ms"] is not None else absent, ""),
@@ -134,9 +148,8 @@ def _md(text: str) -> str:
 
 
 def md_glance(comparison: Dict[str, Any]) -> str:
-    head = ["Implementation", "Native ops", f"ms @{_k(comparison)}", "ms/episode",
-            "Recall % (strong / weak)", "Compliance %", f"Fill {TIMES}", "Useful %",
-            "Import ms", "Deps"]
+    head = ["Implementation", OPS_HEADER, f"ms @{_k(comparison)}", "ms/episode",
+            "Recall % (strong / weak)", FILL_HEADER, "Useful %", "Import ms", DEPS_HEADER]
     lines = ["| " + " | ".join(head) + " |", "|" + "|".join("---" for _ in head) + "|"]
     for row in glance(comparison):
         name = f"**{_md(row['impl'])}**" if row["impl"] == "contexel" else _md(row["impl"])
@@ -150,8 +163,8 @@ def _td(text: str, tier: str) -> str:
 
 
 def html_glance(comparison: Dict[str, Any]) -> str:
-    head = ["Implementation", "Native ops", f"ms @{_k(comparison)}", "ms/episode",
-            "Recall (strong/weak)", "Compliance", "Fill", "Useful", "Import ms", "Deps"]
+    head = ["Implementation", OPS_HEADER, f"ms @{_k(comparison)}", "ms/episode",
+            "Recall (strong/weak)", FILL_HEADER, "Useful", "Import ms", DEPS_HEADER]
     lines = ['<div class="scroll">', "<table>",
              "<tr>" + "".join(f"<th>{h}</th>" for h in head) + "</tr>"]
     for row in glance(comparison):
@@ -159,7 +172,7 @@ def html_glance(comparison: Dict[str, Any]) -> str:
         first = f"<td><strong>{name}</strong></td>" if row["impl"] == "contexel" else f"<td>{name}</td>"
         cells = []
         for metric, text, tier in _cells(row):
-            if metric in ("recall", "compliance", "useful"):
+            if metric in ("recall", "useful"):
                 text = text.replace(" / ", "% / ") + "%"
             elif metric == "fill":
                 text = f"{text}{TIMES}"
@@ -171,18 +184,17 @@ def html_glance(comparison: Dict[str, Any]) -> str:
 
 def html_home_glance(comparison: Dict[str, Any]) -> str:
     """The home page's shorter table."""
-    head = ["Implementation", "Native ops", f"ms @{_k(comparison)}",
-            "Recall (strong/weak signal)", "Budget compliance", "Useful tokens", "Deps"]
+    head = ["Implementation", OPS_HEADER, f"ms @{_k(comparison)}",
+            "Recall (strong/weak signal)", FILL_HEADER, "Useful tokens", DEPS_HEADER]
     lines = ['<div class="scroll">', "<table>",
              "<tr>" + "".join(f"<th>{h}</th>" for h in head) + "</tr>"]
     for row in glance(comparison):
         name = html.escape(row["impl"])
         first = f"<td><strong>{name}</strong></td>" if row["impl"] == "contexel" else f"<td>{name}</td>"
         by = {m: (t, tier) for m, t, tier in _cells(row)}
-        over = f" ({row['fill']:.0f}{TIMES} budget)" if row["fill"] > 1 else ""
         lines.append("<tr>" + first + _td(*by["ops"]) + _td(*by["ms"])
                      + _td(by["recall"][0].replace(" / ", "% / ") + "%", by["recall"][1])
-                     + _td(by["compliance"][0] + "%" + over, by["compliance"][1])
+                     + _td(by["fill"][0] + TIMES, by["fill"][1])
                      + _td(by["useful"][0] + "%", by["useful"][1])
                      + _td(*by["deps"]) + "</tr>")
     lines += ["</table>", "</div>"]
@@ -333,14 +345,6 @@ def _rows(c: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     return {r["impl"]: r for r in glance(c)}
 
 
-OUTCOME_COLUMNS = ("recall", "compliance", "useful")  # not "ops": the operations column is no outcome
-
-
-def _full_outcome_marks(r: Dict[str, Any]) -> bool:
-    """Full marks in every outcome column: recall (strong and weak), compliance, useful share."""
-    return all(_tier(m, r) == "best" for m in OUTCOME_COLUMNS)
-
-
 def _only_full_native(c: Dict[str, Any], s: Dict[str, Any]) -> bool:
     rows = _rows(c)
     return rows["contexel"]["native"] == rows["contexel"]["total"] == SIX_OPERATIONS and all(
@@ -355,17 +359,8 @@ def _two_slowest_compliant(c: Dict[str, Any], s: Dict[str, Any]) -> bool:
     return {r["impl"] for r in compliant[:2]} == {"contexel", "hand-written (term overlap)"}
 
 
-def _only_contexel_full(c: Dict[str, Any], s: Dict[str, Any]) -> bool:
-    return [r["impl"] for r in glance(c) if _full_outcome_marks(r)] == ["contexel"]
-
-
 def _same_recall(c: Dict[str, Any], s: Dict[str, Any]) -> bool:
     return _contexel(c, "recall_strong_pct") == _contexel(c, "recall_weak_pct")
-
-
-def _zero_compliance(c: Dict[str, Any], s: Dict[str, Any]) -> bool:
-    rows = _rows(c)
-    return all(rows[n]["rs"] == 100 and rows[n]["compliance"] == 0 for n in ("toolz", "llama-index-core"))
 
 
 def _langchain_bloat(c: Dict[str, Any], s: Dict[str, Any]) -> bool:
@@ -443,6 +438,9 @@ CLAIMS += [
           _equals(lambda c, s: f"{c['settings']['eval_budget']:,}")),
     Claim("README.md", "JSON tokenizer error", MINUS + r"(\d+)%\s+on\s+JSON-heavy",
           _equals(_json_error)),
+    # These two PyPI sentences still state a budget-compliance percentage; the number is
+    # checked against compliance_pct (estimator tokens) for as long as the sentences carry it,
+    # and the claims go when the sentences are reworded. No generated table shows the column.
     Claim("README_PYPI.md", "budget compliance", r"budget\s+in\s+(\d+)%\s+of\s+episodes",
           _metric("compliance_pct", "compliance")),
     Claim("README_PYPI.md", "recall", r"needed\s+record\s+in\s+(\d+)%\s+of\s+them", _both_recalls),
@@ -485,9 +483,6 @@ CLAIMS += [
               lambda c, s: c["inflected"]["episodes"] > 0 and bool(c["inflected"]["rows"])),
     _sentence("README_PYPI.md", r"not\s+how\s+many\s+English\s+inflections\s+the\s+stemmer\s+covers",
               "the stem figure is not a coverage figure", lambda c, s: bool(c["inflected"]["rows"])),
-    _sentence("site/index.html",
-              r"contexel\s+is\s+the\s+only\s+row\s+with\s+full\s+marks\s+in\s+every\s+outcome\s+column",
-              "only row with full marks", _only_contexel_full),
     _sentence("README_PYPI.md", _SLOWEST, _SLOWEST_LABEL, _two_slowest_compliant),
     _sentence("site/index.html", _SLOWEST, _SLOWEST_LABEL, _two_slowest_compliant),
     _sentence("README.md", _SLOWEST, _SLOWEST_LABEL, _two_slowest_compliant),
@@ -496,10 +491,6 @@ CLAIMS += [
               "same recall under both signals", _same_recall),
     _sentence("site/benchmarks.html", r"so\s+its\s+two\s+columns\s+read\s+the\s+same",
               "same recall under both signals", _same_recall),
-    _sentence("README.md", r"A\s+row\s+with\s+full\s+recall\s+and\s+zero\s+compliance",
-              "toolz and llama-index: full recall, zero compliance", _zero_compliance),
-    _sentence("site/benchmarks.html", r"toolz\s+and\s+llama-index\s+keep\s+the\s+needed\s+record",
-              "toolz and llama-index: full recall, zero compliance", _zero_compliance),
     _sentence("README.md", r"langchain-core\s+honors\s+the\s+budget", "langchain-core: compliant but bloated",
               _langchain_bloat),
     _sentence("site/benchmarks.html", r"langchain-core\s+holds\s+the\s+budget",
@@ -797,5 +788,26 @@ def write(root: Path) -> List[str]:
         new = _regenerated(text, blocks)
         if new != text:
             _replace_file(path, new)
+            changed.append(rel)
+    return changed
+
+
+def _reports(comparison: Dict[str, Any], suites: Dict[str, Any]) -> List[Tuple[str, str]]:
+    """(path, text) of the two reports rendered from the committed results."""
+    return [("benchmarks/COMPARISON.md", render_report(comparison)),
+            ("benchmarks/RESULTS.md", suites_report.render(suites))]
+
+
+def write_reports(root: Path) -> List[str]:
+    """Re-render ``COMPARISON.md`` and ``RESULTS.md`` from the committed JSON (no benchmark
+    runs, so no measurement changes); return the files changed. A report that already equals
+    its rendering (line endings aside) is left alone. Raises PublishError like ``write``."""
+    comparison = _load(root, "benchmarks/COMPARISON.json")
+    suites = _load(root, "benchmarks/RESULTS.json")
+    changed = []
+    for rel, rendered in _reports(comparison, suites):
+        path = _target(root, rel)
+        if _read(root, rel) != rendered:
+            _replace_file(path, rendered)
             changed.append(rel)
     return changed

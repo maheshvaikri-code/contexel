@@ -76,6 +76,7 @@ def test_the_check_is_the_same_on_a_checkout_with_crlf_line_endings(tree):
         path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
     assert publish.check(tree) == []
     assert publish.write(tree) == []  # and --write has nothing to change
+    assert publish.write_reports(tree) == []
 
 
 def test_a_changed_number_in_a_generated_table_is_reported(tree):
@@ -630,13 +631,151 @@ def test_a_published_file_that_is_not_utf8_is_reported(tree):
     assert any("README.md" in p and "not valid UTF-8" in p for p in problems), problems
 
 
-# --- the qualitative claims read only the columns they name ---------------------------------
-def test_the_only_full_marks_claim_reads_only_the_outcome_columns(tree):
-    def edit(data):
-        row = _outcome(data, "hand-written (term overlap)")
-        row["recall_strong_pct"] = row["recall_weak_pct"] = 100.0  # 0/6 native ops, but full outcomes
+# --- the Compliance column is gone from every published table (ruling P1-1) -----------------
+# compliance_pct stays in the results (it is a record, and two claims still read it), but no
+# generated table shows it and no claim scores a row by it: it was counted with the same
+# ~4 characters per token estimate the rows cut with, so it could not tell them apart.
+def _committed():
+    return json.loads((ROOT / "benchmarks" / "COMPARISON.json").read_text(encoding="utf-8"))
 
-    _edit_comparison(tree, edit)
-    problems = publish.check(tree)
-    assert any("site/index.html" in p and "only row with full marks" in p and "not true" in p
-               for p in problems), problems
+
+FILL_HEADER = "Fill " + chr(0xD7) + " (estimated tokens " + chr(0xF7) + " budget)"
+
+
+def _md_rows(block):
+    return [re.split(r"(?<!\\)\|", line.strip().strip("|")) for line in block.splitlines()]
+
+
+def test_no_generated_table_has_a_compliance_column():
+    comparison = _committed()
+    tables = {
+        "README glance": publish.md_glance(comparison),
+        "site glance": publish.html_glance(comparison),
+        "home glance": publish.html_home_glance(comparison),
+        "README inflected": publish.md_inflected(comparison),
+        "site inflected": publish.html_inflected(comparison),
+    }
+    for name, text in tables.items():
+        assert "compliance" not in text.lower(), name
+
+
+def test_the_generated_tables_do_not_change_with_compliance():
+    comparison = _committed()
+    edited = json.loads(json.dumps(comparison))
+    for row in edited["outcomes"]:
+        row["compliance_pct"] = 50.0
+    for render in (publish.md_glance, publish.html_glance, publish.html_home_glance):
+        assert render(edited) == render(comparison), render.__name__
+
+
+def test_the_fill_column_is_labelled_as_estimated_tokens_over_the_budget():
+    comparison = _committed()
+    md = publish.md_glance(comparison)
+    rows = _md_rows(md)
+    assert FILL_HEADER in [c.strip() for c in rows[0]]
+    assert len({len(r) for r in rows}) == 1  # every row has a cell under every header
+    for render in (publish.html_glance, publish.html_home_glance):
+        html_table = render(comparison)
+        assert f"<th>{FILL_HEADER}</th>" in html_table, render.__name__
+        assert "<td class=\"poor\">91.62" + chr(0xD7) + "</td>" in html_table, render.__name__
+
+
+def test_native_ops_and_deps_headers_say_what_they_count():
+    comparison = _committed()
+    head = [c.strip() for c in _md_rows(publish.md_glance(comparison))[0]]
+    assert "Native ops (in this wiring)" in head and "Transitive deps" in head
+    assert "Deps" not in head and "Native ops" not in head
+    for render in (publish.html_glance, publish.html_home_glance):
+        text = render(comparison)
+        assert "<th>Native ops (in this wiring)</th>" in text and "<th>Transitive deps</th>" in text
+
+
+def test_recall_is_not_marked_best_on_a_row_that_runs_over_the_budget():
+    # facts:S9: toolz and llama-index-core keep the record by emitting about 92 and 129 times
+    # the budget; their recall cells are not highlighted as the best result
+    comparison = _committed()
+    rows = {r["impl"]: r for r in publish.glance(comparison)}
+    assert publish._tier("recall", rows["contexel"]) == "best"
+    for name in ("toolz", "llama-index-core"):
+        assert rows[name]["fill"] > 1 and publish._tier("recall", rows[name]) == "", name
+    md = {r[0].strip().strip("*"): r for r in _md_rows(publish.md_glance(comparison))[2:]}
+    recall = 4  # Implementation, Native ops, ms @28k, ms/episode, Recall
+    assert md["contexel"][recall].strip() == "**100 / 100**"
+    assert md["toolz"][recall].strip() == "100 / 100"
+    assert md["llama-index-core"][recall].strip() == "100 / 100"
+    site = publish.html_glance(comparison)
+    toolz_row = next(line for line in site.splitlines() if "<td>toolz</td>" in line)
+    assert '<td class="best">100% / 100%</td>' not in toolz_row
+    assert "<td>100% / 100%</td>" in toolz_row
+
+
+def test_no_claim_scores_a_row_by_its_compliance():
+    labels = {c.label for c in publish.CLAIMS}
+    assert "only row with full marks" not in labels
+    assert "toolz and llama-index: full recall, zero compliance" not in labels
+
+
+def test_full_compliance_for_toolz_breaks_no_published_claim(tree):
+    # the claims that read "full recall and zero compliance" are gone: toolz's compliance no
+    # longer decides whether a published sentence is true (toolz is not among the slowest
+    # rows, so the "two slowest budget-compliant rows" sentence is unaffected)
+    _edit_comparison(tree, lambda data: _outcome(data, "toolz").update(compliance_pct=100.0))
+    assert publish.check(tree) == []
+
+
+def test_the_reports_have_no_compliance_column_and_the_new_fill_label():
+    comparison = _committed()
+    text = competitors.render_report(comparison)
+    assert "compliance" not in text.lower()
+    assert FILL_HEADER in text
+    for line in text.splitlines():
+        if line.startswith("| Implementation |"):
+            assert "Fill x" not in line
+
+
+# --- --write regenerates the two reports from the committed JSON too ------------------------
+def test_write_reports_rerenders_a_stale_report_and_is_idempotent(tree):
+    for rel in ("benchmarks/COMPARISON.md", "benchmarks/RESULTS.md"):
+        path = tree / rel
+        _write(path, path.read_text(encoding="utf-8") + "stale\n")
+    assert len([p for p in publish.check(tree) if "not the report rendered" in p]) == 2
+    rewritten = sorted(publish.write_reports(tree))
+    assert rewritten == ["benchmarks/COMPARISON.md", "benchmarks/RESULTS.md"]
+    assert publish.check(tree) == []
+    assert publish.write_reports(tree) == []  # idempotent
+    assert not [p.name for p in tree.rglob("*.tmp")]
+
+
+def test_the_write_command_regenerates_the_reports(tree):
+    path = tree / "benchmarks" / "COMPARISON.md"
+    _write(path, path.read_text(encoding="utf-8") + "stale\n")
+    script = ROOT / "tools" / "check_benchmark_numbers.py"
+    run = subprocess.run([sys.executable, str(script), "--root", str(tree), "--write"],
+                         capture_output=True, text=True)
+    assert run.returncode == 0, run.stdout + run.stderr
+    assert "benchmarks/COMPARISON.md" in run.stdout
+    comparison = json.loads((tree / "benchmarks" / "COMPARISON.json").read_text(encoding="utf-8"))
+    assert path.read_text(encoding="utf-8") == competitors.render_report(comparison)
+
+
+def test_write_reports_refuses_a_target_that_is_not_a_file(tree):
+    report = tree / "benchmarks" / "RESULTS.md"
+    report.unlink()
+    report.mkdir()
+    with pytest.raises(publish.PublishError, match="not a regular file"):
+        publish.write_reports(tree)
+
+
+# --- reproducibility: the measured versions are recorded as constraints (P1-9) ---------------
+def test_the_constraints_file_pins_the_measured_versions():
+    measured = _committed()["environment"]["libraries"]
+    lines = (ROOT / "benchmarks" / "constraints.txt").read_text(encoding="utf-8").splitlines()
+    pins = dict(line.split("==") for line in lines if line.strip() and not line.startswith("#"))
+    assert pins == measured
+
+
+def test_no_benchmark_source_cites_a_readme_section_that_does_not_exist():
+    # numbers:D11: the README has no "How much does it cut?" section
+    for rel in ("benchmarks/__init__.py", "benchmarks/suites.py", "benchmarks/suites_report.py",
+                "benchmarks/RESULTS.md"):
+        assert "How much does it cut" not in (ROOT / rel).read_text(encoding="utf-8"), rel

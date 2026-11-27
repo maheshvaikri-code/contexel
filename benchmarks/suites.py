@@ -12,8 +12,8 @@
                          code, and the trace-inactive "zero cost" claim.
 4. tokenizer_accuracy — the ~4-chars/token default estimate vs tiktoken
                          cl100k_base, on prose, code, and JSON records.
-5. reduction          — README "How much does it cut?": reduction is a
-                         property of the data and the budget, reported as
+5. reduction          — reduction is a property of the data and the
+                         budget, not of the library, reported as
                          lossless (select+dedupe) vs by-choice (truncate+trim).
 6. encoding_pairing   — budgets are encoding-relative: the same contract and
                          budget with the boundary priced and serialized as

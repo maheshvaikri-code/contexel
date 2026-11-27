@@ -217,12 +217,14 @@ def test_the_comparison_report_is_rendered_from_its_dictionary_alone():
 def test_the_comparison_report_states_what_the_numbers_say_and_changes_with_them():
     results = _comparison()
     text = competitors.render_report(results)
-    assert "contexel is the slowest budget-compliant row (15.0 ms)" in text
+    assert ("contexel is the slowest of the rows whose every context fits the budget "
+            "as the estimator counts it (15.0 ms)") in text
     assert "contexel is the only 5/5" in text
     slower = copy.deepcopy(results)
     next(r for r in slower["outcomes"] if r["impl"] == "hand-written")["ms_per_episode"] = 99.0
     out = competitors.render_report(slower)
-    assert "the slowest budget-compliant row is hand-written (99.0 ms); contexel's is 15.0 ms" in out
+    assert ("the slowest of the rows whose every context fits the budget as the estimator "
+            "counts it is hand-written (99.0 ms); contexel's is 15.0 ms") in out
     tie = copy.deepcopy(results)
     next(r for r in tie["task"] if r["impl"] == "toolz")["native"] = "5/5"
     assert "contexel is the only 5/5" not in competitors.render_report(tie)
@@ -270,6 +272,102 @@ def test_the_import_time_is_the_median_of_fresh_interpreter_runs(monkeypatch):
 def test_one_real_fresh_interpreter_import_is_measured():
     ms = competitors.import_ms("json", repeats=1)
     assert 0 < ms < 10_000
+
+
+def _flat(text):
+    """The report with its line breaks folded, so a test can quote a sentence."""
+    return " ".join(text.split())
+
+
+def test_the_report_discloses_who_wrote_it_and_how_to_reproduce_the_versions():
+    text = _flat(competitors.render_report(_comparison()))
+    assert ("This benchmark was written by contexel's author. The comparison wirings are our "
+            "best effort, one dataset, 100 episodes; corrections from the maintainers of the "
+            "compared libraries are welcome") in text
+    assert "https://github.com/maheshvaikri-code/contexel/issues" in text
+    assert "-c benchmarks/constraints.txt" in text
+
+
+def test_the_report_counts_native_ops_in_the_wiring_it_chose():
+    # facts:N1, N2, N5, N7, numbers:D6: the counts stand; what they describe is stated
+    text = _flat(competitors.render_report(_comparison()))
+    assert 'nothing about "native" is typed' not in text and "not typed" not in text
+    assert "in the wiring this benchmark chose" in text
+    assert ("which library functions each implementation uses, and which operation each step "
+            "serves, are the benchmark author's choices") in text
+    for other in ("`topk`", "`accumulate`", "`excluded_llm_metadata_keys`", "`IngestionPipeline`",
+                  "`ChatMemoryBuffer`"):
+        assert other in text, other
+    assert "In the wirings used here, no library in the timed set performs more than 2" in text
+
+
+def test_the_report_describes_llama_index_one_way_and_states_the_inactive_cutoff():
+    # facts:N3, N4, F4 (ruling P1-4)
+    text = _flat(competitors.render_report(_comparison()))
+    assert "not bounding them" not in text and "serve none of the six operations" not in text
+    for op in ("`SimilarityPostprocessor`", "`LongContextReorder`", "`top_n`", "`PromptHelper`",
+               "`ChatMemoryBuffer`"):
+        assert op in text, op
+    assert "This benchmark wires two of them" in text
+    assert "counts neither as one of the six stages" in text
+    assert "The cutoff (2.0) removes nothing under the strong signal" in text
+    raised = copy.deepcopy(_comparison())
+    raised["settings"]["llama_cutoff"] = 20.0  # above the lowest strong score: it now bites
+    out = _flat(competitors.render_report(raised))
+    assert "removes nothing" not in out and "The cutoff (20.0) applies under both signals." in out
+
+
+def test_no_strong_score_is_below_the_minimum_the_report_cites():
+    # the report says the llama-index cutoff removes nothing under the strong signal because
+    # every strong score is at least MIN_STRONG_SCORE: keep that constant true of the code
+    episodes = competitors.build_episodes(_corpus(), n=5)
+    scores = [h["score_strong"] for ep in episodes for h in ep["hits"]]
+    assert scores and min(scores) >= competitors.MIN_STRONG_SCORE > competitors.LLAMA_SCORE_CUTOFF
+
+
+def test_the_report_states_the_estimator_proximity_and_empty_contexts():
+    text = _flat(competitors.render_report(_comparison()))
+    # P1-2: every budget is the default estimator's; a hard limit needs an exact tokenizer
+    assert "counted with contexel's default estimator (about four characters per token)" in text
+    assert "`tokens.use_tiktoken()`" in text and "run over the estimated budget" in text
+    # P1-12: the lead over the term-overlap scorer, next to "fairest comparison"
+    assert "fairest comparison" in text and "in-order proximity bonus" in text
+    assert "keep the target's word order" in text
+    # P1-13 and numbers:D5
+    assert "A context that is empty counts as fully useful by the current scoring" in text
+    assert "identical by construction" in text
+    # facts:F9, F10, numbers:D17: unmeasured assertions are gone or labelled
+    assert "re-derived, slightly differently, every run" not in text
+    assert "not a scoring defect" not in text and "not analysed per episode" in text
+
+
+def test_the_report_names_the_tools_it_did_not_run_precisely():
+    text = _flat(competitors.render_report(_comparison()))
+    # facts:X3: the Haystack row names its components and says what each does
+    assert "haystack-ai (DocumentJoiner, MetaFieldRanker, LostInTheMiddleRanker)" in text
+    assert "farm-haystack conflict" not in text
+    # facts:X2: the filter lives in langchain-community
+    assert "langchain-community EmbeddingsRedundantFilter" in text
+    # facts:X7, X9: LLMLingua compresses to a token target; ColBERT and cross-encoders rank
+    lines = competitors.render_report(_comparison()).splitlines()
+    lingua = next(line for line in lines if line.startswith("| LLMLingua |"))
+    rankers = next(line for line in lines
+                   if line.startswith("| ColBERT, cross-encoder rerankers |"))
+    assert "`target_token`" in lingua and "ColBERT" not in lingua
+    assert "no token budget" in rankers
+    # facts:X6
+    assert "prior-art" not in text and "did not verify" not in text
+    assert "not on PyPI as of 2026-11-26" in text and "`context-kit`" in text and "`ctxeng`" in text
+
+
+def test_the_report_lists_full_rows_by_fill_not_by_compliance():
+    results = _comparison()
+    text = _flat(competitors.render_report(results))
+    assert "stay within the budget on average (Fill at most 1.00)" in text
+    assert "spend no tokens on duplicates or bloat: contexel." in text
+    over = copy.deepcopy(results)
+    next(r for r in over["outcomes"] if r["impl"] == "contexel")["fill_x"] = 1.2
+    assert "spend no tokens on duplicates or bloat: -." in _flat(competitors.render_report(over))
 
 
 def test_the_report_says_how_the_import_time_was_taken():

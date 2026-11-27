@@ -83,12 +83,12 @@ best of 5 runs. Datasets are seeded and byte-identical across machines \
 
 contexel's claims are **determinism** (a versioned context contract: the same
 shaping on every run), **budget enforcement**, and **zero inference cost** —
-not compression magnitude. Per the README ("How much does it cut?") and the
-prior-art review, a headline reduction percentage is a property of the data
-and the budget, not of the library, so suite 5 *characterizes* reduction
+not compression magnitude. A headline reduction percentage is a property of the
+data and the budget, not of the library, so suite 5 *characterizes* reduction
 across data profiles instead of advertising one number. Semantic quality
-(vs. LLMLingua, ColBERT, cross-encoder rerankers) is explicitly out of scope:
-contexel is deterministic and non-semantic by design.
+(learned models: LLMLingua compression, ColBERT retrieval, cross-encoder
+reranking) is explicitly out of scope: contexel is deterministic and
+non-semantic by design.
 
 ## 1. Determinism (the core claim)
 
@@ -128,12 +128,15 @@ field, measured with the tokenizer that shaped it (docstring claims
 Trace overhead on the full contract over 10,000 records: \
 {spd["trace"]["off_ms"]:.1f} ms inactive vs {spd["trace"]["on_ms"]:.1f} ms \
 active ({spd["trace"]["ratio"]:.2f}x). Inactive tracing is the "zero cost" \
-claim; active tracing token-counts every stage boundary and is priced \
-accordingly.
+claim; this suite compares it with active tracing only (an untraced baseline \
+is not measured here: the stages called without a pipeline). Active tracing \
+token-counts every stage boundary and is priced accordingly.
 
 ## 4. Default tokenizer accuracy (heuristic vs tiktoken cl100k_base)
 
-Positive error = the heuristic over-estimates (conservative for budgets).
+Positive error = the heuristic over-estimates (conservative for budgets). The JSON
+sample is 500 synthetic search-hit records with hexadecimal ids
+(`benchmarks/datasets.py`); on other records the error differs.
 
 {table(acc, [
     ("sample", "Sample"), ("actual", "Actual"), ("heuristic", "Heuristic"),
@@ -157,9 +160,13 @@ Standard contract over 2,000 records with 60-word snippets. Lossless =
 Budgets are encoding-relative: `trim_to_budget` prices each record by its
 serialized text. The same contract and budget, with the boundary priced and
 serialized as JSON (contexel's default) vs a minimal ISON table
-([ison.dev](https://ison.dev)) via `tokens.set_serializer`. `select` first
-projects records onto a uniform field set — exactly the rows ISON's table
-syntax encodes without repeating keys. Actual cost measured with tiktoken.
+([ison.dev](https://ison.dev)) via `tokens.set_serializer`. (ISON is by the same
+author as contexel.) `select` first projects records onto a uniform field set —
+exactly the rows ISON's table syntax encodes without repeating keys. Actual cost
+measured with tiktoken. The comparison is against contexel's default JSON
+(`json.dumps` with its default spacing, every key repeated in every record); any
+header-plus-rows encoding (CSV, TSV, columnar JSON, ISON) avoids repeating keys,
+and compact JSON and CSV are not measured here.
 
 {table(enc, [
     ("encoding", "Encoding"), ("budget", "Budget"),

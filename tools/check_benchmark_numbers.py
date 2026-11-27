@@ -10,7 +10,8 @@ Runs with the standard library and contexel only (no benchmark extras, no networ
 no dataset), so it runs in CI on every push.
 
     python tools/check_benchmark_numbers.py            # check the repository
-    python tools/check_benchmark_numbers.py --write    # regenerate the marked blocks
+    python tools/check_benchmark_numbers.py --write    # regenerate the marked blocks and
+                                                       # re-render the two reports
     python tools/check_benchmark_numbers.py --root DIR # check another tree (the tests do)
 
 Exit status: 0 everything agrees, 1 something differs (each problem is printed;
@@ -31,7 +32,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--root", type=Path, default=here)
     parser.add_argument("--write", action="store_true",
-                        help="rewrite the generated blocks from the JSON results, then check")
+                        help="rewrite the generated blocks and re-render COMPARISON.md and "
+                             "RESULTS.md from the JSON results (no benchmark runs), then check")
     args = parser.parse_args(argv)
     reconfigure = getattr(sys.stdout, "reconfigure", None)
     if reconfigure is not None:  # a problem quoting a non-ASCII number must print, not crash
@@ -45,6 +47,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         try:
             for rel in publish.write(root):
                 print(f"rewrote the generated blocks of {rel}")
+            for rel in publish.write_reports(root):
+                print(f"re-rendered {rel} from the committed results")
         except (publish.PublishError, OSError, *publish.MALFORMED) as exc:
             print(f"cannot write the generated blocks: {type(exc).__name__}: {exc}")
             return 1

@@ -1,0 +1,7 @@
+# The versions of the compared libraries that benchmarks/COMPARISON.json was measured
+# with (its "environment" entry). The benchmarks extra in pyproject.toml does not pin
+# them; to reproduce the measured versions, install with:
+#   pip install -e ".[benchmarks]" -c benchmarks/constraints.txt
+toolz==1.1.0
+langchain-core==1.4.9
+llama-index-core==0.14.23

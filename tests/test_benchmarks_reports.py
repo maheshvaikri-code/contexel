@@ -53,6 +53,19 @@ def test_the_suites_report_is_rendered_from_its_dictionary_alone():
     assert "benchmarks/RESULTS.json" in text and "tools/check_benchmark_numbers.py" in text
 
 
+def test_the_suites_report_cites_nothing_missing_and_discloses_ison():
+    text = " ".join(suites_report.render(_suites()).split())
+    # numbers:D11, facts:C6: no README section of that name, no unpublished review
+    assert "How much does it cut" not in text and "prior-art review" not in text
+    # facts:I1 (ruling P1-6) and facts:I3: same author; the baseline is contexel's default JSON
+    assert "(ISON is by the same author as contexel.)" in text
+    assert "contexel's default JSON" in text and "any header-plus-rows encoding" in text
+    # facts:X7: LLMLingua compresses, ColBERT retrieves, cross-encoders rerank
+    assert "LLMLingua compression, ColBERT retrieval, cross-encoder reranking" in text
+    # numbers:D12: suite 3 compares inactive with active tracing only
+    assert "an untraced baseline is not measured here" in text
+
+
 def test_a_failed_determinism_check_is_rendered_as_fail():
     results = copy.deepcopy(_suites())
     results["determinism"]["cross_process"] = False
