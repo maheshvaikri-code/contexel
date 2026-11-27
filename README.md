@@ -101,7 +101,7 @@ This benchmark was written by contexel's author. The comparison wirings are our
 best effort, one dataset, 100 episodes; corrections from the maintainers of the
 compared libraries are welcome ([open an issue](https://github.com/maheshvaikri-code/contexel/issues)).
 
-Every number in this section is generated, or checked against the results: the
+Every benchmark number in this section is generated, or checked against the results: the
 tables are rendered from `benchmarks/COMPARISON.json`, and
 `python tools/check_benchmark_numbers.py` (run in CI) fails when this file, the
 PyPI README or the site disagree with it. CI checks against the committed

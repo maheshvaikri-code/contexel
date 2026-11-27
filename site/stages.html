@@ -177,7 +177,9 @@ budget drops the least important records, not arbitrary ones. Values of
 <h2 id="truncate_field">truncate_field(records, field, max_tokens, tokenizer=None, suffix="…")</h2>
 <p><strong>Clips</strong> one long text field to the longest prefix that
 fits the cap, then appends the suffix. For the built-in estimator the cut is
-closed-form (<code>ceil(len/4)</code> is invertible: a cap of n tokens allows 4n characters);
+closed-form (<code>ceil(len/4)</code> is invertible: n tokens hold at most
+4n characters, so the prefix is four characters per token left after the
+suffix);
 for custom tokenizers it binary-searches. Non-string values pass through
 untouched. Never exceeds the cap.</p>
 

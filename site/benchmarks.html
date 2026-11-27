@@ -38,7 +38,7 @@
 without a headline "X% reduction" number, because reduction is a property of
 your data and your budget, not of the library. Two reproducible suites; full tables live in the
 repo (<code>benchmarks/RESULTS.md</code>, <code>benchmarks/COMPARISON.md</code>).
-Every benchmark result on this page is generated, or checked against the results: the tables are rendered from
+Every benchmark number on this page is generated, or checked against the results: the tables are rendered from
 <code>benchmarks/RESULTS.json</code> and <code>benchmarks/COMPARISON.json</code>, and
 <code>python tools/check_benchmark_numbers.py</code>, run in CI, fails when this
 page disagrees with them. CI checks against the committed results; it does
@@ -73,7 +73,7 @@ active tracing only: an untraced baseline (the stages called without a
 pipeline) is not measured here. Active tracing token-counts every stage
 boundary and is priced accordingly.</p>
 
-<h2>Suite 2 — against the prior art, on real data</h2>
+<h2>Suite 2 — against other libraries, on real functions</h2>
 <p><code>python -m benchmarks.competitors</code> (needs the
 <code>benchmarks</code> extra; the first run downloads the CodeSearchNet
 python/test split, ~30&nbsp;MB, and refuses it unless its SHA-256 equals the
