@@ -758,6 +758,48 @@ def test_the_write_command_regenerates_the_reports(tree):
     assert path.read_text(encoding="utf-8") == competitors.render_report(comparison)
 
 
+def test_a_stale_report_hint_never_reruns_a_benchmark(tree):
+    # regenerating a report from the committed JSON is --write; the benchmark commands
+    # would re-measure and change the published timings
+    for rel in ("benchmarks/COMPARISON.md", "benchmarks/RESULTS.md"):
+        path = tree / rel
+        _write(path, path.read_text(encoding="utf-8") + "stale\n")
+    hints = [p for p in publish.check(tree) if "not the report rendered" in p]
+    assert len(hints) == 2
+    for hint in hints:
+        assert "python tools/check_benchmark_numbers.py --write" in hint, hint
+        assert "python -m benchmarks" not in hint, hint
+
+
+@pytest.mark.parametrize("newline", [b"\r\n", b"\n"])
+def test_write_keeps_each_files_line_endings(tree, newline):
+    # a CRLF checkout stays CRLF and an LF one stays LF, for the blocks and the reports
+    rels = ("README.md", "site/index.html", "benchmarks/COMPARISON.md", "benchmarks/RESULTS.md")
+    for rel in rels:
+        path = tree / rel
+        path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", newline))
+    _replace(tree, "README.md", "| **contexel** |", "| **contexel (edited)** |")
+    _replace(tree, "site/index.html", "<td><strong>contexel</strong></td>", "<td>x</td>")
+    for rel in ("benchmarks/COMPARISON.md", "benchmarks/RESULTS.md"):
+        path = tree / rel
+        path.write_bytes(path.read_bytes() + b"stale" + newline)
+    if newline == b"\r\n":  # _replace wrote LF: put the edited files back to CRLF
+        for rel in ("README.md", "site/index.html"):
+            path = tree / rel
+            path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+    assert sorted(publish.write(tree)) == ["README.md", "site/index.html"]
+    assert len(publish.write_reports(tree)) == 2
+    for rel in rels:
+        data = (tree / rel).read_bytes()
+        lf_only = data.count(b"\n") - data.count(b"\r\n")
+        if newline == b"\r\n":
+            assert lf_only == 0 and data.count(b"\r\n") > 0, rel
+        else:
+            assert b"\r" not in data, rel
+    assert publish.check(tree) == []
+    assert publish.write(tree) == [] and publish.write_reports(tree) == []  # idempotent
+
+
 def test_write_reports_refuses_a_target_that_is_not_a_file(tree):
     report = tree / "benchmarks" / "RESULTS.md"
     report.unlink()

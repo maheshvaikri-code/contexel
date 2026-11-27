@@ -333,6 +333,14 @@ def test_the_report_states_the_estimator_proximity_and_empty_contexts():
     # P1-12: the lead over the term-overlap scorer, next to "fairest comparison"
     assert "fairest comparison" in text and "in-order proximity bonus" in text
     assert "keep the target's word order" in text
+    # the lead comes from the bonus (not "partly"): without it contexel is not above the
+    # baseline on these episodes, a row this benchmark does not generate
+    assert "partly" not in text
+    assert "contexel's lead over it comes from `rescore`'s in-order proximity bonus" in text
+    assert ("with the bonus switched off contexel's recall on these episodes is not above the "
+            "term-overlap baseline's (this benchmark does not generate that row)") in text
+    # facts:F6 as reviewed: most of the contexts, not all, run over in exact tokens
+    assert "most of the contexts that fill the budget here run over the estimated budget" in text
     # P1-13 and numbers:D5
     assert "A context that is empty counts as fully useful by the current scoring" in text
     assert "identical by construction" in text
@@ -357,7 +365,14 @@ def test_the_report_names_the_tools_it_did_not_run_precisely():
     assert "no token budget" in rankers
     # facts:X6
     assert "prior-art" not in text and "did not verify" not in text
-    assert "not on PyPI as of 2026-11-26" in text and "`context-kit`" in text and "`ctxeng`" in text
+    assert "not on PyPI as of 2026-11-26" in text and "`ctxeng`" in text
+    # context-kit is a GitHub project, not a PyPI name: it is not written as one
+    assert "keli-wen/context-kit (GitHub)" in text and "`context-kit`" not in text
+    # langchain-core: the absence of projection and dedupe is a fact about this wiring
+    assert "langchain-core's own operations include no record-level" not in text
+    assert ("no langchain-core step in this wiring projects or dedupes them, so the budget "
+            "fills with field bloat and duplicates that its own operations here do not "
+            "remove") in text
 
 
 def test_the_report_lists_full_rows_by_fill_not_by_compliance():

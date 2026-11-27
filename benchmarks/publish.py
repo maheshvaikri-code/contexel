@@ -646,13 +646,13 @@ def check(root: Path) -> List[str]:
     except (OSError, ValueError) as exc:
         return [f"cannot read the generated results: {exc}"]
 
+    # The hint re-renders from the committed JSON; the benchmark commands would re-measure.
+    command = "python tools/check_benchmark_numbers.py --write"
     reports = (
-        ("benchmarks/COMPARISON.md", "benchmarks/COMPARISON.json", lambda: render_report(comparison),
-         "python -m benchmarks.competitors"),
-        ("benchmarks/RESULTS.md", "benchmarks/RESULTS.json", lambda: suites_report.render(suites),
-         "python -m benchmarks"),
+        ("benchmarks/COMPARISON.md", "benchmarks/COMPARISON.json", lambda: render_report(comparison)),
+        ("benchmarks/RESULTS.md", "benchmarks/RESULTS.json", lambda: suites_report.render(suites)),
     )
-    for rel, source, render, command in reports:
+    for rel, source, render in reports:
         report = _text(problems, root, rel)
         if report is None:
             continue
@@ -761,13 +761,24 @@ def _target(root: Path, rel: str) -> Path:
     return path
 
 
+def _newline(path: Path) -> str:
+    """The line ending ``path`` uses now: CRLF when it has any (a Windows checkout with
+    autocrlf), LF otherwise. ``write`` keeps it, so a rewrite changes only content."""
+    return "\r\n" if b"\r\n" in path.read_bytes() else "\n"
+
+
 def _replace_file(path: Path, text: str) -> None:
-    """Write ``text`` (LF, UTF-8) to a temporary file next to ``path``, then move it
-    into place, so a failed write never leaves ``path`` half written."""
+    """Write ``text`` (LF-normalized; written with the line ending ``path`` already uses,
+    UTF-8) to a temporary file next to ``path``, then move it into place, so a failed
+    write never leaves ``path`` half written."""
+    newline = _newline(path)
+    data = text.replace("\r\n", "\n")
+    if newline != "\n":
+        data = data.replace("\n", newline)
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
     try:
         with os.fdopen(fd, "wb") as fh:
-            fh.write(text.encode("utf-8"))
+            fh.write(data.encode("utf-8"))
         os.chmod(tmp, stat.S_IMODE(path.stat().st_mode))  # keep the file's permissions
         os.replace(tmp, str(path))
     except BaseException:

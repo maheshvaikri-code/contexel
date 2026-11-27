@@ -990,8 +990,8 @@ budget.
 columns, are counted with contexel's default estimator (about four characters per
 token), the same one the hand-written glue uses. The estimator is for soft budgeting: a
 hard limit needs an exact tokenizer (`contexel[accurate]` and `tokens.use_tiktoken()`,
-or the provider's own counter). Measured with an exact tokenizer, the contexts that fill
-the budget here run over the estimated budget.
+or the provider's own counter). Measured with an exact tokenizer, most of the contexts
+that fill the budget here run over the estimated budget.
 
 **Fairness, and its limits:** in the timed canonical task every implementation missing
 a native stage uses the *same* hand-written glue helpers. The hand-written rows stand in
@@ -1134,9 +1134,10 @@ What the numbers say, row by row:
 - **hand-written (term overlap)** adds a scorer such code might write:
   recall {_p(scored_o["recall_strong_pct"])}% / {_p(scored_o["recall_weak_pct"])}%{" (the two columns agree because it, too, ignores the tool's score)" if same_scored else ""}.
   This is contexel's fairest comparison for `rescore` (another rescorer, not none), with
-  one caveat: contexel's lead over it comes partly from `rescore`'s in-order proximity
-  bonus, and the episode queries keep the target's word order, which is what that bonus
-  rewards.
+  one caveat: contexel's lead over it comes from `rescore`'s in-order proximity bonus.
+  The episode queries keep the target's word order, which that bonus rewards, and with
+  the bonus switched off contexel's recall on these episodes is not above the
+  term-overlap baseline's (this benchmark does not generate that row).
 - Recall@budget has a ceiling no shaper escapes, semantic or not: when a
   query legitimately describes more records than the budget can hold, some
   valid record is cut. Where contexel's recall in these tables falls short
@@ -1149,9 +1150,9 @@ What the numbers say, row by row:
   does fast lossless projection and dedupe and leaves the budget to something else.
 - **langchain-core** in this wiring: `trim_messages` ({_list(ops["langchain-core"]["native"])})
   over the raw records wrapped as messages. `trim_messages` trims a message list to a
-  token count; it does not see the records inside a message, and langchain-core's own
-  operations include no record-level projection or dedupe, so the budget fills with field
-  bloat and duplicates that its own operations do not remove (useful share
+  token count; it does not see the records inside a message, and no langchain-core step
+  in this wiring projects or dedupes them, so the budget fills with field bloat and
+  duplicates that its own operations here do not remove (useful share
   {lc_o["useful_share_pct"]:.1f}%). It never reads the score, so whether the target makes the cut
   depends on the incoming order, the same weak per-term order under both signals (recall
   {_p(lc_o["recall_strong_pct"])}%).
@@ -1224,8 +1225,8 @@ installed closure, with environment markers evaluated for this machine and no ex
   source of nondeterminism.
 - `context-engineering-toolkit` was not on PyPI as of 2026-11-26
   (`pip index versions context-engineering-toolkit` finds no distribution). Other
-  standalone context-shaping libraries exist, for example `context-kit` and `ctxeng`;
-  this benchmark did not run them.
+  standalone context-shaping libraries exist, for example keli-wen/context-kit (GitHub)
+  and `ctxeng` (PyPI); this benchmark did not run them.
 """
 
 
