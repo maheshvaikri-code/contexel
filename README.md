@@ -177,8 +177,8 @@ How to read each column, plainly:
   outcome rows get no Python glue, and no langchain-core step in it ranks
   records), so both of its columns reflect the same weak per-term incoming
   order; with a Python sort by score before the same `trim_messages`, its
-  recall would be much higher under the strong signal and lower under the
-  weak one (not wired here). The *hand-written (term overlap)* row adds a
+  recall would be much higher under the strong signal and much lower under
+  the weak one (not wired here). The *hand-written (term overlap)* row adds a
   scorer such code might write: it is the closest comparison for `rescore`
   in this benchmark (another rescorer, not none), with one caveat. contexel's
   lead over it comes from `rescore`'s in-order proximity bonus; the episode
@@ -191,7 +191,8 @@ How to read each column, plainly:
   llama-index-core keep the needed record by emitting many times the budget,
   in the wiring used here, which has no budget step for either. Both can be
   given one (toolz `accumulate`; llama-index-core a token-limited chat memory,
-  `Memory` with a `token_limit`, or `PromptHelper`, which shortens every text
+  `Memory` with a `token_limit`, once records are wrapped as chat messages,
+  or `PromptHelper`, which shortens every text
   chunk evenly to fit the context window and which its response synthesizers
   use).
 - **Useful %** — share of final-context tokens spent on needed fields of

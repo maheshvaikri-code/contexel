@@ -358,8 +358,9 @@ tables and the two reports were re-rendered from them.
     the sample-size sentence, what 0/6 means and the whole disclosure
     sentence (the author and the issues link, not only the episode count).
     `--write` is all or nothing: malformed results or a read-only file leave
-    every file as it was, no temporary file is left behind, and the error
-    names the file.
+    every file as it was (on Linux and macOS a read-only file used to be
+    rewritten and is now refused, like on Windows), no temporary file is left
+    behind, and the error names the file and says what was put back.
 - `README_PYPI.md` reaches PyPI only at the next release. Until then the PyPI
   page shows the old claims.
 

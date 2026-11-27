@@ -829,7 +829,7 @@ NOT_RUN = [
      "trim_budget": "keeps the higher-ranked contexts, then compresses tokens, to "
                     "`target_token` or `rate`", "merge_schema": "no",
      "operand": "text",
-     "ran": "not run: out of scope by design (contexel is lexical and deterministic)"},
+     "ran": "not run: its token compression needs a language model"},
     {"library": "ColBERT, cross-encoder rerankers", "select": "no",
      "dedupe_key": "no", "rescore_lex": "no (learned relevance)",
      "rank": "by learned relevance, top-k", "truncate_tok": "no",
@@ -1186,7 +1186,7 @@ What the numbers say, row by row:
   whether the target makes the cut depends on the incoming order, the same weak per-term
   order under both signals (recall {_p(lc_o["recall_strong_pct"])}%); with a Python sort by
   score before the same `trim_messages`, its recall would be much higher under the strong
-  signal and lower under the weak one (not wired here).
+  signal and much lower under the weak one (not wired here).
 - **llama-index-core** offers related operations on its node, text and chat-message types:
   a score cutoff (`SimilarityPostprocessor`), a score-ordered reorder (`LongContextReorder`),
   rerankers with `top_n`, metadata exclusion, docstore dedupe, `PromptHelper` (shortens

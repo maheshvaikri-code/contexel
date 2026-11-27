@@ -884,15 +884,23 @@ def _writable(change: _Change) -> None:
                            "(no file was changed)")
 
 
-def _discard(tmp: str) -> None:
-    """Remove a temporary file; one left read-only is made writable first."""
+def _discard(tmp: str) -> Optional[str]:
+    """Remove a temporary file (one left read-only is made writable first). Never raises: a
+    failure is returned as text, so cleanup cannot hide the error that caused it (review M4).
+    A file that is already gone (moved into place) needs nothing."""
+    if not os.path.exists(tmp):
+        return None
     try:
         os.unlink(tmp)
-    except FileNotFoundError:
-        return
+        return None
     except OSError:
+        pass
+    try:
         os.chmod(tmp, stat.S_IREAD | stat.S_IWRITE)
         os.unlink(tmp)
+        return None
+    except OSError as exc:
+        return f"could not remove the temporary file {Path(tmp).name} ({exc})"
 
 
 def _stage(path: Path, text: str) -> str:
@@ -907,53 +915,75 @@ def _stage(path: Path, text: str) -> str:
     try:
         with os.fdopen(fd, "wb") as fh:
             fh.write(data.encode("utf-8"))
-    except BaseException:
-        _discard(tmp)
-        raise
+    except OSError as exc:
+        left = _discard(tmp)
+        raise OSError(f"{exc}; {left}" if left else str(exc)) from exc
     return tmp
 
 
 def _apply(changes: List[_Change]) -> List[str]:
     """Replace every planned file, or none: each target is checked writable and each new text
     staged in a temporary file before the first replace; a replace the system refuses puts
-    back the files already replaced. The temporary files never outlive the call. A failure is
-    a PublishError that names the file."""
+    back the files already replaced. A failure is a PublishError that names the file and says,
+    after the fact, what was put back and any temporary file that could not be removed."""
     for change in changes:
         _writable(change)
     staged: List[Tuple[_Change, str, bytes, int]] = []
     replaced: List[Tuple[_Change, bytes, int]] = []
     try:
         for change in changes:
-            original = change.path.read_bytes()
-            mode = stat.S_IMODE(change.path.stat().st_mode)
-            staged.append((change, _stage(change.path, change.text), original, mode))
+            try:
+                original = change.path.read_bytes()
+                mode = stat.S_IMODE(change.path.stat().st_mode)
+                staged.append((change, _stage(change.path, change.text), original, mode))
+            except OSError as exc:
+                raise PublishError(f"{change.rel}: cannot stage its new text ({exc})") from exc
         for change, tmp, original, mode in staged:
             try:
                 os.replace(tmp, str(change.path))
+                replaced.append((change, original, mode))
+                os.chmod(str(change.path), mode)  # keep the file's permissions
             except OSError as exc:
-                raise PublishError(f"{change.rel}: cannot replace it ({exc}); the files already "
-                                   "rewritten were restored") from exc
-            replaced.append((change, original, mode))
-            os.chmod(str(change.path), mode)  # keep the file's permissions
+                raise PublishError(f"{change.rel}: cannot replace it ({exc})") from exc
     except BaseException as exc:
-        unrestored = []
-        for change, original, mode in reversed(replaced):
-            try:
-                _restore(change.path, original, mode)
-            except OSError:
-                unrestored.append(change.rel)
-        if unrestored:
-            raise PublishError(f"could not restore {', '.join(unrestored)} after the write "
-                               f"failed: {exc}") from exc
-        raise
-    finally:
-        for _, tmp, _, _ in staged:
-            _discard(tmp)
+        notes = [_roll_back(replaced)] + _cleanup(staged)
+        if isinstance(exc, PublishError):
+            raise PublishError(f"{exc}; " + "; ".join(notes)) from exc.__cause__
+        raise  # an interrupt: the files were put back and the temporary files removed
+    leftovers = _cleanup(staged)  # nothing, normally: every temporary file was moved into place
+    if leftovers:
+        raise PublishError("the files were written, but " + "; ".join(leftovers))
     return [change.rel for change in changes]
 
 
-def _restore(path: Path, original: bytes, mode: int) -> None:
-    """Put back a file's bytes and mode after a later replace failed."""
+def _cleanup(staged: List[Tuple[_Change, str, bytes, int]]) -> List[str]:
+    """Remove the temporary files; return what could not be removed."""
+    return [note for note in (_discard(tmp) for _, tmp, _, _ in staged) if note]
+
+
+def _roll_back(replaced: List[Tuple[_Change, bytes, int]]) -> str:
+    """Put back the files already replaced (newest first); say what happened, after it ran."""
+    if not replaced:
+        return "no file was changed"
+    failed: List[str] = []
+    notes: List[str] = []
+    for change, original, mode in reversed(replaced):
+        try:
+            note = _restore(change.path, original, mode)
+        except OSError as exc:
+            failed.append(f"{change.rel} ({exc})")
+            continue
+        if note:
+            notes.append(note)
+    names = ", ".join(change.rel for change, _, _ in replaced)
+    said = (f"the files already replaced ({names}) were put back as they were" if not failed
+            else f"could not put back {', '.join(failed)}")
+    return "; ".join([said] + notes)
+
+
+def _restore(path: Path, original: bytes, mode: int) -> Optional[str]:
+    """Put back a file's bytes and mode after a later replace failed (OSError if it cannot);
+    return a note when its own temporary file could not be removed."""
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
     try:
         with os.fdopen(fd, "wb") as fh:
@@ -961,7 +991,8 @@ def _restore(path: Path, original: bytes, mode: int) -> None:
         os.replace(tmp, str(path))
         os.chmod(str(path), mode)
     finally:
-        _discard(tmp)
+        note = _discard(tmp)
+    return note
 
 
 def write(root: Path) -> List[str]:

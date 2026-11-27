@@ -163,7 +163,8 @@ corrections from the maintainers of the compared libraries are welcome
   the budget (the Fill column), in the wiring used here, which has no budget
   step for either. Both can be given one (toolz <code>accumulate</code>;
   llama-index-core a token-limited chat memory, <code>Memory</code> with a
-  <code>token_limit</code>, or <code>PromptHelper</code>, which shortens every
+  <code>token_limit</code>, once records are wrapped as chat messages, or
+  <code>PromptHelper</code>, which shortens every
   text chunk evenly to fit the context window and which its response
   synthesizers use). llama-index-core offers related operations on its node,
   text and chat-message types: a score cutoff
@@ -182,8 +183,8 @@ corrections from the maintainers of the compared libraries are welcome
   reflect the same weak per-term incoming order, and the needed record
   survives only when it arrives early in that order; with a Python sort by
   score before the same <code>trim_messages</code>, its recall would be much
-  higher under the strong signal and lower under the weak one (not wired
-  here). Useful is the share of context tokens spent on needed fields of
+  higher under the strong signal and much lower under the weak one (not
+  wired here). Useful is the share of context tokens spent on needed fields of
   unique records: the needed fields and the dedupe key are contexel's, so a
   row that projects to those fields and dedupes on that key gets the full
   share by construction, and a context that is empty counts as fully useful

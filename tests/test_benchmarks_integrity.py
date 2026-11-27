@@ -1140,9 +1140,75 @@ def test_a_replace_that_fails_midway_restores_the_files_already_replaced(tree, m
         publish.write_all(tree)
     assert len(calls) >= 2
     failed = Path(calls[1]).relative_to(tree).as_posix()
-    assert failed in str(caught.value)
+    first = Path(calls[0]).relative_to(tree).as_posix()
+    message = str(caught.value)
+    assert message.startswith(f"{failed}: cannot replace it"), message
+    # review M3: the restore is reported after it ran, naming the file it put back
+    assert f"the files already replaced ({first}) were put back as they were" in message, message
+    assert "no file was changed" not in message
     monkeypatch.setattr(publish.os, "replace", real)
     assert _snapshot(tree) == before
+    assert not [p.name for p in tree.rglob("*.tmp")]
+
+
+def test_a_first_replace_that_fails_says_no_file_was_changed(tree, monkeypatch):
+    # review M3: nothing was rewritten, so nothing is said to be restored
+    _make_stale(tree)
+    before = _snapshot(tree)
+
+    def refuse(src, dst):
+        raise PermissionError(13, "simulated refusal", dst)
+
+    monkeypatch.setattr(publish.os, "replace", refuse)
+    with pytest.raises(publish.PublishError) as caught:
+        publish.write_all(tree)
+    message = str(caught.value)
+    assert message.startswith("README.md: cannot replace it"), message
+    assert "no file was changed" in message and "put back" not in message, message
+    monkeypatch.undo()
+    assert _snapshot(tree) == before
+    assert not [p.name for p in tree.rglob("*.tmp")]
+
+
+def test_a_cleanup_failure_is_reported_with_the_real_error_not_instead_of_it(tree, monkeypatch):
+    # review M4: a temporary file that cannot be removed does not hide why the write failed
+    _make_stale(tree)
+    before = _snapshot(tree)
+
+    def refuse(src, dst):
+        raise PermissionError(13, "simulated refusal", dst)
+
+    def stuck(path, *args, **kwargs):
+        raise PermissionError(13, "simulated: cannot remove", path)
+
+    monkeypatch.setattr(publish.os, "replace", refuse)
+    monkeypatch.setattr(publish.os, "unlink", stuck)
+    with pytest.raises(publish.PublishError) as caught:
+        publish.write_all(tree)
+    message = str(caught.value)
+    assert message.startswith("README.md: cannot replace it"), message
+    assert "simulated refusal" in message and "no file was changed" in message, message
+    assert "could not remove the temporary file .README.md." in message, message
+    monkeypatch.undo()
+    for leftover in tree.rglob("*.tmp"):  # the simulated failure left them; remove them here
+        leftover.unlink()
+    assert _snapshot(tree) == before
+
+
+def test_a_cleanup_that_cannot_unlink_reports_nothing_after_a_successful_write(tree, monkeypatch):
+    # review M4: after a successful write every temporary file was moved into place, so a broken
+    # unlink has nothing to remove and no error is reported
+    _make_stale(tree)
+
+    def stuck(path, *args, **kwargs):
+        raise PermissionError(13, "simulated: cannot remove", path)
+
+    monkeypatch.setattr(publish.os, "unlink", stuck)
+    blocks, reports = publish.write_all(tree)
+    monkeypatch.undo()
+    assert sorted(blocks + reports) == ["README.md", "benchmarks/COMPARISON.md",
+                                        "benchmarks/RESULTS.md", "site/benchmarks.html"]
+    assert publish.check(tree) == []
     assert not [p.name for p in tree.rglob("*.tmp")]
 
 

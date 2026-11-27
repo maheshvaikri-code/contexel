@@ -126,7 +126,7 @@ not counted above):
 |---|---|---|---|---|---|---|---|---|---|
 | haystack-ai (DocumentJoiner, MetaFieldRanker, LostInTheMiddleRanker) | no | by document id (DocumentJoiner) | no | by a meta field (MetaFieldRanker); rank fusion (DocumentJoiner) | no | word-count budget (LostInTheMiddleRanker; keeps the document that crosses it) | no (uniform Document) | Document | not run in this benchmark |
 | langchain-community EmbeddingsRedundantFilter | no | by embedding similarity | no | no | no | no | no | Document | not run: needs an embedding model; results depend on the model and the threshold |
-| LLMLingua | no | no | BM25 context ranking (`rank_method="bm25"`; the default ranks by the compressor's language model) | ranks contexts by `rank_method` (the compressor's language model by default; also BM25, gzip, embedding and reranker methods) and can reorder them (`reorder_context`) | removes tokens a small language model scores as non-essential | keeps the higher-ranked contexts, then compresses tokens, to `target_token` or `rate` | no | text | not run: out of scope by design (contexel is lexical and deterministic) |
+| LLMLingua | no | no | BM25 context ranking (`rank_method="bm25"`; the default ranks by the compressor's language model) | ranks contexts by `rank_method` (the compressor's language model by default; also BM25, gzip, embedding and reranker methods) and can reorder them (`reorder_context`) | removes tokens a small language model scores as non-essential | keeps the higher-ranked contexts, then compresses tokens, to `target_token` or `rate` | no | text | not run: its token compression needs a language model |
 | ColBERT, cross-encoder rerankers | no | no | no (learned relevance) | by learned relevance, top-k | no | no token budget | no | query and passages | not run: out of scope by design (contexel is lexical and deterministic) |
 | context-engineering-toolkit | - | - | - | - | - | - | - | - | not on PyPI as of 2026-11-26 (`pip index versions context-engineering-toolkit`) |
 
@@ -228,7 +228,7 @@ What the numbers say, row by row:
   whether the target makes the cut depends on the incoming order, the same weak per-term
   order under both signals (recall 30%); with a Python sort by
   score before the same `trim_messages`, its recall would be much higher under the strong
-  signal and lower under the weak one (not wired here).
+  signal and much lower under the weak one (not wired here).
 - **llama-index-core** offers related operations on its node, text and chat-message types:
   a score cutoff (`SimilarityPostprocessor`), a score-ordered reorder (`LongContextReorder`),
   rerankers with `top_n`, metadata exclusion, docstore dedupe, `PromptHelper` (shortens

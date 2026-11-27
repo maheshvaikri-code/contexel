@@ -380,6 +380,10 @@ def test_the_report_names_the_tools_it_did_not_run_precisely():
     rankers = next(line for line in lines
                    if line.startswith("| ColBERT, cross-encoder rerankers |"))
     assert "`target_token`" in lingua and "ColBERT" not in lingua
+    # final micro-wave J3: not run because its compression needs a language model; no judgement
+    # about whether LLMLingua is lexical or deterministic
+    assert "not run: its token compression needs a language model" in lingua
+    assert "out of scope by design" not in lingua
     assert "no token budget" in rankers
     # re-audit R2: compress_prompt ranks the contexts (rank_method, "bm25" among the methods)
     # and can reorder them (reorder_context) before it compresses tokens; it does not dedupe
@@ -428,7 +432,7 @@ def test_the_report_says_the_langchain_result_is_its_wiring():
     assert ("This langchain-core wiring never reads the score (the outcome rows get no Python "
             "glue, and no langchain-core step in it ranks records)") in text
     assert ("with a Python sort by score before the same `trim_messages`, its recall would be much "
-            "higher under the strong signal and lower under the weak one (not wired here)") in text
+            "higher under the strong signal and much lower under the weak one (not wired here)") in text
     assert ("for langchain-core, a Python sort can come before `trim_messages`, and "
             "`langchain_core.indexing.index` dedupes documents at ingestion (it needs a vector "
             "store and a record manager)") in text
