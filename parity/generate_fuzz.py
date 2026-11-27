@@ -19,7 +19,7 @@ JSON data only, no NaN or Inf, no integer-valued floats (a score of 0.0 that a
 later stage serializes is one: the case is redrawn), integers within 2**53, no
 case-special characters (U+0130 among them), and astral letters only in the
 ``note`` field, which ``rescore`` never reads (the C# tokenizer margin of
-ADR-006). A scalar item in a list of records appears only in cases that expect
+ADR-002 item 7, Slice 5 ruling S5-8). A scalar item in a list of records appears only in cases that expect
 ``input.not_mapping``: a C# list holds mappings. Every redraw is counted in
 ``_meta.redrawn``; nothing is dropped silently.
 """
