@@ -243,6 +243,78 @@ based on [Keep a Changelog](https://keepachangelog.com/). Versions follow
   published number and the committed results can be reproduced. The row still
   measures a prose-shaped text.
 
+### Changed — benchmark claims (documentation and report rendering only; no measurement changed)
+Two independent audits of the comparison are filed under `docs/reviews/`
+(`benchmark-claims-audit-facts.md`, `benchmark-claims-audit-numbers.md`).
+They reproduced every number that is not a timing, but found statements about
+the compared libraries, and readings of their rows, that did not hold.
+`benchmarks/COMPARISON.json` and `benchmarks/RESULTS.json` are unchanged; the
+tables and the two reports were re-rendered from them.
+- The Compliance column is removed from every published table (README, PyPI
+  README, home page, benchmarks page, `COMPARISON.md`), and so are the
+  sentences that rested on it. It was counted with the same estimator (about
+  four characters per token) that the rows cut with, so every row with a
+  budget step passed by construction. The results file still records
+  `compliance_pct`. Fill stays, labelled "Fill × (estimated tokens ÷
+  budget)", and a recall cell is no longer highlighted on a row whose
+  contexts run over the budget.
+- "Native ops" is relabelled "Native ops (in this wiring)", and the counts
+  are unchanged. The text now says the counts are taken over the step lists
+  `benchmarks/competitors.py` chose, that which library functions each row
+  uses is the author's choice, and that other wirings exist (toolz
+  `topk`/`accumulate`; llama-index-core metadata exclusion,
+  `IngestionPipeline` dedupe, `ChatMemoryBuffer`). "Computed, not typed" is
+  gone. "Deps" is now "Transitive deps" (the installed closure, no extras).
+- LlamaIndex is described the same way everywhere: related operations on its
+  node types (a score cutoff, a score-ordered reorder, rerankers with
+  `top_n`, metadata exclusion, docstore dedupe, `PromptHelper` truncation, a
+  `ChatMemoryBuffer` token limit), of which this benchmark wires two and
+  counts neither as one of the six stages. "Not bounding them" is removed,
+  and the report says the score cutoff it uses removes nothing under the
+  strong signal.
+- Statements about other projects are corrected. Anthropic (programmatic
+  tool calling, code execution with MCP) and Cloudflare (Code Mode in the
+  Agents SDK) ship the execution mechanism; the model writes or saves the
+  shaping code, and contexel supplies vetted, versioned stages for it.
+  LLMLingua (compression) is listed apart from ColBERT and cross-encoder
+  rerankers (retrieval and reranking, no token budget). The Haystack row names
+  `DocumentJoiner`, `MetaFieldRanker` and `LostInTheMiddleRanker` and says
+  what each does; `trim_messages` and `EmbeddingsRedundantFilter` are
+  described by what they do. The toolkit sentence now says
+  `context-engineering-toolkit` was not on PyPI as of 2026-11-26 (with the
+  command), names `context-kit` and `ctxeng` as other libraries that were not
+  benchmarked, and no longer says that a prior-art claim "did not verify".
+- Disclosures: "This benchmark was written by contexel's author", with an
+  invitation to the compared libraries' maintainers to send corrections, on
+  the README, the PyPI README, the home page, the benchmarks page and the
+  `COMPARISON.md` header. "(ISON is by the same author as contexel.)"
+  appears wherever ISON is recommended or measured; suite 6 says its baseline
+  is contexel's default spaced JSON.
+- The estimator is stated where the budget is introduced and in the limits
+  text: every budget in the benchmark is counted with contexel's default
+  estimator, the same one the hand-written glue uses. The estimator is for
+  soft budgeting, a hard limit needs an exact tokenizer, and contexts
+  measured in exact tokens run over the estimated budget (no figure is given
+  until the harness generates one). Also stated: contexel's lead over the
+  term-overlap baseline comes from `rescore`'s in-order proximity bonus; an
+  empty context counts as fully useful under the current scoring; and recall
+  is the same under both signals by construction. "Proven" is now "tested",
+  and the searches are described as simulated.
+- `benchmarks/constraints.txt` records the measured versions of toolz,
+  langchain-core and llama-index-core, and the README and the report say to
+  install with `pip install -e ".[benchmarks]" -c benchmarks/constraints.txt`
+  to reproduce them. The `benchmarks` extra stays unpinned.
+- `tools/check_benchmark_numbers.py` now reads all eight published files:
+  both READMEs and all six site pages, including the stage reference, whose
+  wrong timing went unnoticed because nothing scanned that page. It also
+  registers the home page's reading note and the disclosure's episode count
+  on every surface that carries it. `--write` now re-renders `COMPARISON.md`
+  and `RESULTS.md` from the committed JSON as well as the marked blocks (it
+  never runs a benchmark), keeps each file's line endings, and is what the
+  stale-report hint names.
+- `README_PYPI.md` reaches PyPI only at the next release. Until then the PyPI
+  page shows the old claims.
+
 ### Changed — benchmark extra
 - The `benchmarks` extra now requires `pyarrow>=14.0.1`: the dataset fetch
   parses the parquet export before the derived file can be verified, and

@@ -181,9 +181,9 @@ How to read each column, plainly:
   row that projects to those fields and dedupes on that key gets the full
   share by construction. A context that is empty counts as fully useful by
   the current scoring; langchain-core returns one when its first record alone
-  exceeds the budget. langchain-core honors the budget but spends part of it
-  on duplicates and field bloat that no langchain-core step in this wiring
-  removes; llama-index-core spends more.
+  exceeds the budget. langchain-core honors the budget, as the estimator
+  counts it, but spends part of it on duplicates and field bloat that no
+  langchain-core step in this wiring removes; llama-index-core spends more.
 - **Import ms** and **Transitive deps** — import time is the median of 5
   fresh interpreters, each importing only the library's top-level package
   (interpreter start-up excluded; the modules a task uses can cost more, and
@@ -252,8 +252,8 @@ recovers); synonyms and paraphrase are invisible either way. When you need
 that, put a semantic reranker in front — contexel's own suite measures what
 the lexical lane cannot reach instead of hiding it
 ([RESULTS.md](benchmarks/RESULTS.md) also quantifies the default
-tokenizer's error: −29% on JSON-heavy records in its synthetic sample,
-search-hit records with hexadecimal ids, and the error differs on other
+tokenizer's error: −29% on JSON-heavy records in its synthetic sample
+(search-hit records with hexadecimal ids); the error differs on other
 records. Every budget in the comparison above is counted with that
 estimator, and measured with an exact tokenizer most of the contexts that
 fill the budget there run over it — hard token limits require
@@ -359,7 +359,8 @@ their own counter via `set_tokenizer(fn)`). The *serializer*: budgets are
 encoding-relative — a record's cost is the token count of its serialized
 text, canonical JSON by default. If your boundary emits something else (an
 ISON table, say), `contexel.tokens.set_serializer(fn)` keeps budgets priced
-in the encoding that actually enters context. For concurrent tenants, both
+in the encoding that actually enters context. (ISON is by the same author as
+contexel.) For concurrent tenants, both
 axes can be overridden per task with `tokens.scoped(...)` — a context-local
 overlay that never touches other tasks (bare threads start fresh and fall
 back to the process default).
