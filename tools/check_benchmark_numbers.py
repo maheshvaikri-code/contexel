@@ -44,10 +44,11 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     root = args.root.resolve()
     if args.write:
-        try:
-            for rel in publish.write(root):
+        try:  # all or nothing: a failure leaves every file as it was
+            blocks, reports = publish.write_all(root)
+            for rel in blocks:
                 print(f"rewrote the generated blocks of {rel}")
-            for rel in publish.write_reports(root):
+            for rel in reports:
                 print(f"re-rendered {rel} from the committed results")
         except (publish.PublishError, OSError, *publish.MALFORMED) as exc:
             print(f"cannot write the generated blocks: {type(exc).__name__}: {exc}")

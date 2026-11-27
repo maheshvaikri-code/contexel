@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import time
@@ -871,18 +872,18 @@ def _replace_words(root, rel, old, new):
 def test_the_disclosure_episode_count_follows_the_results(tree, rel):
     _replace_words(tree, rel, "one dataset, 100 episodes", "one dataset, 99 episodes")
     problems = publish.check(tree)
-    assert f"{rel}: claim 'disclosure episodes' says 99, the results say 100" in problems, problems
+    assert f"{rel}: claim 'authorship disclosure' says 99, the results say 100" in problems, problems
 
 
 @pytest.mark.parametrize("rel", _DISCLOSED)
 def test_a_missing_disclosure_is_reported_not_skipped(tree, rel):
     _replace_words(tree, rel, "one dataset, 100 episodes", "one dataset")
     problems = publish.check(tree)
-    assert any(rel in p and "'disclosure episodes'" in p and "not found" in p for p in problems), problems
+    assert any(rel in p and "'authorship disclosure'" in p and "not found" in p for p in problems), problems
 
 
 def test_the_disclosure_is_registered_on_every_surface_that_carries_it():
-    covered = {c.file for c in publish.CLAIMS if c.label == "disclosure episodes"}
+    covered = {c.file for c in publish.CLAIMS if c.label == "authorship disclosure"}
     assert covered == set(_DISCLOSED)
 
 
@@ -1055,3 +1056,122 @@ def test_the_home_page_reading_note_says_how_the_budget_is_counted(tree):
                    "on average (Fill")
     problems = publish.check(tree)
     assert any("site/index.html" in p and _HOME_LABEL in p and "not found" in p for p in problems), problems
+
+
+# --- QA D1, D2: --write is all-or-nothing and keeps the real error -----------------------------
+def _snapshot(root):
+    return {rel: (root / rel).read_bytes() for rel in PUBLISHED}
+
+
+def _make_stale(root):
+    """Edit a generated block in two files and append to both reports, so --write has four
+    files to rewrite."""
+    _replace(root, "README.md", "| **contexel** |", "| **contexel (edited)** |")
+    _replace(root, "site/benchmarks.html", "<td><strong>contexel</strong></td>", "<td>x</td>")
+    for rel in ("benchmarks/COMPARISON.md", "benchmarks/RESULTS.md"):
+        path = root / rel
+        path.write_bytes(path.read_bytes() + b"stale\n")
+
+
+def _run_write(root):
+    script = ROOT / "tools" / "check_benchmark_numbers.py"
+    return subprocess.run([sys.executable, str(script), "--root", str(root), "--write"],
+                          capture_output=True, text=True)
+
+
+def test_malformed_results_leave_every_file_untouched(tree):
+    # D2: "outcomes": [] renders header-only tables but no report; nothing may be written
+    _make_stale(tree)
+    path = tree / "benchmarks" / "COMPARISON.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["outcomes"] = []
+    _write(path, json.dumps(data, indent=2) + chr(10))
+    before = _snapshot(tree)
+    with pytest.raises(publish.MALFORMED):
+        publish.write_all(tree)
+    assert _snapshot(tree) == before
+    run = _run_write(tree)
+    assert run.returncode == 1 and "Traceback" not in run.stderr, run.stdout + run.stderr
+    assert "cannot write the generated blocks" in run.stdout
+    assert _snapshot(tree) == before
+    assert not [p.name for p in tree.rglob("*.tmp")]
+
+
+@pytest.mark.parametrize("readonly", ["README.md", "site/benchmarks.html", "benchmarks/RESULTS.md"])
+def test_a_read_only_target_is_named_and_nothing_is_written(tree, readonly):
+    # D1 and D2: a read-only target (first, later, or a report) stops the write before any file
+    # is replaced, no temporary file is left behind, and the error names the target
+    _make_stale(tree)
+    target = tree / readonly
+    os.chmod(str(target), stat.S_IREAD)
+    before = _snapshot(tree)
+    try:
+        with pytest.raises(publish.PublishError, match=re.escape(readonly)):
+            publish.write_all(tree)
+        # write and write_reports are all-or-nothing over the files they rewrite
+        single = publish.write_reports if readonly.endswith("RESULTS.md") else publish.write
+        with pytest.raises(publish.PublishError, match=re.escape(readonly)):
+            single(tree)
+        run = _run_write(tree)
+        assert run.returncode == 1 and "Traceback" not in run.stderr, run.stdout + run.stderr
+        assert readonly in run.stdout and "read-only" in run.stdout, run.stdout
+        assert _snapshot(tree) == before
+        assert not [p.name for p in tree.rglob("*.tmp")]
+    finally:
+        os.chmod(str(target), stat.S_IREAD | stat.S_IWRITE)
+
+
+def test_a_replace_that_fails_midway_restores_the_files_already_replaced(tree, monkeypatch):
+    # D2: should the operating system refuse a later replace, the files already replaced are put
+    # back, the temporary files are removed and the error names the file
+    _make_stale(tree)
+    before = _snapshot(tree)
+    real = os.replace
+    calls = []
+
+    def flaky(src, dst):
+        calls.append(dst)
+        if len(calls) == 2:
+            raise PermissionError(13, "simulated refusal", dst)
+        return real(src, dst)
+
+    monkeypatch.setattr(publish.os, "replace", flaky)
+    with pytest.raises(publish.PublishError) as caught:
+        publish.write_all(tree)
+    assert len(calls) >= 2
+    failed = Path(calls[1]).relative_to(tree).as_posix()
+    assert failed in str(caught.value)
+    monkeypatch.setattr(publish.os, "replace", real)
+    assert _snapshot(tree) == before
+    assert not [p.name for p in tree.rglob("*.tmp")]
+
+
+def test_write_all_rewrites_the_blocks_and_the_reports_together(tree):
+    _make_stale(tree)
+    blocks, reports = publish.write_all(tree)
+    assert sorted(blocks) == ["README.md", "site/benchmarks.html"]
+    assert sorted(reports) == ["benchmarks/COMPARISON.md", "benchmarks/RESULTS.md"]
+    assert publish.check(tree) == []
+    assert publish.write_all(tree) == ([], [])  # idempotent
+    assert not [p.name for p in tree.rglob("*.tmp")]
+
+
+def test_a_rewrite_keeps_the_targets_permissions(tree):
+    _make_stale(tree)
+    path = tree / "README.md"
+    mode = stat.S_IMODE(path.stat().st_mode)
+    publish.write_all(tree)
+    assert stat.S_IMODE(path.stat().st_mode) == mode
+
+
+# --- QA G2: the whole disclosure sentence is registered, not only its episode count ------------
+@pytest.mark.parametrize("rel", _DISCLOSED)
+@pytest.mark.parametrize("old, new", [
+    ("This benchmark was written by contexel's author.", "This benchmark was written by us."),
+    ("https://github.com/maheshvaikri-code/contexel/issues", "https://example.org/issues"),
+], ids=["authorship", "issues link"])
+def test_a_disclosure_without_its_author_or_its_issues_link_is_reported(tree, rel, old, new):
+    assert publish.check(tree) == []
+    _replace_words(tree, rel, old, new)
+    problems = publish.check(tree)
+    assert any(rel in p and "'authorship disclosure'" in p and "not found" in p for p in problems), problems

@@ -21,8 +21,11 @@ typed by hand, so they could drift from what the benchmark produced. Now:
 ``check(root)`` returns the problems (empty when everything agrees): a missing,
 unreadable or oversized file, and results with a missing key, a value of the wrong
 type, an empty list or a zero divisor (``MALFORMED``), are problems too, not a
-traceback. ``write(root)`` rewrites the generated blocks and ``write_reports(root)``
-re-renders the two reports from the committed JSON (neither runs a benchmark).
+traceback. ``write(root)`` rewrites the generated blocks, ``write_reports(root)``
+re-renders the two reports from the committed JSON, and ``write_all(root)`` does both as
+one rewrite (none runs a benchmark). Each renders everything first and changes all of its
+files or none: malformed results or a refused (read-only, linked, outside) target leave
+every file as it was, and no temporary file is left behind.
 ``tools/check_benchmark_numbers.py`` is the command.
 
 No published table has a Compliance column: the share of contexts that fit the budget was
@@ -44,7 +47,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple
 
 from . import suites_report
-from .competitors import render_report, within_budget_on_average
+from .competitors import ISSUES, render_report, within_budget_on_average
 from .fetch_dataset import DatasetChecksumError, expected_digest
 
 # The four surfaces that publish the comparison (the dataset sentence, the disclosure) ...
@@ -464,6 +467,12 @@ ROWS = r"split\s*(?:(?:\(|" + DASH + r"|-|&mdash;)\s*)?([\d,]+)\s+(?:functions|r
 RECORDS = r"(?<![\d,])([\d,]+)\s+(?:real\s+)?search-tool\s+records"
 EPISODES = r"(?<![\d,])([\d,]+)\s+ground-truth\s+episodes"
 BUDGET = r"(?<![\d,])([\d,]+)-token\s+(?:context|budget)"
+# The whole disclosure sentence: the author, the episode count (the capture) and the issues
+# link, as a Markdown link or an HTML anchor.
+DISCLOSURE = (r"This\s+benchmark\s+was\s+written\s+by\s+contexel's\s+author\.\s+The\s+comparison"
+              r"\s+wirings\s+are\s+our\s+best\s+effort,\s+one\s+dataset,\s+([\d,]+)\s+episodes;"
+              r"\s+corrections\s+from\s+the\s+maintainers\s+of\s+the\s+compared\s+libraries\s+are"
+              r"\s+welcome\s+\((?:\[open\s+an\s+issue\]\(|<a\s+href=\")" + re.escape(ISSUES) + r"[)\"]")
 # "measured with toolz 1.1.0, langchain-core 1.4.9, llama-index-core 0.14.23; newer releases
 # are not measured": the three versions are one capture, compared with environment.libraries
 VERSIONS = (r"measured\s+with\s+(toolz\s+[^\s,;]+,\s+langchain-core\s+[^\s,;]+,\s+"
@@ -485,8 +494,8 @@ for _file in ("README.md", "README_PYPI.md", "site/benchmarks.html"):
 for _file in ("README.md", "README_PYPI.md", "site/index.html"):
     CLAIMS.append(Claim(_file, "evaluation budget", BUDGET,
                         _equals(lambda c, s: f"{c['settings']['eval_budget']:,}")))
-for _file in RESULT_PAGES:  # the authorship disclosure (ruling P1-5), on every surface
-    CLAIMS.append(Claim(_file, "disclosure episodes", r"one\s+dataset,\s+([\d,]+)\s+episodes",
+for _file in RESULT_PAGES:  # the authorship disclosure (ruling P1-5, QA G2), on every surface
+    CLAIMS.append(Claim(_file, "authorship disclosure", DISCLOSURE,
                         _equals(lambda c, s: f"{c['settings']['episodes']:,}")))
 for _file in RESULT_PAGES:  # the measured versions (re-audit R10) and the sample (R18)
     CLAIMS += [
@@ -838,10 +847,58 @@ def _newline(path: Path) -> str:
     return "\r\n" if b"\r\n" in path.read_bytes() else "\n"
 
 
-def _replace_file(path: Path, text: str) -> None:
+class _Change(NamedTuple):
+    rel: str
+    path: Path
+    text: str
+
+
+def _plan(root: Path, blocks: bool = True, reports: bool = True) -> List[_Change]:
+    """The rewrites asked for (the files whose generated blocks change, then the reports that
+    change), rendered in memory with nothing written. Rendering all of them first means
+    malformed results (MALFORMED) or a refused target (PublishError) stop the write before
+    any file is touched (QA D2)."""
+    comparison = _load(root, "benchmarks/COMPARISON.json")
+    suites = _load(root, "benchmarks/RESULTS.json")
+    wanted_blocks = expected_blocks(comparison, suites) if blocks else {}
+    rendered_reports = _reports(comparison, suites) if reports else []
+    changes: List[_Change] = []
+    for rel, wanted in wanted_blocks.items():
+        path = _target(root, rel)
+        text = _read(root, rel)
+        new = _regenerated(text, wanted)
+        if new != text:
+            changes.append(_Change(rel, path, new))
+    for rel, rendered in rendered_reports:
+        path = _target(root, rel)
+        if _read(root, rel) != rendered:  # equal line endings aside: left alone
+            changes.append(_Change(rel, path, rendered))
+    return changes
+
+
+def _writable(change: _Change) -> None:
+    """A read-only target is refused before anything is written (by its mode bits, which
+    hold on Windows and for a superuser alike)."""
+    if not stat.S_IMODE(change.path.stat().st_mode) & stat.S_IWUSR:
+        raise PublishError(f"{change.rel}: the file is read-only; refusing to write it "
+                           "(no file was changed)")
+
+
+def _discard(tmp: str) -> None:
+    """Remove a temporary file; one left read-only is made writable first."""
+    try:
+        os.unlink(tmp)
+    except FileNotFoundError:
+        return
+    except OSError:
+        os.chmod(tmp, stat.S_IREAD | stat.S_IWRITE)
+        os.unlink(tmp)
+
+
+def _stage(path: Path, text: str) -> str:
     """Write ``text`` (LF-normalized; written with the line ending ``path`` already uses,
-    UTF-8) to a temporary file next to ``path``, then move it into place, so a failed
-    write never leaves ``path`` half written."""
+    UTF-8) to a temporary file next to ``path`` and return its name. The temporary file
+    keeps its default (writable) mode, so it can always be removed (QA D1)."""
     newline = _newline(path)
     data = text.replace("\r\n", "\n")
     if newline != "\n":
@@ -850,28 +907,68 @@ def _replace_file(path: Path, text: str) -> None:
     try:
         with os.fdopen(fd, "wb") as fh:
             fh.write(data.encode("utf-8"))
-        os.chmod(tmp, stat.S_IMODE(path.stat().st_mode))  # keep the file's permissions
-        os.replace(tmp, str(path))
     except BaseException:
-        if os.path.exists(tmp):
-            os.unlink(tmp)
+        _discard(tmp)
         raise
+    return tmp
+
+
+def _apply(changes: List[_Change]) -> List[str]:
+    """Replace every planned file, or none: each target is checked writable and each new text
+    staged in a temporary file before the first replace; a replace the system refuses puts
+    back the files already replaced. The temporary files never outlive the call. A failure is
+    a PublishError that names the file."""
+    for change in changes:
+        _writable(change)
+    staged: List[Tuple[_Change, str, bytes, int]] = []
+    replaced: List[Tuple[_Change, bytes, int]] = []
+    try:
+        for change in changes:
+            original = change.path.read_bytes()
+            mode = stat.S_IMODE(change.path.stat().st_mode)
+            staged.append((change, _stage(change.path, change.text), original, mode))
+        for change, tmp, original, mode in staged:
+            try:
+                os.replace(tmp, str(change.path))
+            except OSError as exc:
+                raise PublishError(f"{change.rel}: cannot replace it ({exc}); the files already "
+                                   "rewritten were restored") from exc
+            replaced.append((change, original, mode))
+            os.chmod(str(change.path), mode)  # keep the file's permissions
+    except BaseException as exc:
+        unrestored = []
+        for change, original, mode in reversed(replaced):
+            try:
+                _restore(change.path, original, mode)
+            except OSError:
+                unrestored.append(change.rel)
+        if unrestored:
+            raise PublishError(f"could not restore {', '.join(unrestored)} after the write "
+                               f"failed: {exc}") from exc
+        raise
+    finally:
+        for _, tmp, _, _ in staged:
+            _discard(tmp)
+    return [change.rel for change in changes]
+
+
+def _restore(path: Path, original: bytes, mode: int) -> None:
+    """Put back a file's bytes and mode after a later replace failed."""
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(original)
+        os.replace(tmp, str(path))
+        os.chmod(str(path), mode)
+    finally:
+        _discard(tmp)
 
 
 def write(root: Path) -> List[str]:
-    """Rewrite every generated block from the results; return the files changed.
-    Raises PublishError for a target it refuses (see ``_target``)."""
-    comparison = _load(root, "benchmarks/COMPARISON.json")
-    suites = _load(root, "benchmarks/RESULTS.json")
-    changed = []
-    for rel, blocks in expected_blocks(comparison, suites).items():
-        path = _target(root, rel)
-        text = _read(root, rel)
-        new = _regenerated(text, blocks)
-        if new != text:
-            _replace_file(path, new)
-            changed.append(rel)
-    return changed
+    """Rewrite every generated block from the results; return the files changed, all of
+    them or none (``_apply``). Raises PublishError for a target it refuses (see ``_target``
+    and ``_apply``)."""
+    return _apply(_plan(root, reports=False))
 
 
 def _reports(comparison: Dict[str, Any], suites: Dict[str, Any]) -> List[Tuple[str, str]]:
@@ -884,12 +981,12 @@ def write_reports(root: Path) -> List[str]:
     """Re-render ``COMPARISON.md`` and ``RESULTS.md`` from the committed JSON (no benchmark
     runs, so no measurement changes); return the files changed. A report that already equals
     its rendering (line endings aside) is left alone. Raises PublishError like ``write``."""
-    comparison = _load(root, "benchmarks/COMPARISON.json")
-    suites = _load(root, "benchmarks/RESULTS.json")
-    changed = []
-    for rel, rendered in _reports(comparison, suites):
-        path = _target(root, rel)
-        if _read(root, rel) != rendered:
-            _replace_file(path, rendered)
-            changed.append(rel)
-    return changed
+    return _apply(_plan(root, blocks=False))
+
+
+def write_all(root: Path) -> Tuple[List[str], List[str]]:
+    """``write`` and ``write_reports`` as one all-or-nothing rewrite (what ``--write`` runs):
+    return the files whose blocks changed and the reports that changed."""
+    blocks, reports = _plan(root, reports=False), _plan(root, blocks=False)
+    _apply(blocks + reports)
+    return [c.rel for c in blocks], [c.rel for c in reports]
