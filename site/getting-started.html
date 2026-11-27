@@ -49,7 +49,7 @@ dotnet add package Contexel       # zero runtime dependencies, net8.0</code></pr
 <pre><code>git clone https://github.com/maheshvaikri-code/contexel && cd contexel
 pip install -e .                  # the library
 pip install -e ".[accurate]"      # + tiktoken
-pip install -e ".[benchmarks]"    # + everything the benchmark suites use</code></pre>
+pip install -e ".[benchmarks]" -c benchmarks/constraints.txt   # + the benchmark suites, at the measured versions</code></pre>
 
 <h2>Shape your first tool output</h2>
 <p>Everything operates on <code>list[dict]</code> — the shape tools already

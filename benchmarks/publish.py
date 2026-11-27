@@ -44,7 +44,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple
 
 from . import suites_report
-from .competitors import render_report
+from .competitors import render_report, within_budget_on_average
 from .fetch_dataset import DatasetChecksumError, expected_digest
 
 # The four surfaces that publish the comparison (the dataset sentence, the disclosure) ...
@@ -85,19 +85,18 @@ def _g1(x: float) -> str:
 
 
 def _tier(metric: str, row: Dict[str, Any]) -> str:
-    """'best' for a full-marks cell, 'poor' for a failing one, '' otherwise. Recall is not
-    'best' on a row whose contexts run over the budget (Fill above 1): keeping the record by
-    emitting many times the budget is not the best result."""
+    """'best' for a full-marks cell, '' otherwise. No cell is styled as a failing one: the
+    outcome columns measure the wirings this benchmark chose, not the libraries at their own
+    jobs (re-audit R21). Recall is not 'best' on a row whose contexts run over the budget
+    (Fill above 1.00 as rendered): keeping the record by emitting many times the budget is
+    not the best result."""
     if metric == "ops":
         return "best" if row["native"] == row["total"] else ""
     if metric == "recall":
-        if row["rs"] == 100 and row["rw"] == 100:
-            return "best" if row["fill"] <= 1 else ""
-        return "poor" if min(row["rs"], row["rw"]) < 50 else ""
-    if metric == "fill":
-        return "poor" if row["fill"] > 1 else ""
+        full = row["rs"] == 100 and row["rw"] == 100
+        return "best" if full and within_budget_on_average(row["fill"]) else ""
     if metric == "useful":
-        return "best" if row["useful"] == 100 else ("poor" if row["useful"] < 90 else "")
+        return "best" if row["useful"] == 100 else ""
     if metric == "deps":
         return "best" if row["deps"] == 0 else ""
     return ""
@@ -415,7 +414,7 @@ def _json_underestimates(c: Dict[str, Any], s: Dict[str, Any]) -> bool:
 def _clean_full_recall(r: Dict[str, Any]) -> bool:
     """The record in every episode under both signals, within the budget on average (Fill at
     most 1.00 as rendered) and no tokens on duplicates or bloat (Useful 100%)."""
-    return (r["rs"] == 100 and r["rw"] == 100 and round(r["fill"], 2) <= 1
+    return (r["rs"] == 100 and r["rw"] == 100 and within_budget_on_average(r["fill"])
             and r["useful"] == 100)
 
 
@@ -427,7 +426,33 @@ def _only_clean_full_recall(c: Dict[str, Any], s: Dict[str, Any]) -> bool:
         _clean_full_recall(r) for n, r in rows.items() if n != "contexel")
 
 
+def _hand_written_in_plain_code(c: Dict[str, Any], s: Dict[str, Any]) -> bool:
+    """The hand-written rows run no library step (their 0/6 is zero by definition), the
+    term-overlap one does all six operations in glue and the trusting one all but rescore."""
+    ops = {o["impl"]: o for o in c["operations"]}
+    hand, scored = ops["hand-written"], ops["hand-written (term overlap)"]
+    return (not hand["native"] and not scored["native"] and hand["missing"] == ["rescore"]
+            and len(scored["glue"]) == SIX_OPERATIONS and not scored["missing"])
+
+
+def _libraries_at_most_two(c: Dict[str, Any], s: Dict[str, Any]) -> bool:
+    """No compared library (a row that is neither contexel nor hand-written) performs more
+    than two of the operations natively in this wiring."""
+    return all(r["native"] <= LIBRARY_NATIVE_AT_MOST for n, r in _rows(c).items()
+               if n != "contexel" and not n.startswith("hand-written"))
+
+
+def _versions(found: str, comparison: Dict[str, Any], suites: Dict[str, Any]) -> Optional[str]:
+    """"measured with toolz X, langchain-core Y, llama-index-core Z": each version is the one
+    the results record in ``environment.libraries``."""
+    libs = comparison["environment"]["libraries"]
+    want = ", ".join(f"{name} {libs[name]}" for name in ("toolz", "langchain-core", "llama-index-core"))
+    said = " ".join(found.split())
+    return None if said == want else f"says {said}, the results say {want}"
+
+
 SIX_OPERATIONS = 6     # the PyPI README says "all six operations": the total must be six
+LIBRARY_NATIVE_AT_MOST = 2  # "no library performs more than two"
 COLLAPSE_POINTS = 30  # "collapses": recall falls by at least this many percentage points
 RECOVER_POINTS = 5     # "recovers": the stem row's inflected recall is within this of its original
 
@@ -439,6 +464,13 @@ ROWS = r"split\s*(?:(?:\(|" + DASH + r"|-|&mdash;)\s*)?([\d,]+)\s+(?:functions|r
 RECORDS = r"(?<![\d,])([\d,]+)\s+(?:real\s+)?search-tool\s+records"
 EPISODES = r"(?<![\d,])([\d,]+)\s+ground-truth\s+episodes"
 BUDGET = r"(?<![\d,])([\d,]+)-token\s+(?:context|budget)"
+# "measured with toolz 1.1.0, langchain-core 1.4.9, llama-index-core 0.14.23; newer releases
+# are not measured": the three versions are one capture, compared with environment.libraries
+VERSIONS = (r"measured\s+with\s+(toolz\s+[^\s,;]+,\s+langchain-core\s+[^\s,;]+,\s+"
+            r"llama-index-core\s+[^\s,;]+);\s+newer\s+releases\s+are\s+not\s+measured")
+# "100 episodes and one episode seed: a gap of a few points is a few episodes" (true of 100)
+SAMPLE = (r"(?<![\d,])([\d,]+)\s+episodes\s+and\s+one\s+episode\s+seed:\s+a\s+gap\s+of\s+a\s+few"
+          r"\s+points\s+is\s+a\s+few\s+episodes")
 
 CLAIMS: List[Claim] = []
 for _file in RESULT_PAGES:  # the dataset sentence: the other pages do not describe the dataset
@@ -456,6 +488,11 @@ for _file in ("README.md", "README_PYPI.md", "site/index.html"):
 for _file in RESULT_PAGES:  # the authorship disclosure (ruling P1-5), on every surface
     CLAIMS.append(Claim(_file, "disclosure episodes", r"one\s+dataset,\s+([\d,]+)\s+episodes",
                         _equals(lambda c, s: f"{c['settings']['episodes']:,}")))
+for _file in RESULT_PAGES:  # the measured versions (re-audit R10) and the sample (R18)
+    CLAIMS += [
+        Claim(_file, "measured versions", VERSIONS, _versions),
+        Claim(_file, "sample size", SAMPLE, _equals(lambda c, s: f"{c['settings']['episodes']:,}")),
+    ]
 CLAIMS += [
     Claim("site/benchmarks.html", "evaluation budget", r"Budget:\s*([\d,]+)\s+tokens",
           _equals(lambda c, s: f"{c['settings']['eval_budget']:,}")),
@@ -488,8 +525,7 @@ _SLOWEST = r"two\s+slowest\s+budget-compliant\s+rows"
 _SLOWEST_LABEL = "two slowest budget-compliant rows"
 _DROP = r"Exact-word\s+matching\s+\(the\s+default\)\s+collapses\s+on\s+inflected\s+queries"
 CLAIMS += [
-    _sentence("README_PYPI.md", r"contexel\s+performs\s+all\s+six\s+operations\s+itself,\s+and\s+in\s+the\s+wirings"
-              r"\s+this\s+benchmark\s+chose\s+no\s+other\s+compared\s+row\s+does",
+    _sentence("README_PYPI.md", r"contexel\s+performs\s+all\s+six\s+operations\s+with\s+its\s+own\s+stages",
               "only row with every operation native", _only_full_native),
     _sentence("README_PYPI.md", r"one\s+corpus\s+and\s+one\s+task", "scope: one corpus, one task",
               lambda c, s: bool(c["dataset"]["sha256"])),
@@ -525,10 +561,21 @@ CLAIMS += [
     _sentence("site/index.html",
               r"contexel\s+is\s+the\s+row\s+that\s+keeps\s+the\s+needed\s+record\s+in\s+every\s+episode"
               r"\s+under\s+both\s+retrieval\s+signals,\s+stays\s+within\s+the\s+budget\s+on\s+average"
-              r"\s+\(Fill\s+at\s+most\s+1\.00\)\s+and\s+spends\s+no\s+tokens\s+on\s+duplicates\s+or\s+bloat",
+              r"\s+as\s+the\s+estimator\s+counts\s+it\s+\(Fill\s+at\s+most\s+1\.00\)\s+and\s+spends\s+no"
+              r"\s+tokens\s+on\s+duplicates\s+or\s+bloat",
               "contexel alone: full recall under both signals, within the budget, no duplicates or bloat",
               _only_clean_full_recall),
 ]
+
+# What the hand-written rows' 0/6 means, and that no library performs more than two (re-audit
+# R13), wherever the 0/6 is explained in prose.
+for _file in ("README.md", "README_PYPI.md", "site/benchmarks.html"):
+    CLAIMS += [
+        _sentence(_file, r"so\s+their\s+0/6\s+counts\s+library\s+steps\s+only",
+                  "hand-written rows: no library steps", _hand_written_in_plain_code),
+        _sentence(_file, r"no\s+library\s+(?:\(toolz,\s+langchain-core,\s+llama-index-core\)\s+)?performs"
+                  r"\s+more\s+than\s+two", "no library performs more than two", _libraries_at_most_two),
+    ]
 
 # A number with a benchmark unit, in any case: ms (msec, milliseconds), microseconds (the
 # micro sign or the Greek mu followed by s, us, microsecond(s)), ns (nanosecond(s)), a

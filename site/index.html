@@ -64,9 +64,11 @@ boundary</strong>. Same input, byte-identical context, every run — a
     SHA-256 every time, even when raw tool output carries fresh request ids.</p>
   </div>
   <div class="card"><span class="k">Token-aware</span>
-    <h3>Budgets that hold</h3>
+    <h3>Budgets in your tokenizer's units</h3>
     <p>Stages reason in tokens, not rows. <code>trim_to_budget</code> and
-    <code>truncate_field</code> enforce the limits you set; counting is
+    <code>truncate_field</code> enforce the limits you set in the active
+    tokenizer's units: exact with <code>use_tiktoken()</code> or your
+    provider's counter; the default estimate is for soft budgets. Counting is
     pluggable (heuristic, tiktoken, your own) and encoding-aware.</p>
   </div>
   <div class="card"><span class="k">Evidence-ranked</span>
@@ -93,9 +95,14 @@ search-tool records. The outcome columns (Recall / Fill / Useful) come from
 100 ground-truth episodes at a 1,500-token budget, counted with contexel's
 default estimator (about four characters per token), where each library acts
 <em>only</em> through the operations this benchmark wired for it, so a
-different wiring can change these rows; <code>ms @28k</code> is the separate
-shared-glue canonical task. Details and method on the
-<a href="benchmarks.html">benchmarks page</a>. This benchmark was written by
+different wiring can change these rows; 100 episodes and one episode seed: a
+gap of a few points is a few episodes. <code>ms @28k</code> is the separate
+shared-glue canonical task; for langchain-core and llama-index-core most of
+<code>ms @28k</code> is the benchmark converting records to the library's
+message or node type (no llama-index-core operation runs in that task). The
+library rows were measured with toolz 1.1.0, langchain-core 1.4.9,
+llama-index-core 0.14.23; newer releases are not measured. Details and
+method on the <a href="benchmarks.html">benchmarks page</a>. This benchmark was written by
 contexel's author. The comparison wirings are our best effort, one dataset,
 100 episodes; corrections from the maintainers of the compared libraries are
 welcome (<a href="https://github.com/maheshvaikri-code/contexel/issues">open an issue</a>).</p>
@@ -105,11 +112,11 @@ welcome (<a href="https://github.com/maheshvaikri-code/contexel/issues">open an 
 <table>
 <tr><th>Implementation</th><th>Native ops (in this wiring)</th><th>ms @28k</th><th>Recall (strong/weak signal)</th><th>Fill × (estimated tokens ÷ budget)</th><th>Useful tokens</th><th>Transitive deps</th></tr>
 <tr><td><strong>contexel</strong></td><td class="best">6/6</td><td>67</td><td class="best">100% / 100%</td><td>0.95×</td><td class="best">100%</td><td class="best">0</td></tr>
-<tr><td>hand-written</td><td>0/6</td><td>20</td><td class="poor">93% / 32%</td><td>0.95×</td><td class="best">100%</td><td>—</td></tr>
+<tr><td>hand-written</td><td>0/6</td><td>20</td><td>93% / 32%</td><td>0.95×</td><td class="best">100%</td><td>—</td></tr>
 <tr><td>hand-written (term overlap)</td><td>0/6</td><td>—</td><td>97% / 97%</td><td>0.94×</td><td class="best">100%</td><td>—</td></tr>
-<tr><td>toolz</td><td>2/6</td><td>38</td><td>100% / 100%</td><td class="poor">91.62×</td><td class="best">100%</td><td class="best">0</td></tr>
-<tr><td>langchain-core</td><td>1/6</td><td>396</td><td class="poor">30% / 30%</td><td>0.52×</td><td class="poor">89.7%</td><td>25</td></tr>
-<tr><td>llama-index-core</td><td>0/6</td><td>464</td><td>100% / 100%</td><td class="poor">129.21×</td><td class="poor">74.2%</td><td>60</td></tr>
+<tr><td>toolz</td><td>2/6</td><td>38</td><td>100% / 100%</td><td>91.62×</td><td class="best">100%</td><td class="best">0</td></tr>
+<tr><td>langchain-core</td><td>1/6</td><td>396</td><td>30% / 30%</td><td>0.52×</td><td>89.7%</td><td>25</td></tr>
+<tr><td>llama-index-core</td><td>0/6</td><td>464</td><td>100% / 100%</td><td>129.21×</td><td>74.2%</td><td>60</td></tr>
 </table>
 </div>
 <!-- benchmark:glance:end -->
@@ -119,8 +126,9 @@ six stages, scored with contexel's estimator, field list and dedupe key, so
 the table measures how much of that task each library covers in these
 wirings, not how good each library is at its own job. On it, contexel is the
 row that keeps the needed record in every episode under both retrieval
-signals, stays within the budget on average (Fill at most 1.00) and spends no
-tokens on duplicates or bloat — and, in the ms/episode column of the
+signals, stays within the budget on average as the estimator counts it (Fill
+at most 1.00) and spends no tokens on duplicates or bloat — and, in the
+ms/episode column of the
 <a href="benchmarks.html">benchmarks page</a> (this table shows only
 ms @28k), it and the hand-written term-overlap scorer are the two slowest
 budget-compliant rows (every context within the budget as the estimator

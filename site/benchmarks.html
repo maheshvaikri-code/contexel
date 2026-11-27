@@ -42,7 +42,8 @@ Every benchmark number on this page is generated, or checked against the results
 <code>benchmarks/RESULTS.json</code> and <code>benchmarks/COMPARISON.json</code>, and
 <code>python tools/check_benchmark_numbers.py</code>, run in CI, fails when this
 page disagrees with them. CI checks against the committed results; it does
-not re-run the benchmarks.</p>
+not re-run the benchmarks. Qualitative statements about the results (for
+example "most", "below") are not checked.</p>
 
 <h2>Suite 1 — contexel's own claims</h2>
 <p><code>python -m benchmarks</code> (needs the <code>accurate</code> extra).</p>
@@ -67,7 +68,9 @@ not re-run the benchmarks.</p>
 prose and code, but it under-estimates JSON-heavy records (the JSON sample
 is synthetic search-hit records with hexadecimal ids; on other records the
 error differs), so install
-<code>contexel[accurate]</code> when budget precision matters. Inactive
+<code>contexel[accurate]</code> when budget precision matters. The timings in
+this table are one run of the command on one machine, and vary with the
+machine's load and from run to run. Inactive
 tracing is meant to cost next to nothing, but this suite compares it with
 active tracing only: an untraced baseline (the stages called without a
 pipeline) is not measured here. Active tracing token-counts every stage
@@ -94,8 +97,11 @@ columns, are counted with it too. The estimator is for soft budgeting: a hard
 limit needs an exact tokenizer (<code>contexel[accurate]</code> and
 <code>tokens.use_tiktoken()</code>, or the provider's own counter). Measured
 with an exact tokenizer, most of the contexts that fill the budget here run
-over the estimated budget. One corpus and one task, so read it as a
-measurement, not a law. This benchmark was written by contexel's author. The
+over the estimated budget by a noticeable margin (the size is not generated
+by this benchmark). One corpus and one task, so read it as a
+measurement, not a law. The library rows were measured with toolz 1.1.0,
+langchain-core 1.4.9, llama-index-core 0.14.23; newer releases are not
+measured. This benchmark was written by contexel's author. The
 comparison wirings are our best effort, one dataset, 100 episodes;
 corrections from the maintainers of the compared libraries are welcome
 (<a href="https://github.com/maheshvaikri-code/contexel/issues">open an issue</a>).</p>
@@ -105,11 +111,11 @@ corrections from the maintainers of the compared libraries are welcome
 <table>
 <tr><th>Implementation</th><th>Native ops (in this wiring)</th><th>ms @28k</th><th>ms/episode</th><th>Recall (strong/weak)</th><th>Fill × (estimated tokens ÷ budget)</th><th>Useful</th><th>Import ms</th><th>Transitive deps</th></tr>
 <tr><td><strong>contexel</strong></td><td class="best">6/6</td><td>67</td><td>37.6</td><td class="best">100% / 100%</td><td>0.95×</td><td class="best">100%</td><td>21</td><td class="best">0</td></tr>
-<tr><td>hand-written</td><td>0/6</td><td>20</td><td>3.1</td><td class="poor">93% / 32%</td><td>0.95×</td><td class="best">100%</td><td>—</td><td>—</td></tr>
+<tr><td>hand-written</td><td>0/6</td><td>20</td><td>3.1</td><td>93% / 32%</td><td>0.95×</td><td class="best">100%</td><td>—</td><td>—</td></tr>
 <tr><td>hand-written (term overlap)</td><td>0/6</td><td>—</td><td>33.9</td><td>97% / 97%</td><td>0.94×</td><td class="best">100%</td><td>—</td><td>—</td></tr>
-<tr><td>toolz</td><td>2/6</td><td>38</td><td>14.2</td><td>100% / 100%</td><td class="poor">91.62×</td><td class="best">100%</td><td>12</td><td class="best">0</td></tr>
-<tr><td>langchain-core</td><td>1/6</td><td>396</td><td>17.9</td><td class="poor">30% / 30%</td><td>0.52×</td><td class="poor">89.7%</td><td>88</td><td>25</td></tr>
-<tr><td>llama-index-core</td><td>0/6</td><td>464</td><td>49.6</td><td>100% / 100%</td><td class="poor">129.21×</td><td class="poor">74.2%</td><td>1,156</td><td>60</td></tr>
+<tr><td>toolz</td><td>2/6</td><td>38</td><td>14.2</td><td>100% / 100%</td><td>91.62×</td><td class="best">100%</td><td>12</td><td class="best">0</td></tr>
+<tr><td>langchain-core</td><td>1/6</td><td>396</td><td>17.9</td><td>30% / 30%</td><td>0.52×</td><td>89.7%</td><td>88</td><td>25</td></tr>
+<tr><td>llama-index-core</td><td>0/6</td><td>464</td><td>49.6</td><td>100% / 100%</td><td>129.21×</td><td>74.2%</td><td>1,156</td><td>60</td></tr>
 </table>
 </div>
 <!-- benchmark:glance:end -->
@@ -137,9 +143,16 @@ corrections from the maintainers of the compared libraries are welcome
   implementation uses, and which operation each step serves, are the
   benchmark author's choices (the step lists are in
   <code>benchmarks/competitors.py</code>). The counts therefore describe these
-  wirings, not what each library can do. Other wirings exist and are not
-  counted here: toolz's <code>topk</code> and <code>accumulate</code> can
-  express a rank and a running budget cut, and llama-index-core has metadata
+  wirings, not what each library can do. The hand-written rows do the
+  operations in plain code, the one that trusts the tool's score all but
+  <code>rescore</code>, so their 0/6 counts library steps only and is zero by
+  definition; in the wirings this benchmark chose, no library performs more
+  than two. Other wirings exist and are not counted here: toolz's
+  <code>topk</code> and <code>accumulate</code> can express a rank and a
+  running budget cut; for langchain-core, a Python sort can come before
+  <code>trim_messages</code>, and <code>langchain_core.indexing.index</code>
+  dedupes documents at ingestion (it needs a vector store and a record
+  manager); and llama-index-core has metadata
   exclusion (<code>excluded_llm_metadata_keys</code>), ingestion dedupe
   (<code>IngestionPipeline</code> with a docstore) and a token-limited chat
   memory (<code>llama_index.core.memory.Memory</code> with a
@@ -163,15 +176,21 @@ corrections from the maintainers of the compared libraries are welcome
   stages, and the cutoff it uses removes nothing under the strong signal.
   langchain-core holds the budget as the estimator counts it, but no
   langchain-core step in this wiring projects or dedupes the records, so part
-  of the budget goes to duplicates and field bloat; it never reads the score,
-  so both of its recall columns reflect the same weak per-term incoming order,
-  and the needed record survives only when it arrives early in that order.
-  Useful is the share of context tokens spent on needed fields of unique
-  records: the needed fields and the dedupe key are contexel's, so a row that
-  projects to those fields and dedupes on that key gets the full share by
-  construction, and a context that is empty counts as fully useful by the
-  current scoring (langchain-core returns one when its first record alone
-  exceeds the budget).</li>
+  of the budget goes to duplicates and field bloat. This langchain-core wiring
+  never reads the score (the outcome rows get no Python glue, and no
+  langchain-core step in it ranks records), so both of its recall columns
+  reflect the same weak per-term incoming order, and the needed record
+  survives only when it arrives early in that order; with a Python sort by
+  score before the same <code>trim_messages</code>, its recall would be much
+  higher under the strong signal and lower under the weak one (not wired
+  here). Useful is the share of context tokens spent on needed fields of
+  unique records: the needed fields and the dedupe key are contexel's, so a
+  row that projects to those fields and dedupes on that key gets the full
+  share by construction, and a context that is empty counts as fully useful
+  by the current scoring. langchain-core returns an empty context in a large
+  share of the episodes (when its first record alone exceeds the budget), so
+  this scoring flatters its Useful share (the share over its non-empty
+  contexts is lower; neither figure is generated here).</li>
   <li><strong>ms/episode times the shaping and the scoring.</strong> It is
   the mean wall time per episode of the shaping plus the benchmark's own
   scoring of the result (one pass), so a row whose contexts are very large
@@ -203,12 +222,13 @@ corrections from the maintainers of the compared libraries are welcome
   relevance derived from the records' own text, so its two columns read the
   same by construction, which shows that it does not depend on the tool's
   score. The hand-written row with its own term-overlap scorer is the
-  fairest comparison: another rescorer, not none, with one caveat. contexel's
-  lead over it comes from <code>rescore</code>'s in-order proximity bonus;
-  the episode queries keep the target's word order, which that bonus rewards,
-  and with the bonus switched off contexel's recall on these episodes is not
-  above the term-overlap baseline's (this benchmark does not generate that
-  row).</li>
+  closest comparison for <code>rescore</code> in this benchmark (another
+  rescorer, not none), with one caveat. contexel's lead over it comes from
+  <code>rescore</code>'s in-order proximity bonus; the episode queries keep
+  the target's word order, which that bonus rewards, and with the bonus
+  switched off contexel's recall on these episodes is below the term-overlap
+  baseline's (this benchmark does not generate that row). 100 episodes and
+  one episode seed: a gap of a few points is a few episodes.</li>
 </ul>
 
 <h3>Inflected queries</h3>

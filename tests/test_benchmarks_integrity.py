@@ -682,7 +682,7 @@ def test_the_fill_column_is_labelled_as_estimated_tokens_over_the_budget():
     for render in (publish.html_glance, publish.html_home_glance):
         html_table = render(comparison)
         assert f"<th>{FILL_HEADER}</th>" in html_table, render.__name__
-        assert "<td class=\"poor\">91.62" + chr(0xD7) + "</td>" in html_table, render.__name__
+        assert "<td>91.62" + chr(0xD7) + "</td>" in html_table, render.__name__
 
 
 def test_native_ops_and_deps_headers_say_what_they_count():
@@ -938,3 +938,120 @@ def test_no_published_text_offers_a_deprecated_class_or_a_shipped_approach(rel):
     assert "ship the execution mechanism" not in text and "ship the execution" not in text, rel
     # code review: the full-recall caveat is not attributed to the data without evidence
     assert "the data's property" not in text, rel
+
+
+# --- re-audit R21: the competitor rows are not graded "poor" ---------------------------------
+def test_no_generated_cell_is_styled_poor():
+    comparison = _committed()
+    for render in (publish.html_glance, publish.html_home_glance):
+        assert 'class="poor"' not in render(comparison), render.__name__
+    for row in publish.glance(comparison):
+        for metric in ("ops", "recall", "fill", "useful", "deps"):
+            assert publish._tier(metric, row) in ("best", ""), (row["impl"], metric)
+    # "best" stays as it was
+    rows = {r["impl"]: r for r in publish.glance(comparison)}
+    assert publish._tier("useful", rows["contexel"]) == "best"
+    assert publish._tier("ops", rows["contexel"]) == "best"
+
+
+# --- code review minor 5: one "Fill at most 1.00" rule for the tables, the claims and the report
+@pytest.mark.parametrize("fill, within", [(1.0, True), (1.004, True), (1.006, False), (0.5, True)])
+def test_one_fill_rule_for_highlighting_claims_and_the_report(fill, within):
+    assert publish.within_budget_on_average is competitors.within_budget_on_average
+    assert publish.within_budget_on_average(fill) is within
+    row = {**{r["impl"]: r for r in publish.glance(_committed())}["contexel"], "fill": fill}
+    assert (publish._tier("recall", row) == "best") is within
+    assert publish._clean_full_recall(row) is within
+
+
+# --- re-audit R10: the measured versions are stated and tied to the results -----------------
+_VERSIONED = ("README.md", "README_PYPI.md", "site/index.html", "site/benchmarks.html")
+
+
+def test_the_measured_versions_are_registered_on_every_comparison_surface_and_true():
+    covered = {c.file for c in publish.CLAIMS if c.label == "measured versions"}
+    assert covered == set(_VERSIONED)
+    assert not [p for p in publish.check(ROOT) if "measured versions" in p]
+    for rel in _VERSIONED:
+        assert ("measured with toolz 1.1.0, langchain-core 1.4.9, llama-index-core 0.14.23; newer "
+                "releases are not measured") in _published_words(rel), rel
+
+
+@pytest.mark.parametrize("rel", _VERSIONED)
+def test_a_measured_version_that_differs_from_the_results_is_reported(tree, rel):
+    _edit_comparison(tree, lambda data: data["environment"]["libraries"].__setitem__("toolz", "1.2.0"))
+    problems = publish.check(tree)
+    assert any(p.startswith(f"{rel}: claim 'measured versions'") and "toolz 1.2.0" in p
+               for p in problems), problems
+
+
+@pytest.mark.parametrize("rel", _VERSIONED)
+def test_a_missing_versions_sentence_is_reported(tree, rel):
+    _replace_words(tree, rel, "newer releases are not measured", "newer releases exist")
+    problems = publish.check(tree)
+    assert any(rel in p and "'measured versions'" in p and "not found" in p for p in problems), problems
+
+
+# --- re-audit R18: the sample size, registered where the recall comparison is introduced ------
+_SAMPLED = ("README.md", "README_PYPI.md", "site/index.html", "site/benchmarks.html")
+
+
+@pytest.mark.parametrize("rel", _SAMPLED)
+def test_the_sample_size_sentence_follows_the_results(tree, rel):
+    assert "100 episodes and one episode seed: a gap of a few points is a few episodes" in _published_words(rel)
+    _replace_words(tree, rel, "100 episodes and one episode seed", "99 episodes and one episode seed")
+    problems = publish.check(tree)
+    assert f"{rel}: claim 'sample size' says 99, the results say 100" in problems, problems
+
+
+# --- re-audit R13: what 0/6 means for the hand-written rows -----------------------------------
+_ZERO_EXPLAINED = ("README.md", "README_PYPI.md", "site/benchmarks.html")
+
+
+def test_the_zero_of_six_sentences_are_registered_and_true():
+    for label in ("hand-written rows: no library steps", "no library performs more than two"):
+        assert {c.file for c in publish.CLAIMS if c.label == label} == set(_ZERO_EXPLAINED), label
+    assert not [p for p in publish.check(ROOT) if "library steps" in p or "more than two" in p]
+
+
+def _toolz_does_rank(data):
+    row = next(o for o in data["operations"] if o["impl"] == "toolz")
+    row["native"].append("rank")
+    row["missing"].remove("rank")
+
+
+def test_a_library_with_three_native_operations_breaks_the_more_than_two_claim(tree):
+    _edit_comparison(tree, _toolz_does_rank)
+    problems = publish.check(tree)
+    for rel in _ZERO_EXPLAINED:
+        assert any(rel in p and "no library performs more than two" in p and "not true" in p
+                   for p in problems), (rel, problems)
+
+
+def test_a_hand_written_row_with_a_library_step_breaks_the_zero_of_six_claim(tree):
+    def edit(data):
+        row = next(o for o in data["operations"] if o["impl"] == "hand-written")
+        row["native"].append("select")
+        row["glue"].remove("select")
+
+    _edit_comparison(tree, edit)
+    problems = publish.check(tree)
+    for rel in _ZERO_EXPLAINED:
+        assert any(rel in p and "hand-written rows: no library steps" in p and "not true" in p
+                   for p in problems), (rel, problems)
+
+
+def test_the_pypi_operations_sentence_no_longer_reads_as_if_the_baseline_did_nothing():
+    text = _published_words("README_PYPI.md")
+    assert "no other compared row does" not in text
+    assert "contexel performs all six operations with its own stages" in text
+
+
+# --- re-audit R7: the home page's reading note says the estimator counts the budget -----------
+def test_the_home_page_reading_note_says_how_the_budget_is_counted(tree):
+    assert ("stays within the budget on average as the estimator counts it (Fill at most 1.00)"
+            in _published_words("site/index.html"))
+    _replace_words(tree, "site/index.html", "on average as the estimator counts it (Fill",
+                   "on average (Fill")
+    problems = publish.check(tree)
+    assert any("site/index.html" in p and _HOME_LABEL in p and "not found" in p for p in problems), problems
