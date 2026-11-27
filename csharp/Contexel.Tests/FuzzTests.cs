@@ -35,7 +35,9 @@ public class FuzzTests
         if (string.IsNullOrEmpty(configured))
         {
             Assert.False(!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("CI")),
-                "CONTEXEL_FUZZ_CASES is not set: generate the corpus and point the variable at it");
+                "CONTEXEL_FUZZ_CASES is not set: generate the corpus and point the variable at it " +
+                "(python parity/generate_fuzz.py --out parity/fuzz-corpus.json, then set " +
+                "CONTEXEL_FUZZ_CASES=parity/fuzz-corpus.json)");
             return null;
         }
         using var doc = JsonDocument.Parse(File.ReadAllText(Path.GetFullPath(configured, RepoRoot())));
@@ -64,12 +66,16 @@ public class FuzzTests
         var meta = AsRec(corpus["_meta"]);
         var cases = AsList(corpus["cases"]).Select(AsRec).ToList();
         Assert.True(cases.Count >= MinCases, $"only {cases.Count} cases (a replay must never pass vacuously)");
-        Assert.Equal((long)meta["case_count"]!, (long)cases.Count);
-        Assert.Equal(cases.Count, cases.Select(c => (string)c["id"]!).Distinct().Count());
+        Assert.True((long)meta["case_count"]! == cases.Count,
+            $"case_count {meta["case_count"]} disagrees with the {cases.Count} cases in the array");
+        var distinctIds = cases.Select(c => (string)c["id"]!).Distinct().Count();
+        Assert.True(distinctIds == cases.Count, $"duplicate case ids: {cases.Count - distinctIds} repeated");
         var seen = cases.GroupBy(c => (string)c["stage"]!).ToDictionary(g => g.Key, g => (long)g.Count());
         var generated = AsRec(meta["kind_counts"]).ToDictionary(kv => kv.Key, kv => (long)kv.Value!);
-        Assert.Equal(generated.OrderBy(kv => kv.Key), seen.OrderBy(kv => kv.Key));
-        Assert.Contains(cases, c => c.ContainsKey("expect_error"));
+        string Kinds(Dictionary<string, long> d) => string.Join(", ", d.OrderBy(kv => kv.Key).Select(kv => $"{kv.Key}={kv.Value}"));
+        Assert.True(Kinds(generated) == Kinds(seen),
+            $"the kinds replayed differ from the kinds generated: replayed [{Kinds(seen)}] vs generated [{Kinds(generated)}]");
+        Assert.True(cases.Any(c => c.ContainsKey("expect_error")), "no error case in the corpus");
     }
 
     [Fact]
@@ -101,7 +107,9 @@ public class FuzzTests
     public void TheReplayCanFailACorruptedExpectationIsRefused()
     {
         if (Corpus() is not { } corpus) return;
-        foreach (var c in AsList(corpus["cases"]).Select(AsRec).Take(300))
+        var sample = AsList(corpus["cases"]).Select(AsRec).Take(300).ToList();
+        Assert.True(sample.Count > 0, "the corpus has no cases to corrupt (a canary must never pass vacuously)");
+        foreach (var c in sample)
             Assert.ThrowsAny<Exception>(() => CaseTests.AssertCase(Corrupted(c)));
     }
 }

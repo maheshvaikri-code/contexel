@@ -23,7 +23,9 @@ SMALL = 400
 LARGE = 2000
 # random() is the only generator method Python promises to keep stable across versions: these
 # draws and this digest of the first 300 cases (their inputs and arguments, not the canon's answers)
-# are the same on every Python and operating system. Change them only with the generator.
+# are the same on every Python and operating system. Change them only with the generator. The digest
+# still depends on the canon in two places: the redraw rule, and whether a scalar item in a list of
+# records is kept (a case's outcome decides it, ruling S7-6).
 PINNED_DRAWS = [323, 150, 650, 72, 535, 365]
 PINNED_FIRST_300 = "b0094c7ee3bd7ec0b69c1693a7b4e44290cc4440b22b4dd6372966c363c63635"
 ERROR_CODES = {"config.contradictory", "config.empty", "config.invalid_pattern",
@@ -40,6 +42,10 @@ def large():
     return gf.build(gf.DEFAULT_SEED, LARGE)
 
 
+def _digest(text):
+    return hashlib.sha256(text.encode("ascii")).hexdigest()
+
+
 def _run_cli(*args, hashseed="0"):
     env = {**os.environ, "PYTHONHASHSEED": hashseed, "PYTHONPATH": str(ROOT)}
     return subprocess.run([sys.executable, str(ROOT / "parity" / "generate_fuzz.py"), *args],
@@ -48,12 +54,13 @@ def _run_cli(*args, hashseed="0"):
 
 def test_fuzz_corpus_is_deterministic_and_inside_the_envelope(small, tmp_path):
     again = gf.build(gf.DEFAULT_SEED, SMALL)
-    assert gf.dumps(small) == gf.dumps(again)
+    # digests, not the 700 KB strings: a failed == on those makes pytest diff them for minutes
+    assert _digest(gf.dumps(small)) == _digest(gf.dumps(again))
     assert gf.dumps(small).isascii()                      # one byte stream on every platform
     for hashseed in ("0", "1"):                           # the corpus never depends on hash order
         out = tmp_path / f"corpus-{hashseed}.json"
         _run_cli("--cases", str(SMALL), "--out", str(out), hashseed=hashseed)
-        assert out.read_bytes() == gf.dumps(small).encode("ascii")
+        assert hashlib.sha256(out.read_bytes()).hexdigest() == _digest(gf.dumps(small))
     ids = set()
     for case in small["cases"]:
         assert set(case) <= ALLOWED_KEYS, case["id"]

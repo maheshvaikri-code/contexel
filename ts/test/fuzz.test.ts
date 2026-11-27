@@ -43,7 +43,11 @@ function corrupted(c: Case): Case {
 if (configured === undefined || configured === "") {
   if (process.env.CI) {
     test("the fuzz corpus is configured in CI", () => {
-      assert.fail("CONTEXEL_FUZZ_CASES is not set: generate the corpus and point the variable at it");
+      assert.fail(
+        "CONTEXEL_FUZZ_CASES is not set: generate the corpus and point the variable at it " +
+          "(python parity/generate_fuzz.py --out parity/fuzz-corpus.json, then set " +
+          "CONTEXEL_FUZZ_CASES=parity/fuzz-corpus.json)"
+      );
     });
   } else {
     test("differential fuzz replay", { skip: "CONTEXEL_FUZZ_CASES is not set" }, () => {});
