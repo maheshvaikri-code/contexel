@@ -109,7 +109,9 @@ all carry noise fields). Records are priced the way the library prices them
     <em>serialized</em> text. Canonical JSON by default;
     <code>set_serializer(fn)</code> prices records in the encoding your
     boundary actually emits — e.g. an <a href="https://ison.dev">ISON</a>
-    table, where the same budget holds more records.</p>
+    table, where the same budget holds more records than contexel's default
+    JSON (any header-plus-rows encoding, such as CSV or columnar JSON, avoids
+    repeating keys). (ISON is by the same author as contexel.)</p>
   </div>
 </div>
 
@@ -122,7 +124,7 @@ all carry noise fields). Records are priced the way the library prices them
   <span class="node cap">only distilled <code>result</code> enters context</span><span class="arrow">→</span>
   <span class="node cap">repeat until answer</span>
 </div>
-<p>Its tests prove the headline guarantee: two runs build byte-identical
+<p>Its tests check the headline guarantee: two runs build byte-identical
 context even though the raw tool layer returns fresh request ids on every
 call.</p>
 
@@ -143,7 +145,7 @@ const STAGES = [
   ["quarantine", "quarantine(records, fields=..., action=\"drop\"|\"flag\")",
    "Deterministic tripwire for literal injection markers — \"ignore all previous instructions\", role resets, system-prompt tags — over the given text fields. Drop removes (audited); flag marks and lets downstream policy decide. Honest scope: paraphrase passes; this is visibility, not a security boundary — allowlist is the stronger control."],
   ["select", "select(records, fields)",
-   "Keep only the fields you need. A per-record projection onto the keep-list, order preserved — the fastest lossless cut, and it makes rows uniform (which downstream encodings like ISON reward)."],
+   "Keep only the fields you need. A per-record projection onto the keep-list, order preserved — a cheap lossless cut, and it makes rows uniform (which header-plus-rows encodings such as CSV or ISON reward)."],
   ["dedupe", "dedupe(records, key=...)",
    "Drop duplicate records, first occurrence wins, order preserved. Fingerprints the key fields as type-qualified tuples — 1, 1.0, True, and \"1\" stay distinct, and equal sets fingerprint identically regardless of hash seed — with a canonical-JSON fallback for unhashable values."],
   ["rescore", "rescore(records, query=..., fields=...)",

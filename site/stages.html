@@ -177,7 +177,7 @@ budget drops the least important records, not arbitrary ones. Values of
 <h2 id="truncate_field">truncate_field(records, field, max_tokens, tokenizer=None, suffix="…")</h2>
 <p><strong>Clips</strong> one long text field to the longest prefix that
 fits the cap, then appends the suffix. For the built-in estimator the cut is
-closed-form (<code>ceil(len/4)</code> is invertible: 4×budget characters);
+closed-form (<code>ceil(len/4)</code> is invertible: a cap of n tokens allows 4n characters);
 for custom tokenizers it binary-searches. Non-string values pass through
 untouched. Never exceeds the cap.</p>
 
@@ -289,9 +289,12 @@ auto-traced and it checks its input in every mode.</p>
   <code>id_field</code> also <em>which</em> records each stage dropped
   (records lacking the field are untracked). <code>t.audit()</code> emits
   the JSON-able governance record. Inactive overhead is a single ContextVar
-  lookup per stage — single-digit milliseconds (49.8 vs 44.4&nbsp;ms over
-  10k records in RESULTS.md); active tracing token-counts every stage
-  boundary and is priced accordingly.</li>
+  lookup per stage. The benchmark suite times the full contract over 10,000
+  records with tracing inactive and with it active (the Tracing overhead row
+  on the <a href="benchmarks.html">benchmarks page</a>, generated from
+  <code>benchmarks/RESULTS.json</code>); it does not time an untraced
+  baseline. Active tracing token-counts every stage boundary and is priced
+  accordingly.</li>
   <li><code>tokens</code> — <code>count</code>, <code>use_tiktoken()</code>
   (exact where tiktoken covers the model), <code>tiktoken_tokenizer()</code>,
   <code>set_tokenizer(fn)</code>, <code>set_serializer(fn)</code>,

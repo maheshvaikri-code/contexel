@@ -42,11 +42,12 @@ reproducibility.</p>
 <h2>The leak</h2>
 <p>An agent's behavior is a function of its instructions <em>and the context
 it assembled from the repo</em>. The instructions are written, reviewed,
-versioned. The context is improvised at runtime and thrown away: the model
-writes throwaway reshaping code, run by run, that re-derives field
-selection, truncation, and trimming slightly differently each time. Two runs
-against identical instructions can see materially different contexts —
-and therefore produce materially different results.</p>
+versioned. The context is assembled at runtime and thrown away: it is often
+shaped by code the model writes per task, and when that code is rewritten,
+its field selection, truncation and trimming can differ (a premise, not
+something the benchmarks measure). Two runs against identical instructions
+can then see materially different contexts — and therefore produce
+materially different results.</p>
 
 <h2>Where the drift compounds</h2>
 <div class="cards">
@@ -109,8 +110,9 @@ sufficient.</p>
 calls. Carrying decisions forward across runs is a memory layer — a
 different primitive.</p>
 <p><strong>It is lexical, not semantic.</strong> Synonym- and
-paraphrase-aware relevance belongs to model rerankers, which trade exactly
-the reproducibility this contract exists to provide. The
+paraphrase-aware relevance belongs to model rerankers, which add a model
+dependency whose output can change with the model, its version and the
+hardware. The
 <a href="benchmarks.html">benchmarks</a> measure where that line sits.</p>
 </div>
 

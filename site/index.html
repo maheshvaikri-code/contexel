@@ -46,18 +46,19 @@
 <h2>The problem it owns</h2>
 <p class="lead">An agent's tools return big lists of records — search hits,
 file reads, API responses — far too verbose for a context window. Today the
-cutting-down is usually code the model improvises fresh on every run. That
-improvisation <em>drifts</em>: different field choices, different truncation,
-different survivors, run after run. The pipe that feeds the agent is itself a
-source of nondeterminism.</p>
-<p class="lead">contexel replaces the improvisation with a small set of
+cutting-down is often code the model writes per task, and it can
+<em>drift</em> each time it is rewritten: different field choices, different
+truncation, different survivors (a premise, not something the benchmark
+measures). The pipe that feeds the agent can then itself be a source of
+nondeterminism.</p>
+<p class="lead">contexel replaces that code with a small set of
 vetted, versioned stages applied at the <strong>tool → context
 boundary</strong>. Same input, byte-identical context, every run — a
 <a href="contract.html">context contract</a> instead of a nightly rewrite.</p>
 
 <div class="cards">
   <div class="card"><span class="k">Deterministic</span>
-    <h3>Byte-identical, proven</h3>
+    <h3>Byte-identical, tested</h3>
     <p>The benchmark hashes the same contract's output across fresh
     interpreters with different <code>PYTHONHASHSEED</code> values — same
     SHA-256 every time, even when raw tool output carries fresh request ids.</p>
@@ -76,7 +77,9 @@ boundary</strong>. Same input, byte-identical context, every run — a
   </div>
   <div class="card"><span class="k">Zero dependencies</span>
     <h3>Plain Python, about 20&nbsp;ms import</h3>
-    <p>No embeddings, no model calls, no packages. Eight pipeline stages
+    <p>No embeddings, no model calls, no packages. The import time is the
+    import statement alone in a fresh interpreter (median of 5, interpreter
+    start-up excluded) and varies with the machine's load. Eight pipeline stages
     (including provenance and injection-tripwire gates) plus a
     <code>merge</code> combiner, function composition, an audit-grade
     opt-in trace — auditable in an afternoon.</p>
@@ -84,12 +87,18 @@ boundary</strong>. Same input, byte-identical context, every run — a
 </div>
 
 <h2>The record, at a glance</h2>
-<p>Measured on the full CodeSearchNet python/test split — 28,047 real
-search-tool records. The outcome columns (Recall / Compliance / Useful) come
-from 100 ground-truth episodes at a 1,500-token budget where each library
-acts <em>only</em> through its own operations; <code>ms @28k</code> is the
-separate shared-glue canonical task. Details and method on the
-<a href="benchmarks.html">benchmarks page</a>.</p>
+<p>Measured on the full CodeSearchNet python/test split: its real
+functions, run through simulated, overlapping substring searches into 28,047
+search-tool records. The outcome columns (Recall / Fill / Useful) come from
+100 ground-truth episodes at a 1,500-token budget, counted with contexel's
+default estimator (about four characters per token), where each library acts
+<em>only</em> through the operations this benchmark wired for it, so a
+different wiring can change these rows; <code>ms @28k</code> is the separate
+shared-glue canonical task. Details and method on the
+<a href="benchmarks.html">benchmarks page</a>. This benchmark was written by
+contexel's author. The comparison wirings are our best effort, one dataset,
+100 episodes; corrections from the maintainers of the compared libraries are
+welcome (<a href="https://github.com/maheshvaikri-code/contexel/issues">open an issue</a>).</p>
 
 <!-- benchmark:glance:start -->
 <div class="scroll">
@@ -105,11 +114,17 @@ separate shared-glue canonical task. Details and method on the
 </div>
 <!-- benchmark:glance:end -->
 
-<div class="note"><strong>Read it honestly:</strong> contexel is the only row
-with full marks in every outcome column — and, in the ms/episode column
-of the <a href="benchmarks.html">benchmarks page</a> (this table shows only
+<div class="note"><strong>How to read it:</strong> the task is contexel's own
+six stages, scored with contexel's estimator, field list and dedupe key, so
+the table measures how much of that task each library covers in these
+wirings, not how good each library is at its own job. On it, contexel is the
+row that keeps the needed record in every episode under both retrieval
+signals, stays within the budget on average (Fill at most 1.00) and spends no
+tokens on duplicates or bloat — and, in the ms/episode column of the
+<a href="benchmarks.html">benchmarks page</a> (this table shows only
 ms @28k), it and the hand-written term-overlap scorer are the two slowest
-budget-compliant rows, in an order that can change from run to run.
+budget-compliant rows (every context within the budget as the estimator
+counts it), in an order that can change from run to run.
 contexel <em>does the most work</em>: deriving relevance from each record's
 own text on top of projecting, deduping, clipping, ranking, and budgeting; the
 scorer does less of that. Every other compliant row is faster by doing less
@@ -189,7 +204,7 @@ print(t.report())   # what every stage removed — inspectable, not silent</code
   contexel · MIT license ·
   <a href="https://github.com/maheshvaikri-code/contexel">GitHub</a> ·
   <a href="https://github.com/maheshvaikri-code/contexel/blob/main/CHANGELOG.md">Changelog</a>
-  · pairs with <a href="https://ison.dev">ISON</a>
+  · pairs with <a href="https://ison.dev">ISON</a> (ISON is by the same author as contexel.)
 </footer>
 
 </body>
