@@ -84,7 +84,8 @@ nested value, so the nested-container repr margin no longer applies to it
      combining dot above), so `rescore` of a text made of U+0130 followed by
      "stanbul" against the query "i" + U+0307 + "stanbul" differs between
      Python (a match) and C# (no match). This is older than Slice 5 and is now
-     recorded; no behavior change.
+     recorded; no behavior change. The differential fuzz (ADR-007) leaves it out
+     of its domain.
 8. **Release**: NuGet publish rides the existing tag-gated pipeline as a
    `nuget-publish` job (needs `NUGET_API_KEY` repo secret — §5 human
    setup), gated on the 3-OS suites like npm, dry-run on dispatch,

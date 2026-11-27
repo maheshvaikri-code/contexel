@@ -3,7 +3,7 @@
     "generated_by": "python contexel (canon)",
     "adr": "docs/adr/001-typescript-parity.md",
     "fixture_records": 6,
-    "case_count": 174
+    "case_count": 177
   },
   "fixture": [
     {
@@ -5848,6 +5848,75 @@
           "id": 3,
           "snippet": "other",
           "score": 0
+        }
+      ]
+    },
+    {
+      "id": "truncate_field/custom_suffix_is_counted_before_the_cut",
+      "stage": "truncate_field",
+      "args": {
+        "field": "s",
+        "max_tokens": 4,
+        "suffix": "..."
+      },
+      "input": [
+        {
+          "s": "abcdefghijabcdefghijabcdefghij"
+        },
+        {
+          "s": "short"
+        }
+      ],
+      "expect": [
+        {
+          "s": "abcdefghijab..."
+        },
+        {
+          "s": "short"
+        }
+      ]
+    },
+    {
+      "id": "truncate_field/empty_suffix_leaves_the_whole_budget",
+      "stage": "truncate_field",
+      "args": {
+        "field": "s",
+        "max_tokens": 4,
+        "suffix": ""
+      },
+      "input": [
+        {
+          "s": "abcdefghijabcdefghijabcdefghij"
+        },
+        {
+          "s": "short"
+        }
+      ],
+      "expect": [
+        {
+          "s": "abcdefghijabcdef"
+        },
+        {
+          "s": "short"
+        }
+      ]
+    },
+    {
+      "id": "truncate_field/astral_suffix_is_one_code_point",
+      "stage": "truncate_field",
+      "args": {
+        "field": "s",
+        "max_tokens": 4,
+        "suffix": "😀"
+      },
+      "input": [
+        {
+          "s": "abcdefghijabcdefghijabcdefghij"
+        }
+      ],
+      "expect": [
+        {
+          "s": "abcdefghijab😀"
         }
       ]
     }

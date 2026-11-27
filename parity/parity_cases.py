@@ -676,6 +676,17 @@ def _raw_cases() -> List[dict]:
         {"query": "parse value parsing values", "match": "stem"},
         [{"id": 1, "snippet": "parse the value"}, {"id": 2, "snippet": "parsing values and more"},
          {"id": 3, "snippet": "other"}])
+
+    # ---- Slice 7: the suffix argument of truncate_field (found by the differential fuzz: the C# case
+    # adapter did not pass it on). The suffix is counted in tokens before the cut, so a longer suffix
+    # leaves a shorter head; an empty suffix leaves the whole budget; an astral suffix is one code point.
+    long_text = "abcdefghij" * 3
+    add("truncate_field/custom_suffix_is_counted_before_the_cut", "truncate_field",
+        {"field": "s", "max_tokens": 4, "suffix": "..."}, [{"s": long_text}, {"s": "short"}])
+    add("truncate_field/empty_suffix_leaves_the_whole_budget", "truncate_field",
+        {"field": "s", "max_tokens": 4, "suffix": ""}, [{"s": long_text}, {"s": "short"}])
+    add("truncate_field/astral_suffix_is_one_code_point", "truncate_field",
+        {"field": "s", "max_tokens": 4, "suffix": ASTRAL}, [{"s": long_text}])
     return cases
 
 

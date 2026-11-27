@@ -15,6 +15,9 @@ bin/
 obj/
 *.nupkg
 
+# The differential fuzz corpus is generated, never committed (ADR-007)
+parity/fuzz-*.json
+
 # Test / benchmark caches
 .pytest_cache/
 .benchmarks/
