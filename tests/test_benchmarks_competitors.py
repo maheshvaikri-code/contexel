@@ -296,8 +296,11 @@ def test_the_report_counts_native_ops_in_the_wiring_it_chose():
     assert ("which library functions each implementation uses, and which operation each step "
             "serves, are the benchmark author's choices") in text
     for other in ("`topk`", "`accumulate`", "`excluded_llm_metadata_keys`", "`IngestionPipeline`",
-                  "`ChatMemoryBuffer`"):
+                  "`llama_index.core.memory.Memory` with a `token_limit`"):
         assert other in text, other
+    # re-audit R1: ChatMemoryBuffer is deprecated in the measured llama-index-core (0.14.23)
+    assert "a token-limited `ChatMemoryBuffer`" not in text
+    assert text.count("`ChatMemoryBuffer`") == text.count("the deprecated `ChatMemoryBuffer`")
     assert "In the wirings used here, no library in the timed set performs more than 2" in text
 
 
@@ -306,8 +309,14 @@ def test_the_report_describes_llama_index_one_way_and_states_the_inactive_cutoff
     text = _flat(competitors.render_report(_comparison()))
     assert "not bounding them" not in text and "serve none of the six operations" not in text
     for op in ("`SimilarityPostprocessor`", "`LongContextReorder`", "`top_n`", "`PromptHelper`",
-               "`ChatMemoryBuffer`"):
+               "`llama_index.core.memory.Memory`"):
         assert op in text, op
+    # re-audit R1, R23: the operations are on nodes, text and chat messages, and PromptHelper
+    # shortens every chunk; it does not drop low-ranked records
+    assert "related operations on its node, text and chat-message types" in text
+    assert "on its node types" not in text
+    assert "`PromptHelper` (shortens every text chunk evenly to fit the context window)" in text
+    assert "`ChatMemoryBuffer` token limit" not in text
     assert "This benchmark wires two of them" in text
     assert "counts neither as one of the six stages" in text
     assert "The cutoff (2.0) removes nothing under the strong signal" in text
@@ -363,6 +372,12 @@ def test_the_report_names_the_tools_it_did_not_run_precisely():
                    if line.startswith("| ColBERT, cross-encoder rerankers |"))
     assert "`target_token`" in lingua and "ColBERT" not in lingua
     assert "no token budget" in rankers
+    # re-audit R2: compress_prompt ranks the contexts (rank_method, "bm25" among the methods)
+    # and can reorder them (reorder_context) before it compresses tokens; it does not dedupe
+    cells = [c.strip() for c in lingua.strip().strip("|").split("|")]
+    assert cells[2] == "no"  # dedupe(key)
+    assert "`rank_method=\"bm25\"`" in cells[3]  # rescore(lexical)
+    assert "`rank_method`" in cells[4] and "`reorder_context`" in cells[4]  # rank
     # facts:X6
     assert "prior-art" not in text and "did not verify" not in text
     assert "not on PyPI as of 2026-11-26" in text and "`ctxeng`" in text

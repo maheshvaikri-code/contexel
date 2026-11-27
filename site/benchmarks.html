@@ -141,20 +141,24 @@ corrections from the maintainers of the compared libraries are welcome
   counted here: toolz's <code>topk</code> and <code>accumulate</code> can
   express a rank and a running budget cut, and llama-index-core has metadata
   exclusion (<code>excluded_llm_metadata_keys</code>), ingestion dedupe
-  (<code>IngestionPipeline</code> with a docstore) and a token-limited
-  <code>ChatMemoryBuffer</code>.</li>
+  (<code>IngestionPipeline</code> with a docstore) and a token-limited chat
+  memory (<code>llama_index.core.memory.Memory</code> with a
+  <code>token_limit</code>, which replaces the deprecated
+  <code>ChatMemoryBuffer</code>).</li>
   <li><strong>Recall says little when the context runs over the budget.</strong>
   toolz and llama-index-core keep the needed record by emitting many times
   the budget (the Fill column), in the wiring used here, which has no budget
   step for either. Both can be given one (toolz <code>accumulate</code>;
-  llama-index-core <code>ChatMemoryBuffer</code>, or
-  <code>PromptHelper</code>, which its response synthesizers use to fit text
-  to the context window). llama-index-core offers related operations on its
-  node types: a score cutoff (<code>SimilarityPostprocessor</code>), a
-  score-ordered reorder (<code>LongContextReorder</code>), rerankers with
-  <code>top_n</code>, metadata exclusion, docstore dedupe,
-  <code>PromptHelper</code> truncation to the context window and a
-  <code>ChatMemoryBuffer</code> token limit; this benchmark wires two of them
+  llama-index-core a token-limited chat memory, <code>Memory</code> with a
+  <code>token_limit</code>, or <code>PromptHelper</code>, which shortens every
+  text chunk evenly to fit the context window and which its response
+  synthesizers use). llama-index-core offers related operations on its node,
+  text and chat-message types: a score cutoff
+  (<code>SimilarityPostprocessor</code>), a score-ordered reorder
+  (<code>LongContextReorder</code>), rerankers with <code>top_n</code>,
+  metadata exclusion, docstore dedupe, <code>PromptHelper</code> (shortens
+  every text chunk evenly to fit the context window) and a token-limited chat
+  memory (<code>llama_index.core.memory.Memory</code>); this benchmark wires two of them
   (the score cutoff and the reorder) and counts neither as one of the six
   stages, and the cutoff it uses removes nothing under the strong signal.
   langchain-core holds the budget as the estimator counts it, but no
@@ -249,8 +253,8 @@ query legitimately describes more records than the budget holds, some valid
 record is cut — semantic or not. Full recall here means the ambiguity clusters
 resolved once exact-word evidence and the in-order proximity bonus were used;
 vaguer queries, a different
-corpus, or a tighter budget can put it back below full recall, and that is
-the data's property, not the policy's.</p>
+corpus, or a tighter budget can put it back below full recall; most likely
+that is the same ambiguity (not analysed per episode).</p>
 <p><strong>rescore is lexical:</strong> a query saying <em>parsing</em>
 scores zero against a document saying <em>parse</em> unless you opt in to
 <code>match="stem"</code>, a small frozen English stemmer; synonyms and

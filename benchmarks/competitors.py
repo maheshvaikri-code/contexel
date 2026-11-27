@@ -815,10 +815,19 @@ NOT_RUN = [
      "truncate_tok": "no",
      "trim_budget": "no", "merge_schema": "no", "operand": "Document",
      "ran": "not run: needs an embedding model; results depend on the model and the threshold"},
+    # microsoft/LLMLingua llmlingua/prompt_compressor.py (main): compress_prompt ranks the
+    # contexts with get_rank_results (rank_method), keeps the higher-ranked ones within the
+    # budget (use_context_level_filter, on by default), can reorder them (reorder_context)
+    # and then compresses tokens.
     {"library": "LLMLingua", "select": "no",
-     "dedupe_key": "no", "rescore_lex": "no", "rank": "no",
+     "dedupe_key": "no",
+     "rescore_lex": "BM25 context ranking (`rank_method=\"bm25\"`; the default ranks by the "
+                    "compressor's language model)",
+     "rank": "ranks contexts by `rank_method` (the compressor's language model by default; also "
+             "BM25, gzip, embedding and reranker methods) and can reorder them (`reorder_context`)",
      "truncate_tok": "removes tokens a small language model scores as non-essential",
-     "trim_budget": "compresses to `target_token` or `rate`", "merge_schema": "no",
+     "trim_budget": "keeps the higher-ranked contexts, then compresses tokens, to "
+                    "`target_token` or `rate`", "merge_schema": "no",
      "operand": "text",
      "ran": "not run: out of scope by design (contexel is lexical and deterministic)"},
     {"library": "ColBERT, cross-encoder rerankers", "select": "no",
@@ -1059,7 +1068,8 @@ counts therefore describe these wirings, not what each library can do. Other wir
 exist and are not counted here: toolz's `topk` and `accumulate` can express a rank and a
 running budget cut, and llama-index-core has metadata exclusion
 (`excluded_llm_metadata_keys`), ingestion dedupe (`IngestionPipeline` with a docstore)
-and a token-limited `ChatMemoryBuffer`.
+and a token-limited chat memory (`llama_index.core.memory.Memory` with a `token_limit`,
+which replaces the deprecated `ChatMemoryBuffer`).
 
 {ops_table}
 
@@ -1156,10 +1166,11 @@ What the numbers say, row by row:
   {lc_o["useful_share_pct"]:.1f}%). It never reads the score, so whether the target makes the cut
   depends on the incoming order, the same weak per-term order under both signals (recall
   {_p(lc_o["recall_strong_pct"])}%).
-- **llama-index-core** offers related operations on its node types: a score cutoff
-  (`SimilarityPostprocessor`), a score-ordered reorder (`LongContextReorder`), rerankers
-  with `top_n`, metadata exclusion, docstore dedupe, `PromptHelper` truncation to the
-  context window and a `ChatMemoryBuffer` token limit. This benchmark wires two of them
+- **llama-index-core** offers related operations on its node, text and chat-message types:
+  a score cutoff (`SimilarityPostprocessor`), a score-ordered reorder (`LongContextReorder`),
+  rerankers with `top_n`, metadata exclusion, docstore dedupe, `PromptHelper` (shortens
+  every text chunk evenly to fit the context window) and a token-limited chat memory
+  (`llama_index.core.memory.Memory`). This benchmark wires two of them
   (the score cutoff and the reorder) and counts neither as one of the six stages.
   {cutoff_line} No budget step is wired, so recall
   ({_p(llama_o["recall_strong_pct"])}%) comes from keeping nearly everything, at a fill

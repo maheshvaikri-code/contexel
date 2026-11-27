@@ -102,7 +102,8 @@ counts therefore describe these wirings, not what each library can do. Other wir
 exist and are not counted here: toolz's `topk` and `accumulate` can express a rank and a
 running budget cut, and llama-index-core has metadata exclusion
 (`excluded_llm_metadata_keys`), ingestion dedupe (`IngestionPipeline` with a docstore)
-and a token-limited `ChatMemoryBuffer`.
+and a token-limited chat memory (`llama_index.core.memory.Memory` with a `token_limit`,
+which replaces the deprecated `ChatMemoryBuffer`).
 
 | Implementation | Native operations | Done by hand-written glue | Not done at all | Other native steps | Operand conversion | Operand |
 |---|---|---|---|---|---|---|
@@ -120,7 +121,7 @@ not counted above):
 |---|---|---|---|---|---|---|---|---|---|
 | haystack-ai (DocumentJoiner, MetaFieldRanker, LostInTheMiddleRanker) | no | by document id (DocumentJoiner) | no | by a meta field (MetaFieldRanker); rank fusion (DocumentJoiner) | no | word-count budget (LostInTheMiddleRanker; keeps the document that crosses it) | no (uniform Document) | Document | not run in this benchmark |
 | langchain-community EmbeddingsRedundantFilter | no | by embedding similarity | no | no | no | no | no | Document | not run: needs an embedding model; results depend on the model and the threshold |
-| LLMLingua | no | no | no | no | removes tokens a small language model scores as non-essential | compresses to `target_token` or `rate` | no | text | not run: out of scope by design (contexel is lexical and deterministic) |
+| LLMLingua | no | no | BM25 context ranking (`rank_method="bm25"`; the default ranks by the compressor's language model) | ranks contexts by `rank_method` (the compressor's language model by default; also BM25, gzip, embedding and reranker methods) and can reorder them (`reorder_context`) | removes tokens a small language model scores as non-essential | keeps the higher-ranked contexts, then compresses tokens, to `target_token` or `rate` | no | text | not run: out of scope by design (contexel is lexical and deterministic) |
 | ColBERT, cross-encoder rerankers | no | no | no (learned relevance) | by learned relevance, top-k | no | no token budget | no | query and passages | not run: out of scope by design (contexel is lexical and deterministic) |
 | context-engineering-toolkit | - | - | - | - | - | - | - | - | not on PyPI as of 2026-11-26 (`pip index versions context-engineering-toolkit`) |
 
@@ -215,10 +216,11 @@ What the numbers say, row by row:
   89.7%). It never reads the score, so whether the target makes the cut
   depends on the incoming order, the same weak per-term order under both signals (recall
   30%).
-- **llama-index-core** offers related operations on its node types: a score cutoff
-  (`SimilarityPostprocessor`), a score-ordered reorder (`LongContextReorder`), rerankers
-  with `top_n`, metadata exclusion, docstore dedupe, `PromptHelper` truncation to the
-  context window and a `ChatMemoryBuffer` token limit. This benchmark wires two of them
+- **llama-index-core** offers related operations on its node, text and chat-message types:
+  a score cutoff (`SimilarityPostprocessor`), a score-ordered reorder (`LongContextReorder`),
+  rerankers with `top_n`, metadata exclusion, docstore dedupe, `PromptHelper` (shortens
+  every text chunk evenly to fit the context window) and a token-limited chat memory
+  (`llama_index.core.memory.Memory`). This benchmark wires two of them
   (the score cutoff and the reorder) and counts neither as one of the six stages.
   The cutoff (2.0) removes nothing under the strong signal, where every score is at least 11; under the weak signal it drops the hits whose raw count is below it. No budget step is wired, so recall
   (100%) comes from keeping nearly everything, at a fill

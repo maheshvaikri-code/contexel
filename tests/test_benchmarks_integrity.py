@@ -913,3 +913,28 @@ def test_the_home_page_reading_note_fails_when_the_results_disagree(tree, edit):
     _edit_comparison(tree, edit)
     problems = publish.check(tree)
     assert any("site/index.html" in p and _HOME_LABEL in p and "not true" in p for p in problems), problems
+
+
+# --- the re-audit's corrections stay corrected (docs/reviews/benchmark-claims-reaudit.md) ------
+def _published_words(rel):
+    """The file's text with its line breaks and runs of spaces folded, so a phrase is found
+    however the file wraps it."""
+    return " ".join((ROOT / rel).read_text(encoding="utf-8").split())
+
+
+_PROSE = ("README.md", "README_PYPI.md", "site/index.html", "site/benchmarks.html",
+          "benchmarks/COMPARISON.md")
+
+
+@pytest.mark.parametrize("rel", _PROSE)
+def test_no_published_text_offers_a_deprecated_class_or_a_shipped_approach(rel):
+    text = _published_words(rel)
+    # R1: ChatMemoryBuffer is deprecated in llama-index-core 0.14.23 (its class docstring says
+    # to use llama_index.core.memory.Memory); it is named, if at all, as the deprecated one
+    assert text.count("ChatMemoryBuffer") == text.count("the deprecated `ChatMemoryBuffer`") + text.count(
+        "the deprecated <code>ChatMemoryBuffer</code>"), rel
+    assert "on its node types" not in text, rel
+    # R11: "code execution with MCP" describes an approach; it is not said to ship
+    assert "ship the execution mechanism" not in text and "ship the execution" not in text, rel
+    # code review: the full-recall caveat is not attributed to the data without evidence
+    assert "the data's property" not in text, rel

@@ -139,7 +139,9 @@ How to read each column, plainly:
   toolz's `topk` and `accumulate` can express a rank and a running budget cut,
   and llama-index-core has metadata exclusion (`excluded_llm_metadata_keys`),
   ingestion dedupe (`IngestionPipeline` with a docstore) and a token-limited
-  `ChatMemoryBuffer`. The two speed columns are different experiments: in
+  chat memory (`llama_index.core.memory.Memory` with a `token_limit`, which
+  replaces the deprecated `ChatMemoryBuffer`). The two speed columns are
+  different experiments: in
   `ms @28k`, everything a library lacks was filled with the *same*
   hand-written glue, and for langchain-core and llama-index-core most of that
   time is converting the records to the library's message or node type (in
@@ -173,9 +175,10 @@ How to read each column, plainly:
   divided by the budget; over 1.00 means the contexts run over it. toolz and
   llama-index-core keep the needed record by emitting many times the budget,
   in the wiring used here, which has no budget step for either. Both can be
-  given one (toolz `accumulate`; llama-index-core `ChatMemoryBuffer`, or
-  `PromptHelper`, which its response synthesizers use to fit text to the
-  context window).
+  given one (toolz `accumulate`; llama-index-core a token-limited chat memory,
+  `Memory` with a `token_limit`, or `PromptHelper`, which shortens every text
+  chunk evenly to fit the context window and which its response synthesizers
+  use).
 - **Useful %** — share of final-context tokens spent on needed fields of
   unique records. The needed fields and the dedupe key are contexel's, so a
   row that projects to those fields and dedupes on that key gets the full
@@ -731,10 +734,12 @@ neighbours, so you can pick deliberately:
   and fuses rankings, `MetaFieldRanker` ranks by a meta field, and
   `LostInTheMiddleRanker` keeps documents up to a word-count budget
   (including the one that crosses it), all on Haystack's `Document` type.
-  **LlamaIndex** offers related operations on its node types: a score cutoff
-  (`SimilarityPostprocessor`), a score-ordered reorder (`LongContextReorder`),
-  rerankers with `top_n`, metadata exclusion, docstore dedupe, `PromptHelper`
-  truncation to the context window and a `ChatMemoryBuffer` token limit. The
+  **LlamaIndex** offers related operations on its node, text and chat-message
+  types: a score cutoff (`SimilarityPostprocessor`), a score-ordered reorder
+  (`LongContextReorder`), rerankers with `top_n`, metadata exclusion, docstore
+  dedupe, `PromptHelper` (shortens every text chunk evenly to fit the context
+  window) and a token-limited chat memory (`llama_index.core.memory.Memory`,
+  which replaces the deprecated `ChatMemoryBuffer`). The
   benchmark wires two of them (the score cutoff and the reorder) and counts
   neither as one of the six stages; the cutoff it uses removes nothing under
   the strong signal. **`context-engineering-toolkit`** was not on PyPI as of
@@ -747,9 +752,10 @@ neighbours, so you can pick deliberately:
   contexel is deterministic and lexical by design — complementary, not
   superior. The comparison measures the lexical side of that line on
   inflected queries (the table above); it does not run the semantic tools.
-- **The pattern itself**: Anthropic (programmatic tool calling; code
-  execution with MCP) and Cloudflare (Code Mode in the Agents SDK) ship the
-  execution mechanism. The shaping code itself is written by the model, or
+- **The pattern itself**: Anthropic (Programmatic Tool Calling, in beta; the
+  "code execution with MCP" approach it describes) and Cloudflare (Code Mode
+  in the Agents SDK, experimental) provide or describe the execution
+  mechanism. The shaping code itself is written by the model, or
   saved by it as a reusable skill; contexel gives that code vetted,
   versioned stages to call.
 
