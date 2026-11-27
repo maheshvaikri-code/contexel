@@ -67,7 +67,7 @@ boundary</strong>. Same input, byte-identical context, every run — a
     <h3>Budgets in your tokenizer's units</h3>
     <p>Stages reason in tokens, not rows. <code>trim_to_budget</code> and
     <code>truncate_field</code> enforce the limits you set in the active
-    tokenizer's units: exact with <code>use_tiktoken()</code> or your
+    tokenizer's units: exact with <code>tokens.use_tiktoken()</code> or your
     provider's counter; the default estimate is for soft budgets. Counting is
     pluggable (heuristic, tiktoken, your own) and encoding-aware.</p>
   </div>
