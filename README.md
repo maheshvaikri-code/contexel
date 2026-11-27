@@ -22,9 +22,10 @@ browsable locally: open `site/index.html`).
 
 An agent's tools return big lists of records: search hits, file reads, API
 responses. Before they reach the model's context window they must be cut
-down — and today that cutting is usually code the model improvises fresh
-each run, which drifts: different field choices, different truncation,
-different survivors, every time. contexel replaces the improvisation with
+down — and today that cutting is often code the model writes per task, which
+can drift each time it is rewritten: different field choices, different
+truncation, different survivors (a premise, not something the benchmark
+measures). contexel replaces that code with
 vetted, versioned stages at the **tool → context boundary**. Same input,
 byte-identical context, on every run.
 
@@ -81,20 +82,38 @@ SHA-256 every time ([benchmarks/RESULTS.md](benchmarks/RESULTS.md)).
 
 ## What the benchmark shows — and how to read it
 
-Measured on real, public data: the full CodeSearchNet python/test split
-(22,176 functions), reconstructed into 28,047 search-tool records with
-genuine duplicates, plus 100 ground-truth episodes where the record the
+Measured on public data: the real functions of the full CodeSearchNet
+python/test split (22,176 functions), run through simulated, overlapping
+substring searches into 28,047 search-tool records (almost all of the
+duplicates are the same function matched by several searches; a few are
+different functions from different repositories that share a path and a
+symbol), plus 100 ground-truth episodes where the record the
 agent *needed* is known in advance. Full method and tables in
 [benchmarks/COMPARISON.md](benchmarks/COMPARISON.md); reproduce with
-`python -m benchmarks.competitors` after `pip install -e ".[benchmarks]"`
-(the first run downloads the CodeSearchNet split, ~30 MB, and refuses it
-unless its SHA-256 equals the digest committed in
+`python -m benchmarks.competitors` after
+`pip install -e ".[benchmarks]" -c benchmarks/constraints.txt` (the
+constraints file installs the library versions that were measured, which the
+extra alone does not pin; the first run downloads the CodeSearchNet split,
+~30 MB, and refuses it unless its SHA-256 equals the digest committed in
 `benchmarks/dataset.sha256`).
+
+This benchmark was written by contexel's author. The comparison wirings are our
+best effort, one dataset, 100 episodes; corrections from the maintainers of the
+compared libraries are welcome ([open an issue](https://github.com/maheshvaikri-code/contexel/issues)).
 
 Every number in this section is generated, or checked against the results: the
 tables are rendered from `benchmarks/COMPARISON.json`, and
 `python tools/check_benchmark_numbers.py` (run in CI) fails when this file, the
-PyPI README or the site disagree with it.
+PyPI README or the site disagree with it. CI checks against the committed
+results; it does not re-run the benchmark.
+
+**Tokens:** every budget, cap and price in this benchmark, and the Fill and
+Useful columns, are counted with contexel's default estimator (about four
+characters per token), the same one the hand-written glue uses. The estimator
+is for soft budgeting: a hard limit needs an exact tokenizer
+(`contexel[accurate]` and `tokens.use_tiktoken()`, or the provider's own
+counter). Measured with an exact tokenizer, most of the contexts that fill the
+budget here run over the estimated budget.
 
 <!-- benchmark:glance:start -->
 | Implementation | Native ops (in this wiring) | ms @28k | ms/episode | Recall % (strong / weak) | Fill × (estimated tokens ÷ budget) | Useful % | Import ms | Transitive deps |
@@ -109,42 +128,83 @@ PyPI README or the site disagree with it.
 
 How to read each column, plainly:
 
-- **Native ops** — how many of the task's six operations (select, dedupe,
-  rescore, truncate, rank, trim) the library expresses itself, *computed* from
-  the code that defines each implementation (the step lists are in
-  `benchmarks/competitors.py`; `benchmarks/opcount.py` holds the step type and
-  the counter), not typed. The two speed columns are different experiments: in `ms @28k`,
-  everything a library lacks was filled with the *same* hand-written glue,
-  so timing differences are the library's; the Recall / Compliance / Useful
-  columns are the opposite — each library acts *only* through its own
-  operations, so those numbers show what each one ships. `ms @28k` is the
-  query-free bulk task, and "—" marks a row with no timed task.
+- **Native ops (in this wiring)** — how many of the task's six operations
+  (select, dedupe, rescore, truncate, rank, trim) the library performed itself
+  in the wiring this benchmark chose. Whether a step enters the library's own
+  code is detected automatically (`benchmarks/opcount.py`); which library
+  functions each implementation uses, and which operation each step serves,
+  are the benchmark author's choices (the step lists are in
+  `benchmarks/competitors.py`). The counts therefore describe these wirings,
+  not what each library can do. Other wirings exist and are not counted here:
+  toolz's `topk` and `accumulate` can express a rank and a running budget cut,
+  and llama-index-core has metadata exclusion (`excluded_llm_metadata_keys`),
+  ingestion dedupe (`IngestionPipeline` with a docstore) and a token-limited
+  `ChatMemoryBuffer`. The two speed columns are different experiments: in
+  `ms @28k`, everything a library lacks was filled with the *same*
+  hand-written glue, and for langchain-core and llama-index-core most of that
+  time is converting the records to the library's message or node type (in
+  llama-index-core's row the only llama-index code that runs is building and
+  unbuilding its node objects; langchain-core's one native step is
+  `trim_messages`). The Recall / Fill / Useful columns are the opposite — each
+  library acts only through the operations this benchmark wired for it, so a
+  different wiring can change these rows, and they do not rate the libraries
+  at their own jobs. `ms @28k` is the query-free bulk task, and "—" marks a
+  row with no timed task.
 - **Recall %** (strong / weak retrieval signal) — did the record the agent
-  actually needed survive into a 1,500-token context? The episodes guarantee
-  that record is present in the raw hits, so recall here isolates *shaping*
-  loss, not retrieval loss. contexel's recall is the same under both signals,
-  because `rescore` derives relevance from the records' own text; the
+  actually needed survive into a 1,500-token context, as the estimator counts
+  it? The episodes guarantee that record is present in the raw hits, so recall
+  here isolates *shaping* loss, not retrieval loss. The two signals differ
+  only in the score value: the hit lists arrive in the same order under both,
+  so a row that never reads the score has identical columns by construction.
+  contexel's recall is the same under both signals by construction too:
+  `rescore` replaces the tool's score with relevance derived from the records'
+  own text, which shows that it does not depend on the tool's score. The
   hand-written row trusts the tool's score, so its recall falls when that
-  score is poor. The *hand-written (term overlap)* row adds the scorer such
-  code would improvise: it is the fairest comparison for `rescore`, another
-  rescorer rather than none.
-- **Compliance %** — did the final context actually fit the budget? A row with
-  full recall and zero compliance (toolz, llama-index) got there by emitting
-  many times the budget (the Fill column): a context no window accepts.
+  score is poor; langchain-core never reads the score, so both of its columns
+  reflect the same weak per-term incoming order. The *hand-written (term
+  overlap)* row adds a scorer such code might write: it is the fairest
+  comparison for `rescore`, another rescorer rather than none, with one
+  caveat. contexel's lead over it comes from `rescore`'s in-order proximity
+  bonus; the episode queries keep the target's word order, which that bonus
+  rewards, and with the bonus switched off contexel's recall on these
+  episodes is not above the term-overlap baseline's (this benchmark does not
+  generate that row).
+- **Fill × (estimated tokens ÷ budget)** — mean estimated context tokens
+  divided by the budget; over 1.00 means the contexts run over it. toolz and
+  llama-index-core keep the needed record by emitting many times the budget,
+  in the wiring used here, which has no budget step for either. Both can be
+  given one (toolz `accumulate`; llama-index-core `ChatMemoryBuffer`, or
+  `PromptHelper`, which its response synthesizers use to fit text to the
+  context window).
 - **Useful %** — share of final-context tokens spent on needed fields of
-  unique records. langchain-core honors the budget but spends part of it on
-  duplicates and field bloat it cannot remove; llama-index spends more.
-- **ms/episode is the work, not overhead.** Per episode contexel projects the
+  unique records. The needed fields and the dedupe key are contexel's, so a
+  row that projects to those fields and dedupes on that key gets the full
+  share by construction. A context that is empty counts as fully useful by
+  the current scoring; langchain-core returns one when its first record alone
+  exceeds the budget. langchain-core honors the budget but spends part of it
+  on duplicates and field bloat that no langchain-core step in this wiring
+  removes; llama-index-core spends more.
+- **Import ms** and **Transitive deps** — import time is the median of 5
+  fresh interpreters, each importing only the library's top-level package
+  (interpreter start-up excluded; the modules a task uses can cost more, and
+  the time varies with the machine's load). Transitive deps counts the
+  installed distributions the package requires, recursively: the installed
+  closure, with environment markers evaluated for the measuring machine and
+  no extras.
+- **ms/episode** — the mean wall time per episode of the shaping plus the
+  benchmark's own scoring of the result (one pass), so a row whose contexts
+  are very large also pays for scoring them. Per episode contexel projects the
   fields, dedupes on a key, derives relevance from each record's own text
   (batch relevance with IDF, saturating term frequency and in-order
   proximity), clips the snippet, ranks, and enforces the budget stage by
   stage. Every cap and every price is computed with the active tokenizer,
   here the default estimator of about four characters per token, the same
   estimate the hand-written glue uses. It and the hand-written term-overlap
-  scorer are the two slowest budget-compliant rows, in an order that can
+  scorer are the two slowest budget-compliant rows (every context within the
+  budget as the estimator counts it), in an order that can
   change from run to run: the scorer does less record work (whole-word overlap
   instead of IDF, saturating term frequency and proximity). Every other
-  compliant row is faster because it does less still: the hand-written glue
+  such row is faster because it does less still: the hand-written glue
   trusts the score, langchain-core skips the record work. The timings are one
   run of the command on one machine; they vary with the machine's load and
   from run to run, and the other columns do not.
@@ -192,7 +252,11 @@ recovers); synonyms and paraphrase are invisible either way. When you need
 that, put a semantic reranker in front — contexel's own suite measures what
 the lexical lane cannot reach instead of hiding it
 ([RESULTS.md](benchmarks/RESULTS.md) also quantifies the default
-tokenizer's error: −29% on JSON-heavy records — hard token limits require
+tokenizer's error: −29% on JSON-heavy records in its synthetic sample,
+search-hit records with hexadecimal ids, and the error differs on other
+records. Every budget in the comparison above is counted with that
+estimator, and measured with an exact tokenizer most of the contexts that
+fill the budget there run over it — hard token limits require
 an exact tokenizer: `contexel[accurate]` + `tokens.use_tiktoken()` where
 tiktoken covers the model, or your provider's own counter via
 `set_tokenizer`; the estimator is for soft budgeting only).
@@ -222,11 +286,12 @@ contexel sits wherever tool output becomes model context:
 4. **Under a framework**: a `records ⇄ Document` adapter for LangChain /
    LlamaIndex — [`examples/framework_adapter.py`](examples/framework_adapter.py)
 5. **Ahead of a token-efficient encoding**: shape-then-encode with
-   [ISON](https://ison.dev) — [`examples/ison_boundary.py`](examples/ison_boundary.py)
+   [ISON](https://ison.dev) (ISON is by the same author as contexel.) —
+   [`examples/ison_boundary.py`](examples/ison_boundary.py)
 
 And a complete, runnable code-execution agent in
 [`reference_agent/`](reference_agent/) (`python -m reference_agent`, no API
-key needed) whose tests prove the headline guarantee: two runs build
+key needed) whose tests check the headline guarantee: two runs build
 byte-identical context even though the raw tool output carries fresh
 request ids every call.
 
@@ -652,38 +717,59 @@ not catch exactly the same obfuscations:
 
 ## Alternatives, and what pairs with it
 
-The tool → context shaping *pattern* is industry consensus; what varies is
-the mechanism. The nearest neighbours, so you can pick deliberately:
+The tool → context shaping *pattern* is a widely described one (for example
+by Anthropic and Cloudflare); what varies is the mechanism. The nearest
+neighbours, so you can pick deliberately:
 
-- **LangChain** `trim_messages` token-trims *chat turns*, not tool records;
-  `EmbeddingsRedundantFilter` dedupes semantically — it needs an embedding
-  model, and results shift with model versions. **Haystack** `DocumentJoiner`
-  and **LlamaIndex** node postprocessors cover similar operations, coupled to
-  their frameworks' `Document`/node types. **`context-engineering-toolkit`**
-  has been cited as the closest standalone library but was not on PyPI as of
-  2026-07.
-- **Semantic compressors** (LLMLingua, ColBERT, cross-encoder rerankers)
-  understand meaning; contexel is deterministic and lexical by design —
-  complementary, not superior. The comparison measures exactly where that
-  line sits.
-- **The pattern itself** (Anthropic's "code execution with MCP", Cloudflare
-  Code Mode) ships as a description, with the shaping left to code the model
-  improvises each run — the drift contexel exists to remove.
+- **LangChain**: `trim_messages` (langchain-core) trims a message list (chat
+  history, including whole `ToolMessage`s) to a token count; it does not see
+  the records inside one tool result. `EmbeddingsRedundantFilter`
+  (langchain-community) drops documents by comparing their embeddings: it
+  needs an embedding model, and results depend on the model and the
+  threshold. **Haystack**: `DocumentJoiner` drops duplicates by document id
+  and fuses rankings, `MetaFieldRanker` ranks by a meta field, and
+  `LostInTheMiddleRanker` keeps documents up to a word-count budget
+  (including the one that crosses it), all on Haystack's `Document` type.
+  **LlamaIndex** offers related operations on its node types: a score cutoff
+  (`SimilarityPostprocessor`), a score-ordered reorder (`LongContextReorder`),
+  rerankers with `top_n`, metadata exclusion, docstore dedupe, `PromptHelper`
+  truncation to the context window and a `ChatMemoryBuffer` token limit. The
+  benchmark wires two of them (the score cutoff and the reorder) and counts
+  neither as one of the six stages; the cutoff it uses removes nothing under
+  the strong signal. **`context-engineering-toolkit`** was not on PyPI as of
+  2026-11-26 (`pip index versions context-engineering-toolkit` finds no
+  distribution). Other standalone context-shaping libraries exist, for
+  example keli-wen/context-kit (GitHub) and `ctxeng` (PyPI); the benchmark
+  did not run them.
+- **Semantic tools** — compressors (LLMLingua), late-interaction retrievers
+  (ColBERT) and cross-encoder rerankers — use learned models of meaning;
+  contexel is deterministic and lexical by design — complementary, not
+  superior. The comparison measures the lexical side of that line on
+  inflected queries (the table above); it does not run the semantic tools.
+- **The pattern itself**: Anthropic (programmatic tool calling; code
+  execution with MCP) and Cloudflare (Code Mode in the Agents SDK) ship the
+  execution mechanism. The shaping code itself is written by the model, or
+  saved by it as a reusable skill; contexel gives that code vetted,
+  versioned stages to call.
 
 **Serialization formats are the complementary layer, not competitors**:
 contexel decides *what survives*; the encoding decides *what the survivors
-cost*. It pairs naturally with [ISON](https://ison.dev) — `select` projects
-records onto a uniform field set, exactly the rows ISON's table syntax
-encodes without repeating keys (measured in benchmark suite 6), and
-`tokens.set_serializer()` keeps budgets priced in that encoding (see
-[`examples/ison_boundary.py`](examples/ison_boundary.py)).
+cost*. It pairs naturally with [ISON](https://ison.dev) (ISON is by the same
+author as contexel.) — `select` projects records onto a uniform field set,
+exactly the rows ISON's table syntax encodes without repeating keys
+(measured in benchmark suite 6 against contexel's default JSON; any
+header-plus-rows encoding, such as CSV or columnar JSON, avoids repeating
+keys), and `tokens.set_serializer()` keeps budgets priced in that encoding
+(see [`examples/ison_boundary.py`](examples/ison_boundary.py)).
 
-Measured, not asserted: [`benchmarks/COMPARISON.md`](benchmarks/COMPARISON.md)
-runs the same shaping task through the nearest neighbours on real
-CodeSearchNet records (`python -m benchmarks.competitors`), and
+The measurements: [`benchmarks/COMPARISON.md`](benchmarks/COMPARISON.md)
+runs the same shaping task through toolz, langchain-core and
+llama-index-core on records built from real CodeSearchNet functions
+(`python -m benchmarks.competitors`), and
 [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md) covers contexel's own claims
 (`python -m benchmarks` — needs the `accurate` extra; the competitor run
-needs the `benchmarks` extra).
+needs the `benchmarks` extra, installed with
+`-c benchmarks/constraints.txt` to reproduce the measured versions).
 
 ## Design
 

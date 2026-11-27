@@ -433,16 +433,14 @@ for _file in ("README.md", "README_PYPI.md", "site/benchmarks.html"):
 for _file in ("README.md", "README_PYPI.md", "site/index.html"):
     CLAIMS.append(Claim(_file, "evaluation budget", BUDGET,
                         _equals(lambda c, s: f"{c['settings']['eval_budget']:,}")))
+for _file in ("README.md", "README_PYPI.md"):  # the authorship disclosure (ruling P1-5)
+    CLAIMS.append(Claim(_file, "disclosure episodes", r"one\s+dataset,\s+([\d,]+)\s+episodes",
+                        _equals(lambda c, s: f"{c['settings']['episodes']:,}")))
 CLAIMS += [
     Claim("site/benchmarks.html", "evaluation budget", r"Budget:\s*([\d,]+)\s+tokens",
           _equals(lambda c, s: f"{c['settings']['eval_budget']:,}")),
     Claim("README.md", "JSON tokenizer error", MINUS + r"(\d+)%\s+on\s+JSON-heavy",
           _equals(_json_error)),
-    # These two PyPI sentences still state a budget-compliance percentage; the number is
-    # checked against compliance_pct (estimator tokens) for as long as the sentences carry it,
-    # and the claims go when the sentences are reworded. No generated table shows the column.
-    Claim("README_PYPI.md", "budget compliance", r"budget\s+in\s+(\d+)%\s+of\s+episodes",
-          _metric("compliance_pct", "compliance")),
     Claim("README_PYPI.md", "recall", r"needed\s+record\s+in\s+(\d+)%\s+of\s+them", _both_recalls),
     Claim("README_PYPI.md", "useful share", r"spends\s+(\d+)%\s+of\s+context\s+tokens",
           _metric("useful_share_pct", "useful share")),
@@ -452,8 +450,6 @@ CLAIMS += [
     Claim("README_PYPI.md", "term-overlap baseline recall",
           r"term-overlap\s+baseline\s+\(a\s+hand-written\s+scorer\s+in\s+place\s+of\s+`rescore`\)\s+reaches\s+(\d+)%\s+recall",
           _scored_value("recall", "recall")),
-    Claim("README_PYPI.md", "term-overlap baseline compliance", r"recall\s+and\s+(\d+)%\s+budget\s+compliance",
-          _scored_value("compliance_pct", "compliance")),
     Claim("README_PYPI.md", "default matching, original terms", r"finds\s+the\s+record\s+in\s+(\d+)%\s+of\s+those",
           _inflected_value("contexel", "recall_original_pct", "with the original terms")),
     Claim("README_PYPI.md", "default matching, inflected terms", r"own\s+words\s+and\s+in\s+(\d+)%\s+with\s+inflections",
@@ -472,7 +468,8 @@ _SLOWEST = r"two\s+slowest\s+budget-compliant\s+rows"
 _SLOWEST_LABEL = "two slowest budget-compliant rows"
 _DROP = r"Exact-word\s+matching\s+\(the\s+default\)\s+collapses\s+on\s+inflected\s+queries"
 CLAIMS += [
-    _sentence("README_PYPI.md", r"contexel\s+expresses\s+all\s+six\s+operations\s+natively,\s+which\s+no\s+other\s+compared\s+row\s+does",
+    _sentence("README_PYPI.md", r"contexel\s+performs\s+all\s+six\s+operations\s+itself,\s+and\s+in\s+the\s+wirings"
+              r"\s+this\s+benchmark\s+chose\s+no\s+other\s+compared\s+row\s+does",
               "only row with every operation native", _only_full_native),
     _sentence("README_PYPI.md", r"one\s+corpus\s+and\s+one\s+task", "scope: one corpus, one task",
               lambda c, s: bool(c["dataset"]["sha256"])),

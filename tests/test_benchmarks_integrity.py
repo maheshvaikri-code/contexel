@@ -302,7 +302,6 @@ def test_another_about_n_ms_sentence_does_not_stand_in_for_the_import_claim(tree
 
 @pytest.mark.parametrize("old, new, label", [
     ("reaches\n97% recall", "reaches\n96% recall", "term-overlap baseline recall"),
-    ("recall and 100% budget compliance", "recall and 99% budget compliance", "term-overlap baseline compliance"),
     ("finds the record in 99% of those", "finds the record in 98% of those", "default matching, original terms"),
     ("own words and in 35% with inflections", "own words and in 34% with inflections",
      "default matching, inflected terms"),
