@@ -262,28 +262,37 @@ tables and the two reports were re-rendered from them.
   are unchanged. The text now says the counts are taken over the step lists
   `benchmarks/competitors.py` chose, that which library functions each row
   uses is the author's choice, and that other wirings exist (toolz
-  `topk`/`accumulate`; llama-index-core metadata exclusion,
-  `IngestionPipeline` dedupe, `ChatMemoryBuffer`). "Computed, not typed" is
+  `topk`/`accumulate`; langchain-core a sort before `trim_messages` and
+  `langchain_core.indexing.index`; llama-index-core metadata exclusion,
+  `IngestionPipeline` dedupe, a token-limited `llama_index.core.memory.Memory`).
+  "Computed, not typed" is
   gone. "Deps" is now "Transitive deps" (the installed closure, no extras).
 - LlamaIndex is described the same way everywhere: related operations on its
-  node types (a score cutoff, a score-ordered reorder, rerankers with
-  `top_n`, metadata exclusion, docstore dedupe, `PromptHelper` truncation, a
-  `ChatMemoryBuffer` token limit), of which this benchmark wires two and
+  node, text and chat-message types (a score cutoff, a score-ordered reorder,
+  rerankers with `top_n`, metadata exclusion, docstore dedupe, `PromptHelper`,
+  which shortens every text chunk evenly to fit the context window, and a
+  token-limited chat memory, `llama_index.core.memory.Memory`, which replaces
+  the deprecated `ChatMemoryBuffer`), of which this benchmark wires two and
   counts neither as one of the six stages. "Not bounding them" is removed,
   and the report says the score cutoff it uses removes nothing under the
   strong signal.
-- Statements about other projects are corrected. Anthropic (programmatic
-  tool calling, code execution with MCP) and Cloudflare (Code Mode in the
-  Agents SDK) ship the execution mechanism; the model writes or saves the
+- Statements about other projects are corrected. Anthropic (Programmatic
+  Tool Calling, in beta; the "code execution with MCP" approach it
+  describes) and Cloudflare (Code Mode in the Agents SDK, experimental)
+  provide or describe the execution mechanism; the model writes or saves the
   shaping code, and contexel supplies vetted, versioned stages for it.
-  LLMLingua (compression) is listed apart from ColBERT and cross-encoder
-  rerankers (retrieval and reranking, no token budget). The Haystack row names
+  LLMLingua is listed apart from ColBERT and cross-encoder rerankers
+  (retrieval and reranking, no token budget): its `compress_prompt` ranks
+  the contexts (`rank_method`, BM25 among the methods), keeps the
+  higher-ranked ones, can reorder them (`reorder_context`) and then
+  compresses tokens. The Haystack row names
   `DocumentJoiner`, `MetaFieldRanker` and `LostInTheMiddleRanker` and says
   what each does; `trim_messages` and `EmbeddingsRedundantFilter` are
   described by what they do. The toolkit sentence now says
   `context-engineering-toolkit` was not on PyPI as of 2026-11-26 (with the
-  command), names `context-kit` and `ctxeng` as other libraries that were not
-  benchmarked, and no longer says that a prior-art claim "did not verify".
+  command), names keli-wen/context-kit (GitHub) and `ctxeng` as other
+  libraries that were not benchmarked, and no longer says that a prior-art
+  claim "did not verify".
 - Disclosures: "This benchmark was written by contexel's author", with an
   invitation to the compared libraries' maintainers to send corrections, on
   the README, the PyPI README, the home page, the benchmarks page and the
@@ -304,14 +313,53 @@ tables and the two reports were re-rendered from them.
   langchain-core and llama-index-core, and the README and the report say to
   install with `pip install -e ".[benchmarks]" -c benchmarks/constraints.txt`
   to reproduce them. The `benchmarks` extra stays unpinned.
-- `tools/check_benchmark_numbers.py` now reads all eight published files:
-  both READMEs and all six site pages, including the stage reference, whose
+- `tools/check_benchmark_numbers.py` now covers the eight files it scans for
+  numbers: both READMEs and all six site pages, including the stage reference, whose
   wrong timing went unnoticed because nothing scanned that page. It also
   registers the home page's reading note and the disclosure's episode count
   on every surface that carries it. `--write` now re-renders `COMPARISON.md`
   and `RESULTS.md` from the committed JSON as well as the marked blocks (it
   never runs a benchmark), keeps each file's line endings, and is what the
   stale-report hint names.
+- The final gates (a whole-branch code review, an independent re-audit of the
+  rewritten text filed as `docs/reviews/benchmark-claims-reaudit.md`, and QA
+  filed as `docs/qa/benchmark-claims-phase1.md`) led to these corrections,
+  worded without figures the harness does not generate:
+  - langchain-core: "never reads the score" is said of this wiring (no Python
+    glue, no ranking step in it); a sort by score before the same
+    `trim_messages` would raise its strong-signal recall and lower its
+    weak-signal one; it returns an empty context in a large share of the
+    episodes, which flatters its Useful share.
+  - Contexts measured in exact tokens run over the estimated budget "by a
+    noticeable margin"; the home page card "Budgets that hold" is now
+    "Budgets in your tokenizer's units", and its reading note says the
+    budget holds "as the estimator counts it". The home page says that most
+    of langchain-core's and llama-index-core's `ms @28k` is converting
+    records to the library's type.
+  - With the proximity bonus off, contexel's recall is "below" the
+    term-overlap baseline's (was "not above"); that baseline is "the closest
+    comparison for `rescore` in this benchmark" (was "the fairest"); the
+    sample is stated (100 episodes, one episode seed); the hand-written
+    rows' 0/6 counts library steps only, and no library performs more than
+    two in these wirings.
+  - The measured library versions are stated next to every comparison
+    table; qualitative statements are said to be unchecked; Suite 1 on the
+    benchmarks page carries the one-run timing caveat; the install lines add
+    `-c benchmarks/constraints.txt`; `COMPARISON.md` is titled "contexel and
+    other libraries: comparative benchmark", says its numbers come from the
+    run and its text from the JSON, and describes the episode query exactly.
+  - The benchmarks page no longer attributes a recall shortfall to the data
+    without evidence. The ISON authorship note follows the README sentence
+    instead of interrupting it.
+  - Rendering: no table cell is styled as a failing one (the best cells stay
+    marked), and one "Fill at most 1.00" rule, the value rounded as shown,
+    serves the tables, the claims and the report.
+  - The checker registers the measured versions (compared with the results),
+    the sample-size sentence, what 0/6 means and the whole disclosure
+    sentence (the author and the issues link, not only the episode count).
+    `--write` is all or nothing: malformed results or a read-only file leave
+    every file as it was, no temporary file is left behind, and the error
+    names the file.
 - `README_PYPI.md` reaches PyPI only at the next release. Until then the PyPI
   page shows the old claims.
 

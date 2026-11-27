@@ -6,7 +6,7 @@ Audited: 2026-11-26. The repository was read-only. Every experiment imported the
 
 Environment: Python 3.12.7, Windows 11 (AMD64). The installed versions match the recorded ones: toolz 1.1.0, langchain-core 1.4.9, llama-index-core 0.14.23, contexel 0.1.17. Also installed: langchain-community 0.3.27 and tiktoken 0.8.0.
 
-Scratch scripts used as evidence (in the audit `facts/` folder next to this report): `deps.py`, `deps_linux.py`, `imp.py`, `probe_llama.py`, `alt.py`, `alt2.py`, `timed.py`, `tik.py`, `enc.py`.
+Scratch scripts used as evidence (kept outside the repository): `deps.py`, `deps_linux.py`, `imp.py`, `probe_llama.py`, `alt.py`, `alt2.py`, `timed.py`, `tik.py`, `enc.py`.
 
 ## 0. Bottom line
 

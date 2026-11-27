@@ -780,13 +780,14 @@ neighbours, so you can pick deliberately:
 
 **Serialization formats are the complementary layer, not competitors**:
 contexel decides *what survives*; the encoding decides *what the survivors
-cost*. It pairs naturally with [ISON](https://ison.dev) (ISON is by the same
-author as contexel.) — `select` projects records onto a uniform field set,
-exactly the rows ISON's table syntax encodes without repeating keys
-(measured in benchmark suite 6 against contexel's default JSON; any
-header-plus-rows encoding, such as CSV or columnar JSON, avoids repeating
-keys), and `tokens.set_serializer()` keeps budgets priced in that encoding
-(see [`examples/ison_boundary.py`](examples/ison_boundary.py)).
+cost*. It pairs naturally with [ISON](https://ison.dev) — `select` projects
+records onto a uniform field set, exactly the rows ISON's table syntax
+encodes without repeating keys (measured in benchmark suite 6 against
+contexel's default JSON; any header-plus-rows encoding, such as CSV or
+columnar JSON, avoids repeating keys), and `tokens.set_serializer()` keeps
+budgets priced in that encoding (see
+[`examples/ison_boundary.py`](examples/ison_boundary.py)). ISON is by the
+same author as contexel.
 
 The measurements: [`benchmarks/COMPARISON.md`](benchmarks/COMPARISON.md)
 runs the same shaping task through toolz, langchain-core and
