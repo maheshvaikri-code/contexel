@@ -17,8 +17,12 @@ sys.path.insert(0, str(ROOT))
 
 from benchmarks import competitors, publish, suites_report  # noqa: E402
 
+SITE_PAGES = (
+    "site/index.html", "site/benchmarks.html", "site/stages.html", "site/architecture.html",
+    "site/getting-started.html", "site/contract.html",
+)
 PUBLISHED = (
-    "README.md", "README_PYPI.md", "site/index.html", "site/benchmarks.html",
+    "README.md", "README_PYPI.md", *SITE_PAGES,
     "benchmarks/COMPARISON.json", "benchmarks/COMPARISON.md",
     "benchmarks/RESULTS.json", "benchmarks/RESULTS.md", "benchmarks/dataset.sha256",
 )
@@ -438,6 +442,8 @@ _ADVERSARIAL = {
     "Budget: and spaces": "Budget:" + " " * 160_000,
     "import and spaces": "import" + " " * 160_000,
     "slowest and spaces": "slowest" + " " * 160_000,
+    "contexel and spaces": "contexel" + " " * 160_000,
+    "one dataset and digits": "one dataset, " + "1," * 80_000,
 }
 
 
@@ -820,3 +826,90 @@ def test_no_benchmark_source_cites_a_readme_section_that_does_not_exist():
     for rel in ("benchmarks/__init__.py", "benchmarks/suites.py", "benchmarks/suites_report.py",
                 "benchmarks/RESULTS.md"):
         assert "How much does it cut" not in (ROOT / rel).read_text(encoding="utf-8"), rel
+
+
+# --- the check reads every site page, not only the two with tables (ruling P1-10) -----------
+# numbers:D3 was a wrong figure on site/stages.html, which nothing scanned.
+def test_the_check_covers_both_readmes_and_every_site_page():
+    assert set(publish.FILES) == {"README.md", "README_PYPI.md", *SITE_PAGES}
+    assert len(publish.FILES) == 8
+    on_disk = {p.relative_to(ROOT).as_posix() for p in (ROOT / "site").glob("*.html")}
+    assert on_disk <= set(publish.FILES), sorted(on_disk - set(publish.FILES))
+
+
+@pytest.mark.parametrize("rel", [
+    "site/stages.html", "site/architecture.html", "site/getting-started.html", "site/contract.html",
+])
+def test_a_hand_typed_benchmark_number_on_another_site_page_is_reported(tree, rel):
+    _replace(tree, rel, "</body>", "<p>about 12 ms per call, 40% fewer tokens</p>\n</body>")
+    problems = publish.check(tree)
+    assert any(rel in p and "unregistered benchmark number" in p and "12 ms" in p for p in problems), problems
+    assert any(rel in p and "unregistered benchmark number" in p and "40%" in p for p in problems), problems
+
+
+def test_a_table_cell_that_is_only_a_number_on_the_stage_reference_is_reported(tree):
+    _replace(tree, "site/stages.html", "</body>", "<table><tr><td>166.5</td></tr></table>\n</body>")
+    problems = publish.check(tree)
+    assert any("site/stages.html" in p and "table cell" in p and "'166.5'" in p for p in problems), problems
+
+
+# --- the hand-written sentences that were true but unchecked (numbers audit section 8) -------
+_DISCLOSED = ("README.md", "README_PYPI.md", "site/index.html", "site/benchmarks.html")
+
+
+def _replace_words(root, rel, old, new):
+    """Replace the one occurrence of the words ``old`` however the file wraps them over lines
+    (each space in ``old`` matches any run of whitespace)."""
+    path = root / rel
+    pattern = r"\s+".join(re.escape(word) for word in old.split(" "))
+    text, count = re.subn(pattern, lambda _: new, path.read_text(encoding="utf-8"))
+    assert count == 1, (rel, old, count)
+    _write(path, text)
+
+
+@pytest.mark.parametrize("rel", _DISCLOSED)
+def test_the_disclosure_episode_count_follows_the_results(tree, rel):
+    _replace_words(tree, rel, "one dataset, 100 episodes", "one dataset, 99 episodes")
+    problems = publish.check(tree)
+    assert f"{rel}: claim 'disclosure episodes' says 99, the results say 100" in problems, problems
+
+
+@pytest.mark.parametrize("rel", _DISCLOSED)
+def test_a_missing_disclosure_is_reported_not_skipped(tree, rel):
+    _replace_words(tree, rel, "one dataset, 100 episodes", "one dataset")
+    problems = publish.check(tree)
+    assert any(rel in p and "'disclosure episodes'" in p and "not found" in p for p in problems), problems
+
+
+def test_the_disclosure_is_registered_on_every_surface_that_carries_it():
+    covered = {c.file for c in publish.CLAIMS if c.label == "disclosure episodes"}
+    assert covered == set(_DISCLOSED)
+
+
+_HOME_NOTE = "the row that keeps the needed record in every episode"
+_HOME_LABEL = "contexel alone: full recall under both signals, within the budget, no duplicates or bloat"
+
+
+def test_the_home_page_reading_note_is_registered_and_true():
+    assert any(c.file == "site/index.html" and c.label == _HOME_LABEL for c in publish.CLAIMS)
+    assert not [p for p in publish.check(ROOT) if _HOME_LABEL in p]
+
+
+def test_a_reworded_home_page_reading_note_is_reported(tree):
+    _replace_words(tree, "site/index.html", _HOME_NOTE,
+                   "the row that keeps the needed record in most episodes")
+    problems = publish.check(tree)
+    assert any("site/index.html" in p and _HOME_LABEL in p and "not found" in p for p in problems), problems
+
+
+@pytest.mark.parametrize("edit", [
+    lambda data: _outcome(data, "contexel").update(recall_weak_pct=99.0),     # not every episode
+    lambda data: _outcome(data, "contexel").update(recall_strong_pct=99.0),
+    lambda data: _outcome(data, "contexel").update(useful_share_pct=99.0),    # tokens on bloat
+    lambda data: _outcome(data, "contexel").update(fill_x=1.01),              # over the budget
+    lambda data: _outcome(data, "toolz").update(fill_x=0.9),                  # no longer the only row
+], ids=["weak recall", "strong recall", "useful share", "fill", "another row qualifies"])
+def test_the_home_page_reading_note_fails_when_the_results_disagree(tree, edit):
+    _edit_comparison(tree, edit)
+    problems = publish.check(tree)
+    assert any("site/index.html" in p and _HOME_LABEL in p and "not true" in p for p in problems), problems

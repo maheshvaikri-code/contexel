@@ -47,7 +47,12 @@ from . import suites_report
 from .competitors import render_report
 from .fetch_dataset import DatasetChecksumError, expected_digest
 
-FILES = ("README.md", "README_PYPI.md", "site/index.html", "site/benchmarks.html")
+# The four surfaces that publish the comparison (the dataset sentence, the disclosure) ...
+RESULT_PAGES = ("README.md", "README_PYPI.md", "site/index.html", "site/benchmarks.html")
+# ... and every file the check reads: the other site pages carry timing and token figures
+# too (numbers:D3 was a wrong one on site/stages.html), so they are scanned the same way.
+FILES = RESULT_PAGES + ("site/stages.html", "site/architecture.html", "site/getting-started.html",
+                        "site/contract.html")
 MAX_PUBLISHED_BYTES = 2 * 1024 * 1024  # a larger published file is refused, not scanned
 _START = r"<!--\s*benchmark:[a-z0-9-]+:start"
 # A block's body never contains another start marker (tempered), so an unclosed start
@@ -407,6 +412,21 @@ def _json_underestimates(c: Dict[str, Any], s: Dict[str, Any]) -> bool:
     return next(r for r in s["accuracy"] if r["sample"].startswith("json"))["error_pct"] < 0
 
 
+def _clean_full_recall(r: Dict[str, Any]) -> bool:
+    """The record in every episode under both signals, within the budget on average (Fill at
+    most 1.00 as rendered) and no tokens on duplicates or bloat (Useful 100%)."""
+    return (r["rs"] == 100 and r["rw"] == 100 and round(r["fill"], 2) <= 1
+            and r["useful"] == 100)
+
+
+def _only_clean_full_recall(c: Dict[str, Any], s: Dict[str, Any]) -> bool:
+    """contexel is "the row that" keeps the record in every episode, stays within the budget
+    and spends nothing on duplicates or bloat: it does all three and no other row does."""
+    rows = _rows(c)
+    return _clean_full_recall(rows["contexel"]) and not any(
+        _clean_full_recall(r) for n, r in rows.items() if n != "contexel")
+
+
 SIX_OPERATIONS = 6     # the PyPI README says "all six operations": the total must be six
 COLLAPSE_POINTS = 30  # "collapses": recall falls by at least this many percentage points
 RECOVER_POINTS = 5     # "recovers": the stem row's inflected recall is within this of its original
@@ -421,7 +441,7 @@ EPISODES = r"(?<![\d,])([\d,]+)\s+ground-truth\s+episodes"
 BUDGET = r"(?<![\d,])([\d,]+)-token\s+(?:context|budget)"
 
 CLAIMS: List[Claim] = []
-for _file in FILES:
+for _file in RESULT_PAGES:  # the dataset sentence: the other pages do not describe the dataset
     CLAIMS += [
         Claim(_file, "tool-output records", RECORDS,
               _equals(lambda c, s: f"{c['dataset']['records']:,}")),
@@ -433,7 +453,7 @@ for _file in ("README.md", "README_PYPI.md", "site/benchmarks.html"):
 for _file in ("README.md", "README_PYPI.md", "site/index.html"):
     CLAIMS.append(Claim(_file, "evaluation budget", BUDGET,
                         _equals(lambda c, s: f"{c['settings']['eval_budget']:,}")))
-for _file in ("README.md", "README_PYPI.md"):  # the authorship disclosure (ruling P1-5)
+for _file in RESULT_PAGES:  # the authorship disclosure (ruling P1-5), on every surface
     CLAIMS.append(Claim(_file, "disclosure episodes", r"one\s+dataset,\s+([\d,]+)\s+episodes",
                         _equals(lambda c, s: f"{c['settings']['episodes']:,}")))
 CLAIMS += [
@@ -501,6 +521,13 @@ CLAIMS += [
               _control_untouched),
     _sentence("site/benchmarks.html", r"under-estimates\s+JSON-heavy\s+records",
               "the default tokenizer under-estimates JSON", _json_underestimates),
+    # the home page's reading note (numbers audit section 8, Task 4 review M-4)
+    _sentence("site/index.html",
+              r"contexel\s+is\s+the\s+row\s+that\s+keeps\s+the\s+needed\s+record\s+in\s+every\s+episode"
+              r"\s+under\s+both\s+retrieval\s+signals,\s+stays\s+within\s+the\s+budget\s+on\s+average"
+              r"\s+\(Fill\s+at\s+most\s+1\.00\)\s+and\s+spends\s+no\s+tokens\s+on\s+duplicates\s+or\s+bloat",
+              "contexel alone: full recall under both signals, within the budget, no duplicates or bloat",
+              _only_clean_full_recall),
 ]
 
 # A number with a benchmark unit, in any case: ms (msec, milliseconds), microseconds (the
